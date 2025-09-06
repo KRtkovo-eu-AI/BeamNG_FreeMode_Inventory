@@ -1,0 +1,60 @@
+{
+        "Camso_CompressedAirMotor": {
+                "information":{
+                        "authors":"Camshaft Software",
+                        "name":"Compressed Air Motor",
+                        "value": 2500
+                }
+                "slotType" : "Camso_CompressedAirMotor",
+                "slots": [
+                        ["type", "default", "description"],
+                ],
+                "powertrain" : [
+                        ["type", "name", "inputName", "inputIndex"],
+                        ["airMotor", "compressedAirMotor", "dummy", 0],
+                        ["shaft", "rearDriveShaft", "compressedAirMotor", 1, {"gearRatio":1}]
+                ],
+                "compressedAirMotor": {
+                        "torque":[
+                                ["rpm", "torque"],
+                                [0, 150],
+                                [500, 150],
+                                [1000, 100],
+                                [1500, 0],
+                        ],
+                        "maxRPM":1500,
+                        "inertia":0.3,
+                        "friction":4,
+                        "dynamicFriction":0.0005,
+                        "airConsumptionRate":0.0002,
+                        "energyStorage": "mainAirTank", //Name of the primary air tank
+                        "auxiliaryEnergyStorage": "auxAirTank", //Name of the secondary air tank
+                        "torqueReactionNodes:":["engine1", "engine2", "engine3"],
+                        "soundConfig": "airMotorSound"
+                },
+
+                "airMotorSound": {
+                        "sampleName": "AirSpinner_01",
+                        "mainGain": 6,
+                        "onLoadGain": 6.0,
+                        "offLoadGain": 0.5,
+
+                        "maxLoadMix": 8.0,
+                        "minLoadMix": 0,
+
+                        "eqLowGain": 5,
+                        "eqLowFreq": 200,
+                        "eqLowWidth": 0.1,
+
+                        "eqHighGain": 8,
+                        "eqHighFreq": 3000,
+                        "eqHighWidth": 0.1,
+
+                        "lowShelfGain":5,
+                        "lowShelfFreq":200,
+
+                        "highShelfGain":5,
+                        "highShelfFreq":3000
+                }
+        }
+}
