@@ -1,0 +1,44 @@
+{
+    "citybus_air_tank": {
+        "information":{
+            "authors":"BeamNG",
+            "name":"Air Tank",
+            "value":600,
+        },
+        "slotType" : "citybus_air_tank",
+        "variables": [
+            ["name", "type", "unit", "category", "default", "min", "max", "title", "description"],
+            ["$startAir", "range", "PSI", "Chassis", 116, 0, 120, "Main Air Tank Pressure", "Initial air tank pressure", {"stepDis":1}],
+        ],
+        "energyStorage": [
+            ["type", "name"],
+            ["pressureTank", "mainAirTank"],
+        ],
+        "mainAirTank": {
+            "isPrimarySupply": true,
+            "capacity": 0.07,
+            "startingPressure": "$=$startAir*6895",
+        },
+    },
+    "citybus_auxilliary_air_tank": {
+        "information":{
+            "authors":"BeamNG",
+            "name":"Auxilliary Air Tank",
+            "value":600,
+        },
+        "slotType" : "citybus_auxilliary_air_tank",
+        "variables": [
+            ["name", "type", "unit", "category", "default", "min", "max", "title", "description"],
+            ["$startAirAux", "range", "PSI", "Chassis", 116, 0, 120, "Auxilliary Air Tank Pressure", "Initial air tank pressure", {"stepDis":1}],
+        ],
+        "energyStorage": [
+            ["type", "name"],
+            ["pressureTank", "auxAirTank"],
+        ],
+        "auxAirTank": {
+            // Capacity is half the size of "mainAirTank" because mainAirTank accounts for both a wet and a dry tank
+            "capacity": 0.035,
+            "startingPressure": "$=$startAirAux*6895",
+        },
+    },
+}
