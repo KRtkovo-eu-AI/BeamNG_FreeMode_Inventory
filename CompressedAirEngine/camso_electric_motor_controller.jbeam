@@ -1,0 +1,51 @@
+{
+	"Camso_Engine_ElectricController": {
+		"information": {
+			"authors": "Camshaft Software",
+			"name": "Skoda thyristor pulse controller",
+			"value": 10000
+		}
+		"slotType": "Camso_Engine",
+		"variables": [
+			["name", "type", "unit", "category", "default", "min", "max", "title", "description"]
+			["$EngineOffsetX", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Engine Offset X", "Lateral engine offset", {"stepDis":0.01, "subCategory":"Engine Offset"}],
+			["$EngineOffsetY", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Engine Offset Y", "Longitudinal engine offset", {"stepDis":0.01, "subCategory":"Engine Offset"}],
+			["$EngineOffsetZ", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Engine Offset Z", "Vertical engine offset", {"stepDis":0.01, "subCategory":"Engine Offset"}],
+			["$EngineOffsetXVis", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Visual Engine Offset X", "Visual lateral engine offset", {"stepDis":0.01, "subCategory":"Engine Offset"}],
+			["$EngineOffsetYVis", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Visual Engine Offset Y", "Visual longitudinal engine offset", {"stepDis":0.01, "subCategory":"Engine Offset"}],
+			["$EngineOffsetZVis", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Visual Engine Offset Z", "Visual vertical engine offset", {"stepDis":0.01, "subCategory":"Engine Offset"}],
+			["$ExhaustOffsetX", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Exhaust Offset X", "Lateral exhaust offset", {"stepDis":0.01, "subCategory":"Exhaust Offset"}],
+			["$ExhaustOffsetY", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Exhaust Offset Y", "Longitudinal exhaust offset", {"stepDis":0.01, "subCategory":"Exhaust Offset"}],
+			["$ExhaustOffsetZ", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Exhaust Offset Z", "Vertical exhaust offset", {"stepDis":0.01, "subCategory":"Exhaust Offset"}],
+			["$ExhaustOffsetXVis", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Visual Exhaust Offset X", "Visual lateral exhaust offset", {"stepDis":0.01, "subCategory":"Exhaust Offset"}],
+			["$ExhaustOffsetYVis", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Visual Exhaust Offset Y", "Visual longitudinal exhaust offset", {"stepDis":0.01, "subCategory":"Exhaust Offset"}],
+			["$ExhaustOffsetZVis", "range", "+m", "Vehicle Advanced Settings", 0, -4, 4, "Visual Exhaust Offset Z", "Visual vertical exhaust offset", {"stepDis":0.01, "subCategory":"Exhaust Offset"}],
+			["$torquesplitE", "range", "", "Motor Controller", 1, 0, 1, "Torque Split", "Power to Rear", {"stepDis": 0.01, "minDis":0, "maxDis":100}],
+			["$regenTorqueModRear", "range", "", "Motor Controller", 0.6, 0, 3, "Rear motor regenerative braking torque", "Maximum regenerative braking torque", {"stepDis": 1, "minDis":0, "maxDis":300}],
+			["$regenTorqueModFront", "range", "", "Motor Controller", 1, 0, 3, "Front motor regenerative braking torque", "Maximum regenerative braking torque", {"stepDis": 1, "minDis":0, "maxDis":300}]
+		],
+
+		"slots": [
+			["type", "default", "description"],
+
+			["Camso_ElectricMotor_F", "Camso_ElectricMotor_RadiatorFan", "Radiator Fan"],
+			["Camso_ElectricMotor_R", "Camso_ElectricMotor_R_14Tr", "Rear Motor"],
+			["Camso_SpeedLimiter", "", "Speed Limiter", {"coreSlot": true}],
+
+			// pneumatics
+			["citybus_air_compressor", "citybus_electric_air_compressor", "Air Compressor"],
+			["citybus_air_tank", "citybus_air_tank", "Air Tank"],
+			["citybus_auxilliary_air_tank", "citybus_auxilliary_air_tank", "Auxilliary Air Tank"],
+		],
+		
+		"vehicleController": {
+			"shiftLogicName":"electricMotor",
+			"motorNames": ["rearMotor", "frontMotor"],
+			"topSpeedLimitReverse": 15,
+			"topSpeedLimit": 80,
+			"defaultRegen": 0.5,
+			"brakeRegenCoef": 1,
+			"onePedalRegenCoef": 0.85
+		}
+	}
+}

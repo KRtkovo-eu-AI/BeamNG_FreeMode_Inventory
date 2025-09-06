@@ -1,0 +1,78 @@
+{
+"citybus_electric_air_compressor": {
+	"information": {
+		"authors": "Arcanox",
+		"name": "Electric Air Compressor",
+		"value": 4100,
+	},
+	"slotType" : "citybus_air_compressor",
+	"powertrain": [
+		["type", "name", "inputName", "inputIndex"],
+        ["electricMotor", "airCompressorMotor", "dummy", 0],
+		["compressor", "airCompressor", "airCompressorMotor", 1],
+	],
+    "controller": [
+        ["fileName"],
+        ["airCompressorControl", {}],
+    ],
+	"airCompressor": {
+		"energyStorage": "mainAirTank",
+		"pumpWorkingPressure": 1050000,
+        "deloadWhenDisengaged": false,
+        "compressorSoundNode": "rb5r",
+        "compressorSoundVolume": 1
+	},
+    "airCompressorMotor":{
+        "torque":[
+            ["rpm", "torque"],
+            [0,    140],
+            [250,  140],
+            [500, 140],
+            [750, 130],
+            [1000, 110],
+            [1500, 60],
+            [2000, 5],
+        ],
+
+        "maxRPM":2000,
+        "inertia":0.05,
+        "friction":1,
+        "dynamicFriction":0.0003,
+        "electricalEfficiency":0.95,
+        "uiName":"Air Compressor Motor",
+		"electricsThrottleFactorName": "airCompressorThrottleFactor",
+		"electricsThrottleName": "airCompressorThrottle",
+		"soundConfig": "airCompressorSoundConfig",
+		//"energyStorage": "mainBattery", //Name of the fuel tank
+		"torqueReactionNodes:":["engine1", "engine2", "engine3"],
+		"maximumWantedRegenTorque": "$=350*($torquesplitE or 1)*($regenTorqueModRear or 1)",
+    },
+    
+		"airCompressorSoundConfig": {
+			"sampleName": "I6D_3_exhaust",
+			"mainGain": 1,
+			"onLoadGain": 2.0,
+			"offLoadGain": 0.75,
+
+			"maxLoadMix": 6.0,
+			"minLoadMix": 0,
+
+			"eqLowGain": 4,
+			"eqLowFreq": 350,
+			"eqLowWidth": 0.1,
+
+			"eqHighGain": 10,
+			"eqHighFreq": 3050,
+			"eqHighWidth": 0.1,
+
+			"lowShelfGain":4,
+			"lowShelfFreq":450,
+
+			"highShelfGain":8,
+			"highShelfFreq":3050,
+
+			"fundamentalFrequencyCylinderCount": 3,
+			"eqFundamentalGain": 5
+		}
+},
+}

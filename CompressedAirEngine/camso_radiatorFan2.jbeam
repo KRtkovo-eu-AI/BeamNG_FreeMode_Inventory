@@ -1,0 +1,64 @@
+{
+	"Camso_ElectricMotor_RadiatorFan2": {
+		"information":{
+			"authors":"Camshaft Software",
+			"name":"MEZ Mohelnice YXBM-25AD",
+			"value": 4000
+		}
+		"slotType" : "Camso_ElectricMotor_F",
+		"powertrain" : [
+			["type", "name", "inputName", "inputIndex"],
+			["electricMotor", "frontMotor", "dummy", 0]
+		],
+		"frontMotor": {
+			"torque":[
+				["rpm", "torque"],
+				[0, "$=2000*$torquesplitE"],
+				[200, "$=2000*$torquesplitE"],
+				[600, "$=669.88*$torquesplitE"],
+				[800, "$=556.00*$torquesplitE"],
+				[1200, "$=462.22*$torquesplitE"],
+
+			],
+			"maxRPM":1200,
+			"inertia":0.40,
+			"friction":4,
+			"dynamicFriction":0.0005,
+			"electricalEfficiency":0.85,
+			"electricsThrottleFactorName": "throttleFactorFront",
+			"electricsThrottleName": "motorFanActive",
+			"breakTriggerBeam":"engine", //Engine breaks if beam with this name is broken
+			"soundConfig": "soundConfigFront",
+			//"energyStorage": "mainBattery", //Name of the fuel tank
+			"torqueReactionNodes:":["engine1", "engine2", "engine3"],
+			"maximumWantedRegenTorque": "$=$MaxRegenTorque$*(1-($torquesplitE or 0))*($regenTorqueModFront or 1)"
+		},
+
+		"soundConfigFront": {
+			"sampleName": "ElectricSpinner_01",
+			"mainGain": 4,
+			"onLoadGain": 2.0,
+			"offLoadGain": 0.75,
+
+			"maxLoadMix": 6.0,
+			"minLoadMix": 0,
+
+			"eqLowGain": 4,
+			"eqLowFreq": 40,
+			"eqLowWidth": 0.1,
+
+			"eqHighGain": 10,
+			"eqHighFreq": 850,
+			"eqHighWidth": 0.1,
+
+			"lowShelfGain":4,
+			"lowShelfFreq":60,
+
+			"highShelfGain":8,
+			"highShelfFreq":950,
+
+			"fundamentalFrequencyCylinderCount": 8,
+			"eqFundamentalGain": 8
+		}
+	}
+}

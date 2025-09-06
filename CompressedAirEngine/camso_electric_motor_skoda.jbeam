@@ -1,0 +1,64 @@
+{
+	"Camso_ElectricMotor_R_14Tr": {
+		"information":{
+			"authors":"Camshaft Software",
+			"name":"Skoda el. motor 6 Al 2943 rN",
+			"value": 4000
+		}
+		"slotType" : "Camso_ElectricMotor_R",
+		"slots": [
+				["type", "default", "description"],
+		],
+		"powertrain" : [
+			["type", "name", "inputName", "inputIndex"],
+			["electricMotor", "rearMotor", "dummy", 0],
+			["shaft", "rearDriveShaft", "rearMotor", 1, {"gearRatio":0.65}]
+		],
+		"rearMotor": {
+			"torque":[
+				["rpm", "torque"],
+				[0, "$=2000*$torquesplitE"],
+				[500, "$=2000*$torquesplitE"],
+				[600, "$=669.88*$torquesplitE"],
+				[1900, "$=556.00*$torquesplitE"],
+				[2000, "$=462.22*$torquesplitE"],
+
+			],
+			"maxRPM":2000,
+			"inertia":0.40,
+			"friction":4,
+			"dynamicFriction":0.0005,
+			"electricalEfficiency":0.85,
+			"electricsThrottleFactorName": "throttleFactorRear",
+			"breakTriggerBeam":"engine", //Engine breaks if beam with this name is broken
+			"soundConfig": "soundConfigRear",
+			"energyStorage": "mainBattery", //Name of the fuel tank
+			"torqueReactionNodes:":["engine1", "engine2", "engine3"],
+			"maximumWantedRegenTorque": "$=350*($torquesplitE or 1)*($regenTorqueModRear or 1)"
+		},
+
+		"soundConfigRear": {
+			"sampleName": "ElectricSpinner_01",
+			"mainGain": 10,
+			"onLoadGain": 8.0,
+			"offLoadGain": 0.75,
+
+			"maxLoadMix": 10.0,
+			"minLoadMix": 2,
+
+			"eqLowGain": 10,
+			"eqLowFreq": 150,
+			"eqLowWidth": 2,
+
+			"eqHighGain": 10,
+			"eqHighFreq": 2000,
+			"eqHighWidth": 2,
+
+			"lowShelfGain":10,
+			"lowShelfFreq":150,
+
+			"highShelfGain":10,
+			"highShelfFreq":450
+		}
+	}
+}
