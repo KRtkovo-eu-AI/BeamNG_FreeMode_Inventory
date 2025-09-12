@@ -1,0 +1,20 @@
+{
+  "name": "Freeroam Part Inventory",
+  "author": "BeamNG Mod",
+  "version": "0.1.0",
+  "description": "Manage detached parts and install them on vehicles in Freeroam mode.",
+  "directive": "freeroamPartInventory",
+  "domElement": "<freeroam-part-inventory></freeroam-part-inventory>",
+  "css": {
+    "left": "500px",
+    "top": "100px",
+    "width": "auto",
+    "height": "auto",
+    "min-width": "200px",
+    "min-height": "50px"
+  },
+  "types": [
+    "ui.apps.categories.gameplay"
+  ],
+  "icon": "app.png"
+}
