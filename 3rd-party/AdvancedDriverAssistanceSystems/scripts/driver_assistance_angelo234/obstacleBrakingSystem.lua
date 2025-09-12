@@ -9,8 +9,8 @@ local release_brake_confidence_level = 0
 
 -- Raycast helper copied from previous virtual sensor implementation
 local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
-  local heights = {0.1, 0.5, 1.0, 1.5}
-  local laterals = widthDir and {0, 0.5, -0.5} or {0}
+  local heights = {0.3, 0.8, 1.3}
+  local laterals = widthDir and {0, 0.4, -0.4} or {0}
   local best
 
   for _, lateral in ipairs(laterals) do
@@ -22,11 +22,9 @@ local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
         origin.z = origin.z + widthDir.z * lateral
       end
 
-      local target = origin + dir * maxDistance
-      -- use BeamNG's global castRay utility to detect static obstacles
-      local hit = castRay(origin, target, true, true)
-      if hit and hit.dist and hit.dist < maxDistance then
-        best = best and math.min(best, hit.dist) or hit.dist
+      local dist = castRayStatic(origin, dir, maxDistance)
+      if dist and dist < maxDistance then
+        best = best and math.min(best, dist) or dist
       end
     end
   end
@@ -40,6 +38,8 @@ end
 local function frontObstacleDistance(veh, maxDistance)
   local pos = veh:getPosition()
   local dir = veh:getDirectionVector()
+  dir.z = 0
+  dir = dir:normalized()
   local sideDir = vec3(-dir.y, dir.x, 0)
   local forwardOffset = 1.5
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
@@ -85,15 +85,6 @@ local function holdBrakes(veh, veh_props, aeb_params)
 end
 
 local function performEmergencyBraking(dt, veh, aeb_params, time_before_braking, speed)
-  if input_throttle_angelo234 > 0.5 or input_brake_angelo234 > 0.3 then
-    if system_state == "braking" then
-      veh:queueLuaCommand("electrics.values.brakeOverride = nil")
-      veh:queueLuaCommand("electrics.values.throttleOverride = nil")
-      system_state = "ready"
-    end
-    return
-  end
-
   if system_state == "braking" and speed < aeb_params.brake_till_stop_speed then
     veh:queueLuaCommand("electrics.values.throttleOverride = 0")
     veh:queueLuaCommand("electrics.values.brakeOverride = 1")
