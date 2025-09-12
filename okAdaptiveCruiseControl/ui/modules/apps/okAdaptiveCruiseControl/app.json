@@ -1,6 +1,6 @@
 {
-  "domElement": "<cruise-control></cruise-control>",
-  "name": "ui.apps.cruise_control.name",
+  "domElement": "<ok-adaptive-cruise-control></ok-adaptive-cruise-control>",
+  "name": "ui.apps.okAdaptiveCruiseControl.name",
   "types": [
     "ui.apps.categories.vehicle_control"
   ],
@@ -14,5 +14,5 @@
   "author": "Diamondback",
   "version": "0.1",
   "preserveAspectRatio" : true,
-  "directive": "cruiseControl"
+  "directive": "okAdaptiveCruiseControl"
 }

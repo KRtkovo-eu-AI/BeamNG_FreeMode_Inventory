@@ -26,7 +26,7 @@ local speedPID = newPIDStandard(0.3, 2, 0.0, 0, 1, 1, 1, 0, 1)
 --speedPID:setDebug(true)
 
 local function onReset()
-  log("D", "CruiseControl", "Cruise Control online")
+  log("D", "okAdaptiveCruiseControl", "Adaptive Cruise Control online")
   if disableOnReset then
     isEnabled = false
     electrics.values.throttleOverride = nil
@@ -138,13 +138,13 @@ local function requestState()
   state.adaptiveEnabled = adaptiveEnabled
   state.safeDistance = safeDistance
 
-  electrics.values.cruiseControlTarget = targetSpeed
-  electrics.values.cruiseControlActive = isEnabled
+  electrics.values.okAdaptiveCruiseControlTarget = targetSpeed
+  electrics.values.okAdaptiveCruiseControlActive = isEnabled
 
   if not playerInfo.firstPlayerSeated then
     return
   end
-  guihooks.trigger("CruiseControlState", state)
+  guihooks.trigger("okAdaptiveCruiseControlState", state)
 end
 
 local function getConfiguration()
