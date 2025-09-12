@@ -1,10 +1,10 @@
 {
-  "domElement": "<cruise-control></cruise-control>",
-  "name": "ui.apps.cruise_control.name",
+  "domElement": "<ok-adaptive-cruise-control></ok-adaptive-cruise-control>",
+  "name": "Adaptive Cruise Control",
   "types": [
     "ui.apps.categories.vehicle_control"
   ],
-  "description": "An app to precisely set and control the speed of a vehicle",
+  "description": "Adaptive cruise control with speed and time gap settings",
   "css": {
     "left": "20px",
     "height": "150px",
@@ -14,5 +14,5 @@
   "author": "Diamondback",
   "version": "0.1",
   "preserveAspectRatio" : true,
-  "directive": "cruiseControl"
+  "directive": "okAdaptiveCruiseControl"
 }

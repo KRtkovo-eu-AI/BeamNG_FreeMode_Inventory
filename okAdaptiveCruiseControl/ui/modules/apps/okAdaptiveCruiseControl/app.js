@@ -1,8 +1,7 @@
 angular.module('beamng.apps')
-.directive('cruiseControl', ['$log', function ($log) {
+.directive('okAdaptiveCruiseControl', ['$log', function ($log) {
   return {
-    template:
-      '<object style="width:100%; height:100%;" type="image/svg+xml" data="/ui/modules/apps/CruiseControl/cruise_control_t01.svg"></object>',
+    templateUrl: '/ui/modules/apps/okAdaptiveCruiseControl/app.html',
     replace: true,
     restrict: 'EA',
     scope: true,
@@ -12,8 +11,22 @@ angular.module('beamng.apps')
         'imperial': 2.23694
       }
 
-      element.on('load', function () {
-        let svg = element[0].contentDocument
+      let svgObj = angular.element(element[0].querySelector('#ccSvg'))
+      let adaptiveToggle = angular.element(element[0].querySelector('#accToggle'))
+      let gapInput = angular.element(element[0].querySelector('#accTimeGap'))
+
+      adaptiveToggle.on('change', function () {
+        bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setAdaptiveEnabled(${adaptiveToggle[0].checked})`)
+        bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
+      })
+
+      gapInput.on('change', function () {
+        bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setTimeGap(${gapInput.val()})`)
+        bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
+      })
+
+      svgObj.on('load', function () {
+        let svg = svgObj[0].contentDocument
         let setBtn = angular.element(svg.getElementById('set_btn'))
         let resBtn = angular.element(svg.getElementById('res_btn'))
         let ccBtn = angular.element(svg.getElementById('cc_btn'))
@@ -32,27 +45,27 @@ angular.module('beamng.apps')
 
         scope.$on('SettingsChanged', function (event, data) {
           speedStep = 1 / unitMultiplier[data.values.uiUnitLength]
-          bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+          bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
         })
 
         setBtn.on('click', function () {
-          bngApi.activeObjectLua('extensions.cruiseControl.holdCurrentSpeed()')
+          bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.holdCurrentSpeed()')
         })
 
         resBtn.on('click', function () {
           if (!state.isEnabled && state.targetSpeed > 0.1) {
-            bngApi.activeObjectLua('extensions.cruiseControl.setEnabled(true)')
+            bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.setEnabled(true)')
           }
         })
 
         ccBtn.on('click', function () {
-          bngApi.activeObjectLua(`extensions.cruiseControl.setEnabled(${!state.isEnabled})`)
-          bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+          bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setEnabled(${!state.isEnabled})`)
+          bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
         })
 
         function setNewSpeed(newVal) {
-          bngApi.activeObjectLua(`extensions.cruiseControl.setSpeed(${newVal})`)
-          bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+          bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setSpeed(${newVal})`)
+          bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
         }
 
         function changeSpeedInc() {
@@ -92,11 +105,12 @@ angular.module('beamng.apps')
         })
 
 
-        scope.$on('CruiseControlState', function (event, data) {
+        scope.$on('okAdaptiveCruiseControlState', function (event, data) {
           scope.$evalAsync(function() {
-            //console.log(TAG, 'state:', data)
             state = data
             speedTxt.innerHTML = Math.round(state.targetSpeed / speedStep)
+            adaptiveToggle[0].checked = state.adaptiveEnabled
+            gapInput.val(state.timeGap.toFixed(1))
             if (state.isEnabled) {
               speedTxt.style.fill = onColor
               ccIcon.style.fill = onColor
@@ -108,13 +122,13 @@ angular.module('beamng.apps')
         })
 
         scope.$on('VehicleFocusChanged', function () {
-          bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+          bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
         })
 
         scope.$on('AIStateChange', function (event, data) {
-          // bngApi.activeObjectLua(`extensions.cruiseControl.setEnabled(${!state.isEnabled})`)
+          // bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setEnabled(${!state.isEnabled})`)
           // Some sort of AI control if need in the future!
-          bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+          bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
         })
 
         bngApi.engineLua('settings.notifyUI()')
