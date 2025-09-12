@@ -12,8 +12,8 @@ local max = math.max
 local min = math.min
 
 local targetAcceleration = 3
-local maxDecel = 12 -- m/s^2 maximum deceleration used for emergency stops
-local reactionTime = 0.2 -- seconds to account for controller latency
+local maxDecel = 8 -- m/s^2 conservative deceleration used for emergency stops
+local reactionTime = 0.3 -- seconds to account for controller latency
 
 local isEnabled = false
 local targetSpeed = 100 / 3.6
@@ -108,6 +108,11 @@ local function updateGFX(dt)
         if dist <= minDistance then
           desiredSpeed = 0
           emergencyBrake = 1
+        elseif obstacleSpeed and obstacleSpeed >= 0.5 then
+          if dist - minDistance <= brakeDist then
+            desiredSpeed = min(desiredSpeed, obstacleSpeed)
+            emergencyBrake = clamp((brakeDist - (dist - minDistance)) / brakeDist, 0, 1)
+          end
         elseif dist - minDistance <= brakeDist then
           desiredSpeed = 0
           emergencyBrake = clamp((brakeDist - (dist - minDistance)) / brakeDist, 0, 1)
