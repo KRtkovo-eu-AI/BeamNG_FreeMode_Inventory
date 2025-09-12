@@ -1,6 +1,6 @@
 {
   "domElement": "<ok-adaptive-cruise-control></ok-adaptive-cruise-control>",
-  "name": "ui.apps.okAdaptiveCruiseControl.name",
+  "name": "Adaptive Cruise Control",
   "types": [
     "ui.apps.categories.vehicle_control"
   ],
