@@ -12,7 +12,8 @@ local max = math.max
 local min = math.min
 
 local targetAcceleration = 3
-local maxDecel = 8 -- m/s^2 maximum deceleration used for emergency stops
+local maxDecel = 10 -- m/s^2 maximum deceleration used for emergency stops
+local reactionTime = 0.5 -- seconds to account for controller latency
 
 local isEnabled = false
 local targetSpeed = 100 / 3.6
@@ -20,7 +21,7 @@ local rampedTargetSpeed = 0
 local adaptiveEnabled = false
 local timeGap = 2 -- seconds to keep to the vehicle ahead
 local minDistance = 5 -- minimum standstill distance in meters
-local sensorRange = 250
+local sensorRange = 300
 local state = {}
 local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
@@ -78,10 +79,10 @@ local function updateGFX(dt)
         desiredSpeed = min(desiredSpeed, max(0, followSpeed))
       end
       lastObstacleDistance = dist
-      local brakeDist = currentSpeed * currentSpeed / (2 * maxDecel)
+      local brakeDist = currentSpeed * reactionTime + currentSpeed * currentSpeed / (2 * maxDecel)
       if dist <= minDistance then
-        M.setEnabled(false)
-        return
+        desiredSpeed = 0
+        emergencyBrake = 1
       elseif dist - minDistance <= brakeDist then
         desiredSpeed = 0
         emergencyBrake = clamp((brakeDist - (dist - minDistance)) / brakeDist, 0, 1)
