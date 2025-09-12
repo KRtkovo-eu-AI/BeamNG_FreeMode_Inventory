@@ -1,0 +1,43 @@
+{
+  "0-100 km/h":5.3,
+  "0-100 mph":10.8,
+  "0-200 km/h":16.4,
+  "0-60 mph":4.7,
+  "100-0 km/h":36.6,
+  "100-200 km/h":11.1,
+  "60-0 mph":112.1,
+  "60-100 mph":6.1,
+  "BoundingBox":[
+    [
+      -0.67,
+      -1.11,
+      -0.187
+    ],
+    [
+      1.33,
+      3.08,
+      1.07
+    ]
+  ],
+  "Braking G":1.076,
+  "Config Type":"Factory",
+  "Configuration":"RWD TT S w/ ADAS (M)",
+  "Description":"The TT S is equipped with a powerful 2.5 liter twin turbo F4 engine, sport suspension, special 18 inch wheels, and advanced driver assistance systems",
+  "Drivetrain":"RWD",
+  "Fuel Type":"Gasoline",
+  "Induction Type":"Turbo",
+  "Off-Road Score":28,
+  "Performance Class":"9",
+  "Population":900,
+  "Power":350,
+  "PowerPeakRPM":"5950 - 7000",
+  "Propulsion":"ICE",
+  "Top Speed":78.7371863,
+  "Torque":420,
+  "TorquePeakRPM":"4400 - 6100",
+  "Transmission":"Manual",
+  "Value":67000,
+  "Weight":1410,
+  "Weight/Power":4.02857143,
+  "default_color":"Anthracite"
+}

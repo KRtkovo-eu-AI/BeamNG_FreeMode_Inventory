@@ -3,9 +3,11 @@ local M = {}
 
 -- Returns distance in meters to the closest obstacle in front of the vehicle,
 -- or nil if no obstacle was detected within the given range.
-local function castRays(baseOrigin, dir, maxDistance, offset)
-  -- Cast several rays at different heights so we don't miss low or high obstacles
-  local heights = {0.3, 0.8, 1.3}
+local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
+  -- Cast several rays at different heights and lateral offsets so we don't miss
+  -- low/high or slightly off-center obstacles such as other vehicles or road debris.
+  local heights = {0.1, 0.5, 1.0, 1.5}
+  local laterals = widthDir and {0, 0.5, -0.5} or {0}
   local best
 
   local function cast(origin)
@@ -14,7 +16,8 @@ local function castRays(baseOrigin, dir, maxDistance, offset)
     -- Prefer a dynamic raycast so other vehicles are detected. Fallbacks handle
     -- older builds that only expose static geometry queries.
     if be and be.raycast then
-      local hit = be:raycast(origin, target, false, true, false)
+      -- enable detection of both static world objects and dynamic vehicles
+      local hit = be:raycast(origin, target, false, true, true)
       if hit and hit.dist and hit.dist < maxDistance then
         best = best and math.min(best, hit.dist) or hit.dist
         return
@@ -41,8 +44,16 @@ local function castRays(baseOrigin, dir, maxDistance, offset)
     end
   end
 
-  for _, h in ipairs(heights) do
-    cast(vec3(baseOrigin.x, baseOrigin.y, baseOrigin.z + h))
+  for _, lateral in ipairs(laterals) do
+    for _, h in ipairs(heights) do
+      local origin = vec3(baseOrigin.x, baseOrigin.y, baseOrigin.z + h)
+      if widthDir then
+        origin.x = origin.x + widthDir.x * lateral
+        origin.y = origin.y + widthDir.y * lateral
+        origin.z = origin.z + widthDir.z * lateral
+      end
+      cast(origin)
+    end
   end
 
   if best then
@@ -54,12 +65,19 @@ end
 function M.frontObstacleDistance(maxDistance)
   local pos = obj:getPosition()
   local dir = obj:getDirectionVector()
+  local sideDir = vec3(-dir.y, dir.x, 0)
 
-  -- offset the ray start slightly forward so we don't hit our own vehicle
-  local forwardOffset = 1
+  -- offset the ray start ahead so we don't hit our own vehicle while still
+  -- detecting close obstacles such as stopped cars
+  local forwardOffset = 1.5
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
 
-  return castRays(baseOrigin, dir, maxDistance, forwardOffset)
+  local dist = castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)
+  -- ignore hits very close to the ray origin which are likely our own vehicle
+  if dist and dist <= forwardOffset + 0.5 then
+    return nil
+  end
+  return dist
 end
 
 -- Returns distance to obstacles on the specified side ("left" or "right") or nil if clear.
@@ -74,10 +92,17 @@ function M.sideObstacleDistance(maxDistance, side)
   end
 
   -- offset the ray start slightly to the side so we don't hit our own vehicle
-  local sideOffset = 1
+  -- widen the offset a bit so the sideways casts begin outside the bodywork
+  local sideOffset = 1.5
   local baseOrigin = vec3(pos.x + sideDir.x * sideOffset, pos.y + sideDir.y * sideOffset, pos.z)
 
-  return castRays(baseOrigin, sideDir, maxDistance, sideOffset)
+  local dist = castRays(baseOrigin, sideDir, maxDistance, sideOffset)
+  -- discard hits that originate almost at the vehicle's side, as those are
+  -- usually our own bodywork
+  if dist and dist <= sideOffset + 0.2 then
+    return nil
+  end
+  return dist
 end
 
 return M
