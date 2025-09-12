@@ -4,7 +4,7 @@
   "types": [
     "ui.apps.categories.vehicle_control"
   ],
-  "description": "An app to precisely set and control the speed of a vehicle",
+  "description": "Adaptive cruise control with speed and time gap settings",
   "css": {
     "left": "20px",
     "height": "150px",

@@ -6,7 +6,7 @@ angular.module('beamng.apps')
       '  <object id="ccSvg" style="width:100%; height:80%;" type="image/svg+xml" data="/ui/modules/apps/okAdaptiveCruiseControl/okAdaptiveCruiseControl_t01.svg"></object>' +
       '  <div style="text-align:center; margin-top:4px;">' +
       '    <label><input type="checkbox" id="accToggle"> ACC</label>' +
-      '    <label style="margin-left:6px;"> <input type="number" id="accDistance" value="10" min="5" max="100" style="width:50px;"> m</label>' +
+      '    <label style="margin-left:6px;"> <input type="number" id="accTimeGap" value="2" min="0.5" max="5" step="0.1" style="width:50px;"> s</label>' +
       '  </div>' +
       '</div>',
     replace: true,
@@ -20,15 +20,15 @@ angular.module('beamng.apps')
 
       let svgObj = angular.element(element[0].querySelector('#ccSvg'))
       let adaptiveToggle = angular.element(element[0].querySelector('#accToggle'))
-      let distanceInput = angular.element(element[0].querySelector('#accDistance'))
+      let gapInput = angular.element(element[0].querySelector('#accTimeGap'))
 
       adaptiveToggle.on('change', function () {
         bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setAdaptiveEnabled(${adaptiveToggle[0].checked})`)
         bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
       })
 
-      distanceInput.on('change', function () {
-        bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setSafeDistance(${distanceInput.val()})`)
+      gapInput.on('change', function () {
+        bngApi.activeObjectLua(`extensions.okAdaptiveCruiseControl.setTimeGap(${gapInput.val()})`)
         bngApi.activeObjectLua('extensions.okAdaptiveCruiseControl.requestState()')
       })
 
@@ -117,7 +117,7 @@ angular.module('beamng.apps')
             state = data
             speedTxt.innerHTML = Math.round(state.targetSpeed / speedStep)
             adaptiveToggle[0].checked = state.adaptiveEnabled
-            distanceInput.val(Math.round(state.safeDistance))
+            gapInput.val(state.timeGap.toFixed(1))
             if (state.isEnabled) {
               speedTxt.style.fill = onColor
               ccIcon.style.fill = onColor

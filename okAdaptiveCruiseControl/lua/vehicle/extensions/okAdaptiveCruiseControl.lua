@@ -17,7 +17,8 @@ local isEnabled = false
 local targetSpeed = 100 / 3.6
 local rampedTargetSpeed = 0
 local adaptiveEnabled = false
-local safeDistance = 10
+local timeGap = 2 -- seconds to keep to the vehicle ahead
+local minDistance = 5 -- minimum standstill distance in meters
 local sensorRange = 100
 local state = {}
 local disableOnReset = false
@@ -64,11 +65,9 @@ local function updateGFX(dt)
   local desiredSpeed = targetSpeed
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
-    if dist and dist < safeDistance then
-      desiredSpeed = 0
-    elseif dist then
-      local allowed = (dist - safeDistance) / safeDistance * targetSpeed
-      desiredSpeed = min(desiredSpeed, allowed)
+    if dist then
+      local followSpeed = (dist - minDistance) / timeGap
+      desiredSpeed = min(desiredSpeed, max(0, followSpeed))
     end
   end
 
@@ -136,7 +135,7 @@ local function requestState()
   state.targetSpeed = targetSpeed
   state.isEnabled = isEnabled
   state.adaptiveEnabled = adaptiveEnabled
-  state.safeDistance = safeDistance
+  state.timeGap = timeGap
 
   electrics.values.okAdaptiveCruiseControlTarget = targetSpeed
   electrics.values.okAdaptiveCruiseControlActive = isEnabled
@@ -148,7 +147,7 @@ local function requestState()
 end
 
 local function getConfiguration()
-  return {isEnabled = isEnabled, targetSpeed = targetSpeed, minimumSpeed = M.minimumSpeed, hasReachedTargetSpeed = M.hasReachedTargetSpeed, adaptiveEnabled = adaptiveEnabled, safeDistance = safeDistance}
+  return {isEnabled = isEnabled, targetSpeed = targetSpeed, minimumSpeed = M.minimumSpeed, hasReachedTargetSpeed = M.hasReachedTargetSpeed, adaptiveEnabled = adaptiveEnabled, timeGap = timeGap}
 end
 
 local function setAdaptiveEnabled(enabled)
@@ -156,8 +155,8 @@ local function setAdaptiveEnabled(enabled)
   M.requestState()
 end
 
-local function setSafeDistance(dist)
-  safeDistance = max(1, dist)
+local function setTimeGap(gap)
+  timeGap = max(0.1, gap)
   M.requestState()
 end
 
@@ -172,6 +171,6 @@ M.requestState = requestState
 M.getConfiguration = getConfiguration
 M.setTargetAcceleration = setTargetAcceleration
 M.setAdaptiveEnabled = setAdaptiveEnabled
-M.setSafeDistance = setSafeDistance
+M.setTimeGap = setTimeGap
 
 return M
