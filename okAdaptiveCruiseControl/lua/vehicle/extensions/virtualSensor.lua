@@ -69,7 +69,7 @@ function M.frontObstacleDistance(maxDistance)
   -- offset the ray start well ahead so we don't hit our own vehicle
   -- the lateral rays added for wider coverage can otherwise start inside
   -- the vehicle's body and immediately register a collision
-  local forwardOffset = 4
+  local forwardOffset = 3
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
 
   local dist = castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)

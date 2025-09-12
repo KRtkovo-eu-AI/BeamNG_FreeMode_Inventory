@@ -13,14 +13,14 @@ local min = math.min
 
 local targetAcceleration = 3
 local maxDecel = 12 -- m/s^2 maximum deceleration used for emergency stops
-local reactionTime = 1.0 -- seconds to account for controller latency
+local reactionTime = 0.2 -- seconds to account for controller latency
 
 local isEnabled = false
 local targetSpeed = 100 / 3.6
 local rampedTargetSpeed = 0
 local adaptiveEnabled = false
 local timeGap = 2 -- seconds to keep to the vehicle ahead
-local minDistance = 5 -- minimum standstill distance in meters
+local minDistance = 2 -- minimum standstill distance in meters
 local sensorRange = 300
 local sideSensorRange = 5 -- range for side obstacle detection
 local sideMinDistance = 1 -- disable ACC if objects are closer than this on the sides
@@ -81,52 +81,46 @@ local function updateGFX(dt)
       lastObstacleDistance = nil
       return
     end
-    if dist then
-      -- If we are almost stopped with an object at point-blank range, assume a
-      -- collision or stop and disengage the controller so we don't push the
-      -- obstacle.
-      if dist <= minDistance and currentSpeed < 0.5 then
-        M.setEnabled(false)
-        lastObstacleDistance = nil
-        return
-      end
-
-      local obstacleSpeed
-      if dt > 0 and lastObstacleDistance then
-        local relSpeed = (lastObstacleDistance - dist) / dt
-        obstacleSpeed = currentSpeed - relSpeed
-        local followSpeed = (dist - minDistance) / timeGap - relSpeed
-        desiredSpeed = min(desiredSpeed, max(0, followSpeed))
-        if obstacleSpeed < desiredSpeed then
-          desiredSpeed = obstacleSpeed
-        end
-      end
-      lastObstacleDistance = dist
-      local brakeDist = currentSpeed * reactionTime + currentSpeed * currentSpeed / (2 * maxDecel)
-      if obstacleSpeed and obstacleSpeed < 0.5 then
-        desiredSpeed = 0
-        emergencyBrake = 1
+      if dist then
+        -- If we are almost stopped with an object at point-blank range, assume a
+        -- collision or stop and disengage the controller so we don't push the
+        -- obstacle.
         if dist <= minDistance + 1 and currentSpeed < 0.5 then
           M.setEnabled(false)
           lastObstacleDistance = nil
           return
         end
-      elseif dist <= minDistance then
-        desiredSpeed = 0
-        emergencyBrake = 1
-      elseif dist - minDistance <= brakeDist then
-        desiredSpeed = 0
-        emergencyBrake = clamp((brakeDist - (dist - minDistance)) / brakeDist, 0, 1)
-      end
-    else
-      -- no obstacle detected; clear history or disable if we stopped near something
-      if lastObstacleDistance and currentSpeed < 0.5 then
-        M.setEnabled(false)
+
+        local obstacleSpeed
+        if dt > 0 and lastObstacleDistance then
+          local relSpeed = (lastObstacleDistance - dist) / dt
+          obstacleSpeed = currentSpeed - relSpeed
+          if obstacleSpeed >= 0.5 then
+            local followSpeed = (dist - minDistance) / timeGap - relSpeed
+            desiredSpeed = min(desiredSpeed, max(0, followSpeed))
+            if obstacleSpeed < desiredSpeed then
+              desiredSpeed = obstacleSpeed
+            end
+          end
+        end
+        lastObstacleDistance = dist
+        local brakeDist = currentSpeed * reactionTime + currentSpeed * currentSpeed / (2 * maxDecel)
+        if dist <= minDistance then
+          desiredSpeed = 0
+          emergencyBrake = 1
+        elseif dist - minDistance <= brakeDist then
+          desiredSpeed = 0
+          emergencyBrake = clamp((brakeDist - (dist - minDistance)) / brakeDist, 0, 1)
+        end
+      else
+        -- no obstacle detected; clear history or disable if we stopped near something
+        if lastObstacleDistance and currentSpeed < 0.5 then
+          M.setEnabled(false)
+          lastObstacleDistance = nil
+          return
+        end
         lastObstacleDistance = nil
-        return
       end
-      lastObstacleDistance = nil
-    end
   end
 
   --ramp our target speed, decelerating faster than we accelerate
