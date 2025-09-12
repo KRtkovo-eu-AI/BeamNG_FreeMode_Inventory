@@ -17,7 +17,9 @@ angular.module('beamng.apps')
       // Receive updates from Lua for stored parts
       $scope.$on('freeroamPartInventoryData', function (event, data) {
         $scope.$evalAsync(function () {
-          $scope.inventory = data.parts || [];
+          var parts = data.parts || [];
+          // Lua may send an empty object instead of an empty array; normalise here
+          $scope.inventory = Array.isArray(parts) ? parts : Object.values(parts);
         });
       });
 
@@ -30,8 +32,9 @@ angular.module('beamng.apps')
       });
 
       $scope.filteredInventory = function () {
-        if (!$scope.currentVehicleModel) { return $scope.inventory; }
-        return $scope.inventory.filter(function (p) {
+        var inv = Array.isArray($scope.inventory) ? $scope.inventory : Object.values($scope.inventory || {});
+        if (!$scope.currentVehicleModel) { return inv; }
+        return inv.filter(function (p) {
           return p.vehicleModel === $scope.currentVehicleModel;
         });
       };
