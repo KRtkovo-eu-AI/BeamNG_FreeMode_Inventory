@@ -69,10 +69,15 @@ function M.frontObstacleDistance(maxDistance)
   -- offset the ray start well ahead so we don't hit our own vehicle
   -- the lateral rays added for wider coverage can otherwise start inside
   -- the vehicle's body and immediately register a collision
-  local forwardOffset = 3
+  local forwardOffset = 4
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
 
-  return castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)
+  local dist = castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)
+  -- ignore hits very close to the ray origin which are likely our own vehicle
+  if dist and dist <= forwardOffset + 0.5 then
+    return nil
+  end
+  return dist
 end
 
 -- Returns distance to obstacles on the specified side ("left" or "right") or nil if clear.
@@ -91,7 +96,13 @@ function M.sideObstacleDistance(maxDistance, side)
   local sideOffset = 1.5
   local baseOrigin = vec3(pos.x + sideDir.x * sideOffset, pos.y + sideDir.y * sideOffset, pos.z)
 
-  return castRays(baseOrigin, sideDir, maxDistance, sideOffset)
+  local dist = castRays(baseOrigin, sideDir, maxDistance, sideOffset)
+  -- discard hits that originate almost at the vehicle's side, as those are
+  -- usually our own bodywork
+  if dist and dist <= sideOffset + 0.2 then
+    return nil
+  end
+  return dist
 end
 
 return M
