@@ -1,6 +1,16 @@
 <div class="bngApp">
   <h3>Part Inventory</h3>
   <button ng-click="openConfig()">Vehicle Configuration</button>
+
+  <div class="config-list" ng-if="showConfig">
+    <h4>Installed Parts</h4>
+    <div class="config-item" ng-repeat="part in vehicleParts track by part.slot">
+      <span>{{part.slot}}: {{part.name || 'empty'}} </span>
+      <button ng-if="part.name" ng-click="remove(part.slot)">Remove</button>
+    </div>
+    <div class="empty" ng-if="!vehicleParts.length">No parts found.</div>
+  </div>
+
   <div class="inventory-list">
     <div class="inventory-item" ng-repeat="part in inventory track by part.id">
       <span>{{part.name}}</span>

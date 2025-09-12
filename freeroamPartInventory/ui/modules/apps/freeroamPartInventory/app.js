@@ -7,14 +7,23 @@ angular.module('beamng.apps')
     scope: true,
     controller: ['$scope', function ($scope) {
       $scope.inventory = [];
+      $scope.vehicleParts = [];
+      $scope.showConfig = false;
 
       // Request initial data from Lua
       bngApi.engineLua('extensions.freeroamPartInventory.sendUIData()');
 
-      // Receive updates from Lua
+      // Receive updates from Lua for stored parts
       $scope.$on('freeroamPartInventoryData', function (event, data) {
         $scope.$evalAsync(function () {
           $scope.inventory = data.parts || [];
+        });
+      });
+
+      // Receive list of parts currently installed on the vehicle
+      $scope.$on('freeroamPartInventoryVehicleParts', function (event, data) {
+        $scope.$evalAsync(function () {
+          $scope.vehicleParts = data.parts || [];
         });
       });
 
@@ -23,9 +32,17 @@ angular.module('beamng.apps')
         bngApi.engineLua('extensions.freeroamPartInventory.installPart(' + id + ')');
       };
 
-      // Open vehicle configuration menu so the player can remove parts
+      // Remove a part from the current vehicle
+      $scope.remove = function (slot) {
+        bngApi.engineLua('extensions.freeroamPartInventory.removePart("' + slot + '")');
+      };
+
+      // Toggle the custom vehicle configuration list
       $scope.openConfig = function () {
-        bngApi.engineLua('extensions.freeroamPartInventory.openVehicleConfig()');
+        $scope.showConfig = !$scope.showConfig;
+        if ($scope.showConfig) {
+          bngApi.engineLua('extensions.freeroamPartInventory.openVehicleConfig()');
+        }
       };
     }]
   };
