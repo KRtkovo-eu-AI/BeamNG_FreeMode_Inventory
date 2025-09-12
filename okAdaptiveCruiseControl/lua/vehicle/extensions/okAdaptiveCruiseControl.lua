@@ -12,6 +12,7 @@ local max = math.max
 local min = math.min
 
 local targetAcceleration = 3
+local maxDecel = 8 -- m/s^2 maximum deceleration used for emergency stops
 
 local isEnabled = false
 local targetSpeed = 100 / 3.6
@@ -19,7 +20,7 @@ local rampedTargetSpeed = 0
 local adaptiveEnabled = false
 local timeGap = 2 -- seconds to keep to the vehicle ahead
 local minDistance = 5 -- minimum standstill distance in meters
-local sensorRange = 100
+local sensorRange = 250
 local state = {}
 local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
@@ -63,12 +64,18 @@ local function updateGFX(dt)
     return
   end
 
+  local currentSpeed = electrics.values.wheelspeed or 0
   local desiredSpeed = targetSpeed
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
     if dist then
-      local followSpeed = (dist - minDistance) / timeGap
-      desiredSpeed = min(desiredSpeed, max(0, followSpeed))
+      local brakeDist = currentSpeed * currentSpeed / (2 * maxDecel)
+      if dist - minDistance <= brakeDist then
+        desiredSpeed = 0
+      else
+        local followSpeed = (dist - minDistance) / timeGap
+        desiredSpeed = min(desiredSpeed, max(0, followSpeed))
+      end
     end
   end
 
@@ -79,7 +86,6 @@ local function updateGFX(dt)
     rampedTargetSpeed = clamp(rampedTargetSpeed + sign(desiredSpeed - rampedTargetSpeed) * targetAcceleration * dt, lowerLimit, upperLimit)
   end
 
-  local currentSpeed = electrics.values.wheelspeed or 0
   local output = speedPID:get(currentSpeed, rampedTargetSpeed, dt)
   if output >= 0 then
     electrics.values.throttleOverride = throttleSmooth:getUncapped(output, dt)
