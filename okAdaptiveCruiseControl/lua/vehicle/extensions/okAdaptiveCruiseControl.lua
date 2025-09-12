@@ -26,7 +26,6 @@ local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
 local speedPID = newPIDStandard(0.3, 2, 0.0, 0, 1, 1, 1, 0, 1)
 local lastObstacleDistance
-local lastDistSampleTime
 --speedPID:setDebug(true)
 
 local function onReset()
@@ -73,13 +72,12 @@ local function updateGFX(dt)
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
     if dist then
-      if lastObstacleDistance and lastDistSampleTime then
-        local relSpeed = (lastObstacleDistance - dist) / (be:getObjectTime() - lastDistSampleTime)
+      if dt > 0 and lastObstacleDistance then
+        local relSpeed = (lastObstacleDistance - dist) / dt
         local followSpeed = (dist - minDistance) / timeGap - relSpeed
         desiredSpeed = min(desiredSpeed, max(0, followSpeed))
       end
       lastObstacleDistance = dist
-      lastDistSampleTime = be:getObjectTime()
       local brakeDist = currentSpeed * currentSpeed / (2 * maxDecel)
       if dist <= minDistance then
         M.setEnabled(false)
@@ -96,7 +94,6 @@ local function updateGFX(dt)
         return
       end
       lastObstacleDistance = nil
-      lastDistSampleTime = nil
     end
   end
 
