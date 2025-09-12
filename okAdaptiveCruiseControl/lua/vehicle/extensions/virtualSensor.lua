@@ -16,12 +16,31 @@ function M.frontObstacleDistance(maxDistance)
   local best
 
   local function cast(origin)
-    if obj.castRay then
+    local target = vec3(origin.x + dir.x * maxDistance, origin.y + dir.y * maxDistance, origin.z + dir.z * maxDistance)
+
+    -- Prefer a dynamic raycast so other vehicles are detected. Fallbacks handle
+    -- older builds that only expose static geometry queries.
+    if be and be.raycast then
+      local hit = be:raycast(origin, target, false, true, false)
+      if hit and hit.dist and hit.dist < maxDistance then
+        best = best and math.min(best, hit.dist) or hit.dist
+        return
+      end
+    elseif scenetree and scenetree.castRay then
+      local hit, _, _, dist = scenetree:castRay(origin, target, 0, obj:getId())
+      if hit and dist < maxDistance then
+        best = best and math.min(best, dist) or dist
+        return
+      end
+    elseif obj.castRay then
       local hit, dist = obj:castRay(origin, dir, maxDistance)
       if hit then
         best = best and math.min(best, dist) or dist
+        return
       end
-    elseif obj.castRayStatic then
+    end
+
+    if obj.castRayStatic then
       local dist = obj:castRayStatic(origin, dir, maxDistance)
       if dist and dist >= 0 and dist < maxDistance then
         best = best and math.min(best, dist) or dist

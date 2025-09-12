@@ -73,6 +73,15 @@ local function updateGFX(dt)
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
     if dist then
+      -- If we are almost stopped with an object at point-blank range, assume a
+      -- collision or stop and disengage the controller so we don't push the
+      -- obstacle.
+      if dist <= minDistance and currentSpeed < 0.5 then
+        M.setEnabled(false)
+        lastObstacleDistance = nil
+        return
+      end
+
       if dt > 0 and lastObstacleDistance then
         local relSpeed = (lastObstacleDistance - dist) / dt
         local followSpeed = (dist - minDistance) / timeGap - relSpeed
