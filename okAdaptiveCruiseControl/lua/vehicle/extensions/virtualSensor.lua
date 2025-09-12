@@ -3,9 +3,11 @@ local M = {}
 
 -- Returns distance in meters to the closest obstacle in front of the vehicle,
 -- or nil if no obstacle was detected within the given range.
-local function castRays(baseOrigin, dir, maxDistance, offset)
-  -- Cast several rays at different heights so we don't miss low or high obstacles
+local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
+  -- Cast several rays at different heights and lateral offsets so we don't miss
+  -- low/high or slightly off-center obstacles such as other vehicles.
   local heights = {0.3, 0.8, 1.3}
+  local laterals = widthDir and {0, 0.5, -0.5} or {0}
   local best
 
   local function cast(origin)
@@ -41,8 +43,16 @@ local function castRays(baseOrigin, dir, maxDistance, offset)
     end
   end
 
-  for _, h in ipairs(heights) do
-    cast(vec3(baseOrigin.x, baseOrigin.y, baseOrigin.z + h))
+  for _, lateral in ipairs(laterals) do
+    for _, h in ipairs(heights) do
+      local origin = vec3(baseOrigin.x, baseOrigin.y, baseOrigin.z + h)
+      if widthDir then
+        origin.x = origin.x + widthDir.x * lateral
+        origin.y = origin.y + widthDir.y * lateral
+        origin.z = origin.z + widthDir.z * lateral
+      end
+      cast(origin)
+    end
   end
 
   if best then
@@ -54,12 +64,13 @@ end
 function M.frontObstacleDistance(maxDistance)
   local pos = obj:getPosition()
   local dir = obj:getDirectionVector()
+  local sideDir = vec3(-dir.y, dir.x, 0)
 
   -- offset the ray start slightly forward so we don't hit our own vehicle
   local forwardOffset = 1
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
 
-  return castRays(baseOrigin, dir, maxDistance, forwardOffset)
+  return castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)
 end
 
 -- Returns distance to obstacles on the specified side ("left" or "right") or nil if clear.

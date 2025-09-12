@@ -91,14 +91,27 @@ local function updateGFX(dt)
         return
       end
 
+      local obstacleSpeed
       if dt > 0 and lastObstacleDistance then
         local relSpeed = (lastObstacleDistance - dist) / dt
+        obstacleSpeed = currentSpeed - relSpeed
         local followSpeed = (dist - minDistance) / timeGap - relSpeed
         desiredSpeed = min(desiredSpeed, max(0, followSpeed))
+        if obstacleSpeed < desiredSpeed then
+          desiredSpeed = obstacleSpeed
+        end
       end
       lastObstacleDistance = dist
       local brakeDist = currentSpeed * reactionTime + currentSpeed * currentSpeed / (2 * maxDecel)
-      if dist <= minDistance then
+      if obstacleSpeed and obstacleSpeed < 0.5 then
+        desiredSpeed = 0
+        emergencyBrake = 1
+        if dist <= minDistance + 1 and currentSpeed < 0.5 then
+          M.setEnabled(false)
+          lastObstacleDistance = nil
+          return
+        end
+      elseif dist <= minDistance then
         desiredSpeed = 0
         emergencyBrake = 1
       elseif dist - minDistance <= brakeDist then
