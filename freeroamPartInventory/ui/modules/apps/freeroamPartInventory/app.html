@@ -1,5 +1,6 @@
 <div class="bngApp">
   <h3>Part Inventory</h3>
+  <button ng-click="openConfig()">Vehicle Configuration</button>
   <div class="inventory-list">
     <div class="inventory-item" ng-repeat="part in inventory track by part.id">
       <span>{{part.name}}</span>

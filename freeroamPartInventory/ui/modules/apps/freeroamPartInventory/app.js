@@ -22,6 +22,11 @@ angular.module('beamng.apps')
       $scope.install = function (id) {
         bngApi.engineLua('extensions.freeroamPartInventory.installPart(' + id + ')');
       };
+
+      // Open vehicle configuration menu so the player can remove parts
+      $scope.openConfig = function () {
+        bngApi.engineLua('extensions.freeroamPartInventory.openVehicleConfig()');
+      };
     }]
   };
 }]);
