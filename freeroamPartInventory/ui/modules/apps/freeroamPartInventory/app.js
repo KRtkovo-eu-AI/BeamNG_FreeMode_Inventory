@@ -6,26 +6,8 @@ angular.module('beamng.apps')
     restrict: 'EA',
     scope: true,
     controller: ['$scope', function ($scope) {
-      $scope.inventory = [];
-
-      // Request initial data from Lua
-      bngApi.engineLua('extensions.freeroamPartInventory.sendUIData()');
-
-      // Receive updates from Lua
-      $scope.$on('freeroamPartInventoryData', function (event, data) {
-        $scope.$evalAsync(function () {
-          $scope.inventory = data.parts || [];
-        });
-      });
-
-      // Install a part on the current vehicle
-      $scope.install = function (id) {
-        bngApi.engineLua('extensions.freeroamPartInventory.installPart(' + id + ')');
-      };
-
-      // Open vehicle configuration menu so the player can remove parts
       $scope.openConfig = function () {
-        bngApi.engineLua('extensions.freeroamPartInventory.openVehicleConfig()');
+        bngApi.engineLua('extensions.freeroamPartInventory.open()');
       };
     }]
   };
