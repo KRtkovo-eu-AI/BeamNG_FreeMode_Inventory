@@ -66,8 +66,10 @@ function M.frontObstacleDistance(maxDistance)
   local dir = obj:getDirectionVector()
   local sideDir = vec3(-dir.y, dir.x, 0)
 
-  -- offset the ray start slightly forward so we don't hit our own vehicle
-  local forwardOffset = 1
+  -- offset the ray start well ahead so we don't hit our own vehicle
+  -- the lateral rays added for wider coverage can otherwise start inside
+  -- the vehicle's body and immediately register a collision
+  local forwardOffset = 3
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
 
   return castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)
@@ -85,7 +87,8 @@ function M.sideObstacleDistance(maxDistance, side)
   end
 
   -- offset the ray start slightly to the side so we don't hit our own vehicle
-  local sideOffset = 1
+  -- widen the offset a bit so the sideways casts begin outside the bodywork
+  local sideOffset = 1.5
   local baseOrigin = vec3(pos.x + sideDir.x * sideOffset, pos.y + sideDir.y * sideOffset, pos.z)
 
   return castRays(baseOrigin, sideDir, maxDistance, sideOffset)
