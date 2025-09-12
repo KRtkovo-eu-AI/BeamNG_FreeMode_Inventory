@@ -1,56 +1,60 @@
--- Minimal part inventory for Freeroam mode.
--- Parts can be removed from vehicles and later reinstalled on vehicles of the same model.
---
--- This provides a very small subset of the career mode part inventory. A simple
--- UI lists the currently installed parts so the player can remove them. Removed
--- parts are stored with basic colour information and can later be installed on
--- vehicles of the same model.
-
 local M = {}
+
+local im = ui_imgui
 
 local partInventory = {}
 local nextId = 1
 
--- Sends current inventory to the UI app
-local function sendUIData()
-  local list = {}
+local uiState = {inventory = {}, vehicleParts = {}, currentVehicleModel = nil}
+local isOpen = false
+local openPtr = im.BoolPtr(false)
+
+local function getNodeFromSlotPath(tree, path)
+  if not tree or not path then return nil end
+  if path == "/" then return tree end
+  local current = tree
+  for segment in string.gmatch(path, "[^/]+") do
+    if current.children and current.children[segment] then
+      current = current.children[segment]
+    else
+      return nil
+    end
+  end
+  return current
+end
+
+local function refreshUI()
+  uiState.inventory = {}
   for id, part in pairs(partInventory) do
-    list[#list + 1] = {
+    uiState.inventory[#uiState.inventory + 1] = {
       id = id,
       name = part.name,
       slot = part.slot,
       vehicleModel = part.vehicleModel
     }
   end
-  guihooks.trigger('freeroamPartInventoryData', {parts = list})
-end
 
-local function sendVehicleParts()
+  uiState.vehicleParts = {}
   local veh = be:getPlayerVehicle(0)
   if not veh then return end
 
+  uiState.currentVehicleModel = veh.jbeam or veh:getJBeamFilename()
   local vehId = veh:getID()
   local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
-  local list = {}
-  -- parts are organised in a tree; flatten it to a simple list for the UI
-  local function gather(node)
-    if not node then return end
-    if node.chosenPartName then
-      list[#list + 1] = {slot = node.path, name = node.chosenPartName}
-    end
-    if node.children then
-      for _, child in pairs(node.children) do
-        gather(child)
+  if vehicleData and vehicleData.config and vehicleData.config.partsTree then
+    local function gather(node)
+      if not node then return end
+      if node.chosenPartName and node.chosenPartName ~= "" then
+        uiState.vehicleParts[#uiState.vehicleParts + 1] = {slot = node.path, name = node.chosenPartName}
+      end
+      if node.children then
+        for _, child in pairs(node.children) do
+          gather(child)
+        end
       end
     end
-  end
-  if vehicleData and vehicleData.config and vehicleData.config.partsTree then
     gather(vehicleData.config.partsTree)
   end
-  guihooks.trigger('freeroamPartInventoryVehicleParts', {
-    parts = list,
-    vehicleModel = veh.jbeam or veh:getJBeamFilename(),
-  })
 end
 
 -- Internal helper to store information about a removed part
@@ -62,7 +66,7 @@ local function storePart(slot, partName, veh)
 
   local color
   if vehicleData and vehicleData.partConditions then
-    local cond = vehicleData.partConditions[slot]
+    local cond = vehicleData.partConditions[slot .. partName]
     if cond and cond.visualState and cond.visualState.paint then
       color = cond.visualState.paint.originalPaints
     end
@@ -98,11 +102,12 @@ local function removePart(slot)
   storePart(slot, partName, veh)
 
   vehicleData.config.parts[slot] = ''
+  local node = getNodeFromSlotPath(vehicleData.config.partsTree, slot)
+  if node then node.chosenPartName = '' end
   core_vehicle_manager.queueAdditionalVehicleData({spawnWithEngineRunning = false}, vehId)
   core_vehicles.replaceVehicle(veh.jbeam or veh:getJBeamFilename(), vehicleData, veh)
 
-  sendUIData()
-  sendVehicleParts()
+  refreshUI()
 end
 
 -- Installs a part from the inventory onto the player's vehicle
@@ -120,6 +125,8 @@ local function installPart(id)
   if not vehicleData or not vehicleData.config or not vehicleData.config.parts then return end
 
   vehicleData.config.parts[part.slot] = part.name
+  local node = getNodeFromSlotPath(vehicleData.config.partsTree, part.slot)
+  if node then node.chosenPartName = part.name end
   core_vehicle_manager.queueAdditionalVehicleData({spawnWithEngineRunning = false}, vehId)
   core_vehicles.replaceVehicle(veh.jbeam or veh:getJBeamFilename(), vehicleData, veh)
 
@@ -133,21 +140,54 @@ local function installPart(id)
   end
 
   partInventory[id] = nil
-  sendUIData()
-  sendVehicleParts()
+  refreshUI()
 end
 
--- Sends current vehicle parts to the UI. Used when the user opens the
--- configuration panel.
-local function openVehicleConfig()
-  sendUIData()
-  sendVehicleParts()
+local function onUpdate()
+  if not isOpen then return end
+  if not im.Begin('Vehicle Configuration', openPtr) then
+    im.End()
+    if not openPtr[0] then isOpen = false end
+    return
+  end
+
+  im.Text('Installed Parts')
+  im.Separator()
+  for _, part in ipairs(uiState.vehicleParts) do
+    im.Text(part.name)
+    im.SameLine()
+    if im.Button('Remove##' .. part.slot) then
+      removePart(part.slot)
+    end
+  end
+
+  im.Spacing()
+  im.Text('Stored Parts')
+  im.Separator()
+  for _, part in ipairs(uiState.inventory) do
+    if part.vehicleModel == uiState.currentVehicleModel then
+      im.Text(part.name)
+      im.SameLine()
+      if im.Button('Install##' .. part.id) then
+        installPart(part.id)
+      end
+    end
+  end
+
+  im.End()
+  if not openPtr[0] then isOpen = false end
 end
 
-M.sendUIData = sendUIData
+local function open()
+  refreshUI()
+  openPtr[0] = true
+  isOpen = true
+end
+
 M.removePart = removePart
 M.installPart = installPart
-M.openVehicleConfig = openVehicleConfig
+M.onUpdate = onUpdate
+M.open = open
 
 return M
 
