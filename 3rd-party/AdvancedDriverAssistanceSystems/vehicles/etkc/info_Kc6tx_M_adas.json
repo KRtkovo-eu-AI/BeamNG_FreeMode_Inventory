@@ -1,0 +1,46 @@
+{
+  "0-100 km/h":4.8,
+  "0-100 mph":10.9,
+  "0-120 mph":13.6,
+  "0-200 km/h":16.9,
+  "0-60 mph":4.6,
+  "100-0 km/h":36.9,
+  "100-200 km/h":12,
+  "60-0 mph":113.1,
+  "60-100 mph":6.3,
+  "60-120 mph":9.7,
+  "Body Style":"Coupe",
+  "BoundingBox":[
+    [
+      -0.73,
+      -1.42,
+      -0.18
+    ],
+    [
+      1.39,
+      3.03,
+      1.16
+    ]
+  ],
+  "Braking G":1.066,
+  "Config Type":"Factory",
+  "Configuration":"Kc6tx w/ ADAS (M)",
+  "Description":"Equipped with a turbocharged 6-cylinder engine, 19 inch wheels, sport suspension, all-wheel drive, and advanced driver assistance systems",
+  "Drivetrain":"AWD",
+  "Fuel Type":"Gasoline",
+  "Induction Type":"Turbo",
+  "Off-Road Score":27,
+  "Performance Class":"8",
+  "Population":200,
+  "Power":330,
+  "PowerPeakRPM":"5100 - 6350",
+  "Propulsion":"ICE",
+  "Top Speed":69.2667512,
+  "Torque":475,
+  "TorquePeakRPM":"1600 - 4950",
+  "Transmission":"Manual",
+  "Value":108000,
+  "Weight":1545,
+  "Weight/Power":4.68181818,
+  "default_color":"Submarine Blue"
+}
