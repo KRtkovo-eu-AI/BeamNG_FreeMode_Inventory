@@ -12,8 +12,8 @@ local max = math.max
 local min = math.min
 
 local targetAcceleration = 3
-local maxDecel = 10 -- m/s^2 maximum deceleration used for emergency stops
-local reactionTime = 0.5 -- seconds to account for controller latency
+local maxDecel = 12 -- m/s^2 maximum deceleration used for emergency stops
+local reactionTime = 1.0 -- seconds to account for controller latency
 
 local isEnabled = false
 local targetSpeed = 100 / 3.6
@@ -22,6 +22,8 @@ local adaptiveEnabled = false
 local timeGap = 2 -- seconds to keep to the vehicle ahead
 local minDistance = 5 -- minimum standstill distance in meters
 local sensorRange = 300
+local sideSensorRange = 5 -- range for side obstacle detection
+local sideMinDistance = 1 -- disable ACC if objects are closer than this on the sides
 local state = {}
 local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
@@ -72,6 +74,13 @@ local function updateGFX(dt)
 
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
+    local leftDist = sensor.sideObstacleDistance(sideSensorRange, "left")
+    local rightDist = sensor.sideObstacleDistance(sideSensorRange, "right")
+    if (leftDist and leftDist < sideMinDistance) or (rightDist and rightDist < sideMinDistance) then
+      M.setEnabled(false)
+      lastObstacleDistance = nil
+      return
+    end
     if dist then
       -- If we are almost stopped with an object at point-blank range, assume a
       -- collision or stop and disengage the controller so we don't push the
@@ -119,6 +128,11 @@ local function updateGFX(dt)
   if emergencyBrake then
     electrics.values.throttleOverride = 0
     electrics.values.brakeOverride = max(emergencyBrake, -output)
+    if currentSpeed < 0.5 then
+      M.setEnabled(false)
+      lastObstacleDistance = nil
+      return
+    end
   elseif output >= 0 then
     electrics.values.throttleOverride = throttleSmooth:getUncapped(output, dt)
     electrics.values.brakeOverride = nil
