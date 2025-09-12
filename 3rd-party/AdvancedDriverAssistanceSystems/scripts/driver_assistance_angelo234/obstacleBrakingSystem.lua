@@ -23,7 +23,8 @@ local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
       end
 
       local target = origin + dir * maxDistance
-      local hit = be:raycast(origin, target, false, true, true)
+      -- use BeamNG's global castRay utility to detect static obstacles
+      local hit = castRay(origin, target, true, true)
       if hit and hit.dist and hit.dist < maxDistance then
         best = best and math.min(best, hit.dist) or hit.dist
       end
