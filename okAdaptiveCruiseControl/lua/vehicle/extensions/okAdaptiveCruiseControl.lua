@@ -25,6 +25,7 @@ local state = {}
 local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
 local speedPID = newPIDStandard(0.3, 2, 0.0, 0, 1, 1, 1, 0, 1)
+local lastObstacleDistance
 --speedPID:setDebug(true)
 
 local function onReset()
@@ -69,8 +70,19 @@ local function updateGFX(dt)
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
     if dist then
+      lastObstacleDistance = dist
+    elseif lastObstacleDistance and lastObstacleDistance <= minDistance then
+      dist = lastObstacleDistance
+    else
+      lastObstacleDistance = nil
+    end
+
+    if dist then
       local brakeDist = currentSpeed * currentSpeed / (2 * maxDecel)
-      if dist - minDistance <= brakeDist then
+      if dist <= minDistance then
+        M.setEnabled(false)
+        return
+      elseif dist - minDistance <= brakeDist then
         desiredSpeed = 0
       else
         local followSpeed = (dist - minDistance) / timeGap
@@ -79,11 +91,12 @@ local function updateGFX(dt)
     end
   end
 
-  --ramp up/down our target speed with our desired target acceleration to avoid integral wind-up
+  --ramp our target speed, decelerating faster than we accelerate
   if rampedTargetSpeed ~= desiredSpeed then
+    local rate = desiredSpeed > rampedTargetSpeed and targetAcceleration or maxDecel
     local upperLimit = desiredSpeed > rampedTargetSpeed and desiredSpeed or rampedTargetSpeed
     local lowerLimit = desiredSpeed < rampedTargetSpeed and desiredSpeed or rampedTargetSpeed
-    rampedTargetSpeed = clamp(rampedTargetSpeed + sign(desiredSpeed - rampedTargetSpeed) * targetAcceleration * dt, lowerLimit, upperLimit)
+    rampedTargetSpeed = clamp(rampedTargetSpeed + sign(desiredSpeed - rampedTargetSpeed) * rate * dt, lowerLimit, upperLimit)
   end
 
   local output = speedPID:get(currentSpeed, rampedTargetSpeed, dt)
