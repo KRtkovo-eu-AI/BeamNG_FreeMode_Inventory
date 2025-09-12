@@ -1,0 +1,10 @@
+<div class="bngApp">
+  <h3>Part Inventory</h3>
+  <div class="inventory-list">
+    <div class="inventory-item" ng-repeat="part in inventory track by part.id">
+      <span>{{part.name}}</span>
+      <button ng-click="install(part.id)">Install</button>
+    </div>
+    <div class="empty" ng-if="!inventory.length">No stored parts.</div>
+  </div>
+</div>
