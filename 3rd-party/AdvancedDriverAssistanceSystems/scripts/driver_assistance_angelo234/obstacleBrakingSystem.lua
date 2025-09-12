@@ -95,15 +95,17 @@ local function performEmergencyBraking(dt, veh, aeb_params, time_before_braking,
   end
 
   if system_state == "braking" and speed < aeb_params.brake_till_stop_speed then
+    veh:queueLuaCommand("electrics.values.throttleOverride = 0")
     veh:queueLuaCommand("electrics.values.brakeOverride = 1")
     return
   end
 
   if time_before_braking <= 0 then
-    if input_throttle_angelo234 > 0.1 then
-      veh:queueLuaCommand("electrics.values.throttleOverride = 0")
-    end
+    veh:queueLuaCommand("electrics.values.throttleOverride = 0")
     veh:queueLuaCommand("electrics.values.brakeOverride = 1")
+    if system_state ~= "braking" then
+      ui_message("Obstacle Collision Mitigation Activated", 3)
+    end
     system_state = "braking"
   else
     if system_state == "braking" then
