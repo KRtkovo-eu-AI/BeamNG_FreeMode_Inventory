@@ -52,14 +52,18 @@ local function removePart(slot)
   local veh = be:getPlayerVehicle(0)
   if not veh then return end
 
-  local config = jsonDecode(veh:getPartConfig())
-  local partName = config.parts[slot]
+  local vehId = veh:getID()
+  local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
+  if not vehicleData or not vehicleData.config or not vehicleData.config.parts then return end
+
+  local partName = vehicleData.config.parts[slot]
   if not partName or partName == '' then return end
 
   storePart(slot, partName, veh)
 
-  config.parts[slot] = ''
-  veh:applyPartConfig(config)
+  vehicleData.config.parts[slot] = ''
+  core_vehicle_manager.queueAdditionalVehicleData({spawnWithEngineRunning = false}, vehId)
+  core_vehicles.replaceVehicle(veh.jbeam or veh:getJBeamFilename(), vehicleData, veh)
 
   sendUIData()
 end
@@ -74,9 +78,13 @@ local function installPart(id)
 
   if (veh.jbeam or veh:getJBeamFilename()) ~= part.vehicleModel then return end
 
-  local config = jsonDecode(veh:getPartConfig())
-  config.parts[part.slot] = part.name
-  veh:applyPartConfig(config)
+  local vehId = veh:getID()
+  local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
+  if not vehicleData or not vehicleData.config or not vehicleData.config.parts then return end
+
+  vehicleData.config.parts[part.slot] = part.name
+  core_vehicle_manager.queueAdditionalVehicleData({spawnWithEngineRunning = false}, vehId)
+  core_vehicles.replaceVehicle(veh.jbeam or veh:getJBeamFilename(), vehicleData, veh)
 
   if part.color then
     veh:setColorRGB(part.color[1], part.color[2], part.color[3], part.color[4] or 1)
@@ -91,7 +99,9 @@ local function openVehicleConfig()
   local veh = be:getPlayerVehicle(0)
   if not veh then return end
 
-  partsBefore = jsonDecode(veh:getPartConfig()).parts
+  local vehId = veh:getID()
+  local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
+  partsBefore = vehicleData and vehicleData.config and vehicleData.config.parts or {}
   monitoringConfig = true
 
   guihooks.trigger('ChangeState', {state = 'vehicleconfig'})
