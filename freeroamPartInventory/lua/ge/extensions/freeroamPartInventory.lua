@@ -38,17 +38,31 @@ local function sendVehicleParts()
       list[#list + 1] = {slot = slot, name = part}
     end
   end
-  guihooks.trigger('freeroamPartInventoryVehicleParts', {parts = list})
+  guihooks.trigger('freeroamPartInventoryVehicleParts', {
+    parts = list,
+    vehicleModel = veh.jbeam or veh:getJBeamFilename(),
+  })
 end
 
 -- Internal helper to store information about a removed part
 local function storePart(slot, partName, veh)
   if not veh then return end
 
-  -- store simple colour information; BeamNG exposes vehicle colour so we
-  -- capture it for reapplication later. Per-part paint is outside the scope
-  -- of this minimal example.
-  local color = {veh:getColorRGB()}
+  local vehId = veh:getID()
+  local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
+
+  local color
+  if vehicleData and vehicleData.partConditions then
+    local cond = vehicleData.partConditions[slot]
+    if cond and cond.visualState and cond.visualState.paint then
+      color = cond.visualState.paint.originalPaints
+    end
+  end
+
+  -- fallback to whole-vehicle colour when per-part data is unavailable
+  if not color then
+    color = {veh:getColorRGB()}
+  end
 
   partInventory[nextId] = {
     name = partName,
@@ -101,7 +115,12 @@ local function installPart(id)
   core_vehicles.replaceVehicle(veh.jbeam or veh:getJBeamFilename(), vehicleData, veh)
 
   if part.color then
-    veh:setColorRGB(part.color[1], part.color[2], part.color[3], part.color[4] or 1)
+    local colorJson = jsonEncode(part.color)
+    veh:queueLuaCommand(string.format(
+      "partCondition.setPartPaints('%s', jsonDecode('%s'))",
+      part.slot,
+      colorJson
+    ))
   end
 
   partInventory[id] = nil
@@ -112,6 +131,7 @@ end
 -- Sends current vehicle parts to the UI. Used when the user opens the
 -- configuration panel.
 local function openVehicleConfig()
+  sendUIData()
   sendVehicleParts()
 end
 

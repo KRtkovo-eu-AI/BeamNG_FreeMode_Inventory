@@ -8,6 +8,7 @@ angular.module('beamng.apps')
     controller: ['$scope', function ($scope) {
       $scope.inventory = [];
       $scope.vehicleParts = [];
+      $scope.currentVehicleModel = null;
       $scope.showConfig = false;
 
       // Request initial data from Lua
@@ -24,8 +25,16 @@ angular.module('beamng.apps')
       $scope.$on('freeroamPartInventoryVehicleParts', function (event, data) {
         $scope.$evalAsync(function () {
           $scope.vehicleParts = data.parts || [];
+          $scope.currentVehicleModel = data.vehicleModel;
         });
       });
+
+      $scope.filteredInventory = function () {
+        if (!$scope.currentVehicleModel) { return $scope.inventory; }
+        return $scope.inventory.filter(function (p) {
+          return p.vehicleModel === $scope.currentVehicleModel;
+        });
+      };
 
       // Install a part on the current vehicle
       $scope.install = function (id) {
