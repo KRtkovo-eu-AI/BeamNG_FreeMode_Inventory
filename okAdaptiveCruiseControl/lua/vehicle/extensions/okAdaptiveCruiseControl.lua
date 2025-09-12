@@ -36,6 +36,7 @@ local function onReset()
   M.hasReachedTargetSpeed = false
   state = {}
   throttleSmooth:reset()
+  speedPID:reset()
 end
 
 local function updateGFX(dt)
@@ -98,6 +99,7 @@ local function setSpeed(speed)
   targetSpeed = max(speed, M.minimumSpeed)
   rampedTargetSpeed = electrics.values.wheelspeed or 0
   M.hasReachedTargetSpeed = false
+  speedPID:reset()
   M.requestState()
 end
 
@@ -106,6 +108,7 @@ local function changeSpeed(offset)
   targetSpeed = max(targetSpeed + offset, M.minimumSpeed)
   rampedTargetSpeed = electrics.values.wheelspeed or 0
   M.hasReachedTargetSpeed = false
+  speedPID:reset()
   M.requestState()
 end
 
@@ -124,6 +127,7 @@ local function setEnabled(enabled)
   electrics.values.brakeOverride = nil
   rampedTargetSpeed = electrics.values.wheelspeed or 0
   throttleSmooth:reset()
+  speedPID:reset()
   M.requestState()
 end
 

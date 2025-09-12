@@ -9,18 +9,21 @@ function M.frontObstacleDistance(maxDistance)
   local pos = obj:getPosition()
   local dir = obj:getDirectionVector()
 
+  -- offset the ray start a bit forward and above the ground so we don't hit our own vehicle
+  local forwardOffset = 2
+  local origin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z + 0.5)
+
   -- Some game versions expose `castRay` while others use `castRayStatic`.
   -- Try both to stay compatible and avoid runtime errors.
   if obj.castRay then
-    local target = vec3(pos.x + dir.x * maxDistance, pos.y + dir.y * maxDistance, pos.z + dir.z * maxDistance)
-    local hit, distance = obj:castRay(pos, target, true, false)
+    local hit, distance = obj:castRay(origin, dir, maxDistance)
     if hit then
-      return distance
+      return distance + forwardOffset
     end
   elseif obj.castRayStatic then
-    local distance = obj:castRayStatic(pos, dir, maxDistance)
+    local distance = obj:castRayStatic(origin, dir, maxDistance)
     if distance and distance >= 0 and distance < maxDistance then
-      return distance
+      return distance + forwardOffset
     end
   end
 
