@@ -1,14 +1,7 @@
 angular.module('beamng.apps')
 .directive('okAdaptiveCruiseControl', ['$log', function ($log) {
   return {
-    template:
-      '<div class="ok-adaptive-cruise-control-container">' +
-      '  <object id="ccSvg" style="width:100%; height:80%;" type="image/svg+xml" data="/ui/modules/apps/okAdaptiveCruiseControl/okAdaptiveCruiseControl_t01.svg"></object>' +
-      '  <div style="text-align:center; margin-top:4px;">' +
-      '    <label><input type="checkbox" id="accToggle"> ACC</label>' +
-      '    <label style="margin-left:6px;"> <input type="number" id="accTimeGap" value="2" min="0.5" max="5" step="0.1" style="width:50px;"> s</label>' +
-      '  </div>' +
-      '</div>',
+    templateUrl: '/ui/modules/apps/okAdaptiveCruiseControl/app.html',
     replace: true,
     restrict: 'EA',
     scope: true,
