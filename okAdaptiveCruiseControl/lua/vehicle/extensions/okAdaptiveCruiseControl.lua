@@ -26,6 +26,7 @@ local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
 local speedPID = newPIDStandard(0.3, 2, 0.0, 0, 1, 1, 1, 0, 1)
 local lastObstacleDistance
+local lastDistSampleTime
 --speedPID:setDebug(true)
 
 local function onReset()
@@ -67,27 +68,35 @@ local function updateGFX(dt)
 
   local currentSpeed = electrics.values.wheelspeed or 0
   local desiredSpeed = targetSpeed
+  local emergencyBrake
+
   if adaptiveEnabled then
     local dist = sensor.frontObstacleDistance(sensorRange)
     if dist then
+      if lastObstacleDistance and lastDistSampleTime then
+        local relSpeed = (lastObstacleDistance - dist) / (be:getObjectTime() - lastDistSampleTime)
+        local followSpeed = (dist - minDistance) / timeGap - relSpeed
+        desiredSpeed = min(desiredSpeed, max(0, followSpeed))
+      end
       lastObstacleDistance = dist
-    elseif lastObstacleDistance and lastObstacleDistance <= minDistance then
-      dist = lastObstacleDistance
-    else
-      lastObstacleDistance = nil
-    end
-
-    if dist then
+      lastDistSampleTime = be:getObjectTime()
       local brakeDist = currentSpeed * currentSpeed / (2 * maxDecel)
       if dist <= minDistance then
         M.setEnabled(false)
         return
       elseif dist - minDistance <= brakeDist then
         desiredSpeed = 0
-      else
-        local followSpeed = (dist - minDistance) / timeGap
-        desiredSpeed = min(desiredSpeed, max(0, followSpeed))
+        emergencyBrake = clamp((brakeDist - (dist - minDistance)) / brakeDist, 0, 1)
       end
+    else
+      -- no obstacle detected; clear history or disable if we stopped near something
+      if lastObstacleDistance and currentSpeed < 0.5 then
+        M.setEnabled(false)
+        lastObstacleDistance = nil
+        return
+      end
+      lastObstacleDistance = nil
+      lastDistSampleTime = nil
     end
   end
 
@@ -100,7 +109,10 @@ local function updateGFX(dt)
   end
 
   local output = speedPID:get(currentSpeed, rampedTargetSpeed, dt)
-  if output >= 0 then
+  if emergencyBrake then
+    electrics.values.throttleOverride = 0
+    electrics.values.brakeOverride = max(emergencyBrake, -output)
+  elseif output >= 0 then
     electrics.values.throttleOverride = throttleSmooth:getUncapped(output, dt)
     electrics.values.brakeOverride = nil
   else
