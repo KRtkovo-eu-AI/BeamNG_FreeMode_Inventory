@@ -25,7 +25,6 @@ local function sendUIData()
   guihooks.trigger('freeroamPartInventoryData', {parts = list})
 end
 
--- Sends a list of all parts currently installed on the player's vehicle
 local function sendVehicleParts()
   local veh = be:getPlayerVehicle(0)
   if not veh then return end
@@ -33,10 +32,20 @@ local function sendVehicleParts()
   local vehId = veh:getID()
   local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
   local list = {}
-  if vehicleData and vehicleData.config and vehicleData.config.parts then
-    for slot, part in pairs(vehicleData.config.parts) do
-      list[#list + 1] = {slot = slot, name = part}
+  -- parts are organised in a tree; flatten it to a simple list for the UI
+  local function gather(node)
+    if not node then return end
+    if node.chosenPartName then
+      list[#list + 1] = {slot = node.path, name = node.chosenPartName}
     end
+    if node.children then
+      for _, child in pairs(node.children) do
+        gather(child)
+      end
+    end
+  end
+  if vehicleData and vehicleData.config and vehicleData.config.partsTree then
+    gather(vehicleData.config.partsTree)
   end
   guihooks.trigger('freeroamPartInventoryVehicleParts', {
     parts = list,
