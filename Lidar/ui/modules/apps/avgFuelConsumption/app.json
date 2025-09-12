@@ -1,0 +1,19 @@
+{
+  "name" : "Average Fuel Consumption",
+  "author": "Stefan Kieninger",
+  "version": "1.0.0.7",
+  "description": "Another App that calculates the average fuel consumption.",
+  "directive": "avgFuelConsumption",
+  "domElement": "<avg-fuel-consumption></avg-fuel-consumption>",
+  "css": {
+	  "left": "500px",
+	  "top": "100px",
+	  "width": "auto",
+	  "height": "auto",
+      "min-width": "280px",
+      "min-height": "50px"
+  },
+  "types": [
+    "ui.apps.categories.vehicle_info"
+  ]
+}
