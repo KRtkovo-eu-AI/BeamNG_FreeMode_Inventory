@@ -2,7 +2,13 @@ angular.module('beamng.apps')
 .directive('cruiseControl', ['$log', function ($log) {
   return {
     template:
-      '<object style="width:100%; height:100%;" type="image/svg+xml" data="/ui/modules/apps/CruiseControl/cruise_control_t01.svg"></object>',
+      '<div class="cruise-control-container">' +
+      '  <object id="ccSvg" style="width:100%; height:80%;" type="image/svg+xml" data="/ui/modules/apps/CruiseControl/cruise_control_t01.svg"></object>' +
+      '  <div style="text-align:center; margin-top:4px;">' +
+      '    <label><input type="checkbox" id="accToggle"> ACC</label>' +
+      '    <label style="margin-left:6px;"> <input type="number" id="accDistance" value="10" min="5" max="100" style="width:50px;"> m</label>' +
+      '  </div>' +
+      '</div>',
     replace: true,
     restrict: 'EA',
     scope: true,
@@ -12,8 +18,22 @@ angular.module('beamng.apps')
         'imperial': 2.23694
       }
 
-      element.on('load', function () {
-        let svg = element[0].contentDocument
+      let svgObj = angular.element(element[0].querySelector('#ccSvg'))
+      let adaptiveToggle = angular.element(element[0].querySelector('#accToggle'))
+      let distanceInput = angular.element(element[0].querySelector('#accDistance'))
+
+      adaptiveToggle.on('change', function () {
+        bngApi.activeObjectLua(`extensions.cruiseControl.setAdaptiveEnabled(${adaptiveToggle[0].checked})`)
+        bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+      })
+
+      distanceInput.on('change', function () {
+        bngApi.activeObjectLua(`extensions.cruiseControl.setSafeDistance(${distanceInput.val()})`)
+        bngApi.activeObjectLua('extensions.cruiseControl.requestState()')
+      })
+
+      svgObj.on('load', function () {
+        let svg = svgObj[0].contentDocument
         let setBtn = angular.element(svg.getElementById('set_btn'))
         let resBtn = angular.element(svg.getElementById('res_btn'))
         let ccBtn = angular.element(svg.getElementById('cc_btn'))
@@ -94,9 +114,10 @@ angular.module('beamng.apps')
 
         scope.$on('CruiseControlState', function (event, data) {
           scope.$evalAsync(function() {
-            //console.log(TAG, 'state:', data)
             state = data
             speedTxt.innerHTML = Math.round(state.targetSpeed / speedStep)
+            adaptiveToggle[0].checked = state.adaptiveEnabled
+            distanceInput.val(Math.round(state.safeDistance))
             if (state.isEnabled) {
               speedTxt.style.fill = onColor
               ccIcon.style.fill = onColor

@@ -3,17 +3,22 @@
 -- file, You can obtain one at http://beamng.com/bCDDL-1.1.txt
 
 local M = {}
+local sensor = require("virtualSensor")
 
 M.hasReachedTargetSpeed = false
 M.minimumSpeed = 30 / 3.6
 
 local max = math.max
+local min = math.min
 
 local targetAcceleration = 3
 
 local isEnabled = false
 local targetSpeed = 100 / 3.6
 local rampedTargetSpeed = 0
+local adaptiveEnabled = false
+local safeDistance = 10
+local sensorRange = 100
 local state = {}
 local disableOnReset = false
 local throttleSmooth = newTemporalSmoothing(200, 200)
@@ -25,6 +30,7 @@ local function onReset()
   if disableOnReset then
     isEnabled = false
     electrics.values.throttleOverride = nil
+    electrics.values.brakeOverride = nil
   end
   M.hasReachedTargetSpeed = false
   state = {}
@@ -55,19 +61,37 @@ local function updateGFX(dt)
     return
   end
 
+  local desiredSpeed = targetSpeed
+  if adaptiveEnabled then
+    local dist = sensor.frontObstacleDistance(sensorRange)
+    if dist and dist < safeDistance then
+      desiredSpeed = 0
+    elseif dist then
+      local allowed = (dist - safeDistance) / safeDistance * targetSpeed
+      desiredSpeed = min(desiredSpeed, allowed)
+    end
+  end
+
   --ramp up/down our target speed with our desired target acceleration to avoid integral wind-up
-  if rampedTargetSpeed ~= targetSpeed then
-    local upperLimit = targetSpeed > rampedTargetSpeed and targetSpeed or rampedTargetSpeed
-    local lowerLimit = targetSpeed < rampedTargetSpeed and targetSpeed or rampedTargetSpeed
-    rampedTargetSpeed = clamp(rampedTargetSpeed + sign(targetSpeed - rampedTargetSpeed) * targetAcceleration * dt, lowerLimit, upperLimit)
+  if rampedTargetSpeed ~= desiredSpeed then
+    local upperLimit = desiredSpeed > rampedTargetSpeed and desiredSpeed or rampedTargetSpeed
+    local lowerLimit = desiredSpeed < rampedTargetSpeed and desiredSpeed or rampedTargetSpeed
+    rampedTargetSpeed = clamp(rampedTargetSpeed + sign(desiredSpeed - rampedTargetSpeed) * targetAcceleration * dt, lowerLimit, upperLimit)
   end
 
   local currentSpeed = electrics.values.wheelspeed or 0
   local output = speedPID:get(currentSpeed, rampedTargetSpeed, dt)
-  electrics.values.throttleOverride = throttleSmooth:getUncapped(output, dt)
+  if output >= 0 then
+    electrics.values.throttleOverride = throttleSmooth:getUncapped(output, dt)
+    electrics.values.brakeOverride = nil
+  else
+    electrics.values.throttleOverride = 0
+    electrics.values.brakeOverride = -output
+  end
 
-  local currentError = currentSpeed - targetSpeed
-  M.hasReachedTargetSpeed = math.abs(currentError) / targetSpeed <= 0.03
+  local currentError = currentSpeed - desiredSpeed
+  local denom = desiredSpeed ~= 0 and desiredSpeed or 1
+  M.hasReachedTargetSpeed = math.abs(currentError) / denom <= 0.03
 end
 
 local function setSpeed(speed)
@@ -98,6 +122,7 @@ local function setEnabled(enabled)
   isEnabled = enabled
   M.hasReachedTargetSpeed = false
   electrics.values.throttleOverride = nil
+  electrics.values.brakeOverride = nil
   rampedTargetSpeed = electrics.values.wheelspeed or 0
   throttleSmooth:reset()
   M.requestState()
@@ -110,6 +135,8 @@ end
 local function requestState()
   state.targetSpeed = targetSpeed
   state.isEnabled = isEnabled
+  state.adaptiveEnabled = adaptiveEnabled
+  state.safeDistance = safeDistance
 
   electrics.values.cruiseControlTarget = targetSpeed
   electrics.values.cruiseControlActive = isEnabled
@@ -121,7 +148,17 @@ local function requestState()
 end
 
 local function getConfiguration()
-  return {isEnabled = isEnabled, targetSpeed = targetSpeed, minimumSpeed = M.minimumSpeed, hasReachedTargetSpeed = M.hasReachedTargetSpeed}
+  return {isEnabled = isEnabled, targetSpeed = targetSpeed, minimumSpeed = M.minimumSpeed, hasReachedTargetSpeed = M.hasReachedTargetSpeed, adaptiveEnabled = adaptiveEnabled, safeDistance = safeDistance}
+end
+
+local function setAdaptiveEnabled(enabled)
+  adaptiveEnabled = enabled
+  M.requestState()
+end
+
+local function setSafeDistance(dist)
+  safeDistance = max(1, dist)
+  M.requestState()
 end
 
 -- public interface
@@ -134,5 +171,7 @@ M.setEnabled = setEnabled
 M.requestState = requestState
 M.getConfiguration = getConfiguration
 M.setTargetAcceleration = setTargetAcceleration
+M.setAdaptiveEnabled = setAdaptiveEnabled
+M.setSafeDistance = setSafeDistance
 
 return M
