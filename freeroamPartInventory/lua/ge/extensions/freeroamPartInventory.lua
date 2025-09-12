@@ -11,8 +11,6 @@ local M = {}
 local partInventory = {}
 local nextId = 1
 
-local partsBefore
-local monitoringConfig
 
 -- Sends current inventory to the UI app
 local function sendUIData()
@@ -26,6 +24,25 @@ local function sendUIData()
     }
   end
   guihooks.trigger('freeroamPartInventoryData', {parts = list})
+end
+
+-- Sends current parts installed on the player's vehicle to the UI
+local function sendVehicleParts()
+  local veh = be:getPlayerVehicle(0)
+  if not veh then return end
+
+  local vehId = veh:getID()
+  local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
+  if not vehicleData or not vehicleData.config or not vehicleData.config.parts then return end
+
+  local list = {}
+  for slot, partName in pairs(vehicleData.config.parts) do
+    if partName and partName ~= '' then
+      list[#list + 1] = {slot = slot, name = partName}
+    end
+  end
+
+  guihooks.trigger('freeroamPartInventoryVehicleParts', {parts = list})
 end
 
 -- Internal helper to store information about a removed part
@@ -66,6 +83,7 @@ local function removePart(slot)
   core_vehicles.replaceVehicle(veh.jbeam or veh:getJBeamFilename(), vehicleData, veh)
 
   sendUIData()
+  sendVehicleParts()
 end
 
 -- Installs a part from the inventory onto the player's vehicle
@@ -92,48 +110,18 @@ local function installPart(id)
 
   partInventory[id] = nil
   sendUIData()
+  sendVehicleParts()
 end
 
--- Opens the vehicle configuration UI and begin monitoring for removed parts
+-- Sends current vehicle parts to the UI so the player can remove them
 local function openVehicleConfig()
-  local veh = be:getPlayerVehicle(0)
-  if not veh then return end
-
-  local vehId = veh:getID()
-  local vehicleData = extensions.core_vehicle_manager.getVehicleData(vehId)
-  partsBefore = vehicleData and vehicleData.config and vehicleData.config.parts or {}
-  monitoringConfig = true
-
-  guihooks.trigger('ChangeState', {state = 'vehicleconfig'})
-end
-
--- Called from the UI when the vehicle configuration menu is closed. The
--- provided json string is the applied configuration.
-local function applyConfigChanges(configJson)
-  if not monitoringConfig then return end
-
-  local veh = be:getPlayerVehicle(0)
-  if not veh then return end
-
-  local newParts = jsonDecode(configJson).parts
-  for slot, oldPart in pairs(partsBefore or {}) do
-    local newPart = newParts[slot]
-    if oldPart ~= '' and (newPart == '' or newPart ~= oldPart) then
-      storePart(slot, oldPart, veh)
-    end
-  end
-
-  monitoringConfig = nil
-  partsBefore = nil
-  sendUIData()
+  sendVehicleParts()
 end
 
 M.sendUIData = sendUIData
 M.removePart = removePart
 M.installPart = installPart
 M.openVehicleConfig = openVehicleConfig
-M.applyConfigChanges = applyConfigChanges
-M.onVehicleConfigSaved = applyConfigChanges
 
 return M
 

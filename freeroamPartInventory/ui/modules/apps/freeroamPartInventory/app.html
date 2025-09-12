@@ -1,11 +1,24 @@
 <div class="bngApp">
-  <h3>Part Inventory</h3>
-  <button ng-click="openConfig()">Vehicle Configuration</button>
-  <div class="inventory-list">
-    <div class="inventory-item" ng-repeat="part in inventory track by part.id">
-      <span>{{part.name}}</span>
-      <button ng-click="install(part.id)">Install</button>
+  <div ng-if="!showConfig">
+    <h3>Part Inventory</h3>
+    <button ng-click="openConfig()">Vehicle Configuration</button>
+    <div class="inventory-list">
+      <div class="inventory-item" ng-repeat="part in inventory track by part.id">
+        <span>{{part.name}}</span>
+        <button ng-click="install(part.id)">Install</button>
+      </div>
+      <div class="empty" ng-if="!inventory.length">No stored parts.</div>
     </div>
-    <div class="empty" ng-if="!inventory.length">No stored parts.</div>
+  </div>
+  <div ng-if="showConfig">
+    <h3>Vehicle Parts</h3>
+    <button ng-click="closeConfig()">Back</button>
+    <div class="inventory-list">
+      <div class="inventory-item" ng-repeat="part in vehicleParts track by part.slot">
+        <span>{{part.name}}</span>
+        <button ng-click="remove(part.slot)">Remove</button>
+      </div>
+      <div class="empty" ng-if="!vehicleParts.length">No removable parts.</div>
+    </div>
   </div>
 </div>
