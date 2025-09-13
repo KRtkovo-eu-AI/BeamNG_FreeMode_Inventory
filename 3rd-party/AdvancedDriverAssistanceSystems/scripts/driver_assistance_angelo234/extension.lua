@@ -302,7 +302,7 @@ local function onUpdate(dt)
 
           --Update Obstacle Collision Mitigation System
           if extra_utils.getPart("obstacle_collision_mitigation_angelo234") and obstacle_aeb_system_on then
-            obstacle_aeb_system.update(other_systems_timer * 2, my_veh, system_params, aeb_params)
+            obstacle_aeb_system.update(other_systems_timer * 2, my_veh, system_params, aeb_params, beeper_params)
           end
 
           --Update Reverse Collision Mitigation System

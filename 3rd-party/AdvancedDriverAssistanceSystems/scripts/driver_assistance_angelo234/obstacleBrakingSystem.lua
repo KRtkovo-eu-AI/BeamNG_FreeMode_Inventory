@@ -45,6 +45,14 @@ local function frontObstacleDistance(veh, maxDistance)
   return dist
 end
 
+local function soundBeepers(dt, beeper_params)
+  beeper_timer = beeper_timer + dt
+  if beeper_timer >= 1.0 / beeper_params.fwd_warning_tone_hertz then
+    Engine.Audio.playOnce('AudioGui','art/sound/proximity_tone_50ms_moderate.wav')
+    beeper_timer = 0
+  end
+end
+
 local function calculateTimeBeforeBraking(distance, speed, system_params, aeb_params)
   local acc = math.min(10, system_params.gravity) * system_params.fwd_friction_coeff
   local ttc = distance / speed
@@ -78,11 +86,12 @@ local function holdBrakes(veh, veh_props, aeb_params)
   return system_state == "holding"
 end
 
-local function performEmergencyBraking(dt, veh, aeb_params, time_before_braking, speed)
+local function performEmergencyBraking(dt, veh, aeb_params, beeper_params, time_before_braking, speed)
   if system_state == "braking" and speed < aeb_params.brake_till_stop_speed then
     veh:queueLuaCommand("electrics.values.throttleOverride = 0")
     veh:queueLuaCommand("input.event('throttle', 0, 1)")
     veh:queueLuaCommand("electrics.values.brakeOverride = 1")
+    soundBeepers(dt, beeper_params)
     return
   end
 
@@ -94,6 +103,7 @@ local function performEmergencyBraking(dt, veh, aeb_params, time_before_braking,
       ui_message("Obstacle Collision Mitigation Activated", 3)
     end
     system_state = "braking"
+    soundBeepers(dt, beeper_params)
   else
     if system_state == "braking" then
       release_brake_confidence_level = release_brake_confidence_level + dt
@@ -102,12 +112,14 @@ local function performEmergencyBraking(dt, veh, aeb_params, time_before_braking,
         veh:queueLuaCommand("electrics.values.throttleOverride = nil")
         system_state = "ready"
         release_brake_confidence_level = 0
+      else
+        soundBeepers(dt, beeper_params)
       end
     end
   end
 end
 
-local function update(dt, veh, system_params, aeb_params)
+local function update(dt, veh, system_params, aeb_params, beeper_params)
   local veh_props = extra_utils.getVehicleProperties(veh)
   if holdBrakes(veh, veh_props, aeb_params) then return end
 
@@ -115,7 +127,7 @@ local function update(dt, veh, system_params, aeb_params)
   if not distance or veh_props.speed <= aeb_params.min_speed then return end
 
   local time_before_braking = calculateTimeBeforeBraking(distance, veh_props.speed, system_params, aeb_params)
-  performEmergencyBraking(dt, veh, aeb_params, time_before_braking, veh_props.speed)
+  performEmergencyBraking(dt, veh, aeb_params, beeper_params, time_before_braking, veh_props.speed)
 end
 
 M.update = update
