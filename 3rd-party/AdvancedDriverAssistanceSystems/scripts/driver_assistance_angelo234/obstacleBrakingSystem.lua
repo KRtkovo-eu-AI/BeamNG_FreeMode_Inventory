@@ -7,8 +7,8 @@ local system_state = "ready"
 local beeper_timer = 0
 local release_brake_confidence_level = 0
 
--- Raycast helper copied from previous virtual sensor implementation
-local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
+-- Casts multiple rays ahead and returns the nearest hit distance
+local function castRays(baseOrigin, dir, maxDistance, widthDir)
   local heights = {0.3, 0.8, 1.3}
   local laterals = widthDir and {0, 0.4, -0.4} or {0}
   local best
@@ -29,10 +29,7 @@ local function castRays(baseOrigin, dir, maxDistance, offset, widthDir)
     end
   end
 
-  if best then
-    return best + offset
-  end
-  return nil
+  return best
 end
 
 local function frontObstacleDistance(veh, maxDistance)
@@ -44,10 +41,7 @@ local function frontObstacleDistance(veh, maxDistance)
   local forwardOffset = 1.5
   local baseOrigin = vec3(pos.x + dir.x * forwardOffset, pos.y + dir.y * forwardOffset, pos.z)
 
-  local dist = castRays(baseOrigin, dir, maxDistance, forwardOffset, sideDir)
-  if dist and dist <= forwardOffset + 0.5 then
-    return nil
-  end
+  local dist = castRays(baseOrigin, dir, maxDistance, sideDir)
   return dist
 end
 
@@ -87,12 +81,14 @@ end
 local function performEmergencyBraking(dt, veh, aeb_params, time_before_braking, speed)
   if system_state == "braking" and speed < aeb_params.brake_till_stop_speed then
     veh:queueLuaCommand("electrics.values.throttleOverride = 0")
+    veh:queueLuaCommand("input.event('throttle', 0, 1)")
     veh:queueLuaCommand("electrics.values.brakeOverride = 1")
     return
   end
 
   if time_before_braking <= 0 then
     veh:queueLuaCommand("electrics.values.throttleOverride = 0")
+    veh:queueLuaCommand("input.event('throttle', 0, 1)")
     veh:queueLuaCommand("electrics.values.brakeOverride = 1")
     if system_state ~= "braking" then
       ui_message("Obstacle Collision Mitigation Activated", 3)
