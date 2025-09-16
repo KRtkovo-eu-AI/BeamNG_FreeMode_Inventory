@@ -19,6 +19,7 @@ local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local colorPresetPreferencesPath = false
+local editorPreferencesCandidates = nil
 
 local function clampFraction01(value)
   return clamp(tonumber(value) or 0, 0, 1)
@@ -160,34 +161,58 @@ local function joinPaths(base, relative)
   return normalizedBase .. '/' .. normalizedRelative
 end
 
-local function tryDetectEditorPreferencesPath()
+local function isAbsolutePath(path)
+  if not path or path == '' then
+    return false
+  end
+  local first = string.sub(path, 1, 1)
+  if first == '/' or first == '\\' then
+    return true
+  end
+  if #path >= 2 and string.sub(path, 2, 2) == ':' then
+    return true
+  end
+  return false
+end
+
+local function makeAbsolutePath(path)
+  if not path or path == '' then
+    return nil
+  end
+  if isAbsolutePath(path) then
+    return path
+  end
+  if not FS or not FS.getUserPath then
+    return nil
+  end
+  local okUser, userPath = safePcall(FS.getUserPath, FS)
+  if not okUser or not userPath or userPath == '' then
+    return nil
+  end
+  local normalizedBase = tostring(userPath):gsub('\\', '/'):gsub('/+$', '')
+  return joinPaths(normalizedBase, path)
+end
+
+local function getEditorPreferencesCandidates()
+  if editorPreferencesCandidates then
+    return editorPreferencesCandidates
+  end
+
   local candidates = {}
-  local fallback = nil
+  local seen = {}
 
   local function addCandidate(path)
     if not path or path == '' then return end
     local normalized = tostring(path):gsub('\\', '/')
     normalized = normalized:gsub('/+', '/')
-    if normalized == '' then return end
+    normalized = normalized:gsub('/%./', '/')
+    normalized = normalized:gsub('^%./', '')
+    if normalized == '' or seen[normalized] then return end
+    seen[normalized] = true
     table.insert(candidates, normalized)
-    if not fallback then
-      fallback = normalized
-    end
   end
 
-  local localAppData = os.getenv('LOCALAPPDATA') or os.getenv('AppData')
-  if localAppData and localAppData ~= '' then
-    local normalized = tostring(localAppData):gsub('\\', '/')
-    normalized = normalized:gsub('/Roaming$', '/Local')
-    addCandidate(joinPaths(normalized, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
-  end
-
-  local appData = os.getenv('APPDATA')
-  if appData and appData ~= '' then
-    local normalized = tostring(appData):gsub('\\', '/')
-    local candidateBase = normalized:gsub('/Roaming$', '/Local')
-    addCandidate(joinPaths(candidateBase, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
-  end
+  addCandidate('settings/editor/preferences.json')
 
   if FS and FS.getUserPath then
     local okUser, userPath = safePcall(FS.getUserPath, FS)
@@ -197,60 +222,103 @@ local function tryDetectEditorPreferencesPath()
     end
   end
 
-  for _, candidate in ipairs(candidates) do
-    if FS and FS.fileExists then
-      local okExists, exists = safePcall(FS.fileExists, FS, candidate)
-      if okExists and exists then
-        return candidate
-      end
-    else
-      local file = io.open(candidate, 'r')
-      if file then
-        file:close()
-        return candidate
+  local localAppData = os.getenv('LOCALAPPDATA') or os.getenv('AppData')
+  if localAppData and localAppData ~= '' then
+    local normalized = tostring(localAppData):gsub('\\', '/'):gsub('/+$', '')
+    normalized = normalized:gsub('/Roaming$', '/Local')
+    addCandidate(joinPaths(normalized, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
+    addCandidate(joinPaths(normalized, 'BeamNG.drive/current/settings/editor/preferences.json'))
+  end
+
+  local appData = os.getenv('APPDATA')
+  if appData and appData ~= '' then
+    local normalized = tostring(appData):gsub('\\', '/'):gsub('/+$', '')
+    local candidateBase = normalized:gsub('/Roaming$', '/Local')
+    addCandidate(joinPaths(candidateBase, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
+    addCandidate(joinPaths(candidateBase, 'BeamNG.drive/current/settings/editor/preferences.json'))
+  end
+
+  editorPreferencesCandidates = candidates
+  return candidates
+end
+
+local function readJsonFileAtPath(path)
+  if not path or path == '' then
+    return nil
+  end
+
+  local okRead, data = safePcall(jsonReadFile, path)
+  if okRead and type(data) == 'table' then
+    return data
+  end
+
+  if FS and FS.readFile then
+    local okFile, contents = safePcall(FS.readFile, FS, path)
+    if okFile and type(contents) == 'string' and contents ~= '' then
+      local okDecode, decoded = pcall(jsonDecode, contents)
+      if okDecode and type(decoded) == 'table' then
+        return decoded
       end
     end
   end
 
-  return fallback
+  local file = io.open(path, 'r')
+  if file then
+    local contents = file:read('*a')
+    file:close()
+    if contents and contents ~= '' then
+      local okDecode, decoded = pcall(jsonDecode, contents)
+      if okDecode and type(decoded) == 'table' then
+        return decoded
+      end
+    end
+  end
+
+  return nil
 end
 
-local function getEditorPreferencesPath()
-  if colorPresetPreferencesPath == nil then
+local function tryReadPreferencesFromPath(path)
+  if not path or path == '' then
     return nil
   end
-  if colorPresetPreferencesPath and colorPresetPreferencesPath ~= false then
-    return colorPresetPreferencesPath
+
+  local data = readJsonFileAtPath(path)
+  if data then
+    return data, path
   end
 
-  local detected = tryDetectEditorPreferencesPath()
-  if detected and detected ~= '' then
-    colorPresetPreferencesPath = detected
-    return colorPresetPreferencesPath
+  if not isAbsolutePath(path) then
+    local absolute = makeAbsolutePath(path)
+    if absolute and absolute ~= path then
+      data = readJsonFileAtPath(absolute)
+      if data then
+        return data, absolute
+      end
+    end
   end
 
-  colorPresetPreferencesPath = nil
   return nil
 end
 
 local function readEditorPreferences()
-  local path = getEditorPreferencesPath()
-  if not path or path == '' then
-    return {}
+  if colorPresetPreferencesPath and colorPresetPreferencesPath ~= false then
+    local cachedData = readJsonFileAtPath(colorPresetPreferencesPath)
+    if cachedData then
+      return cachedData
+    end
+    colorPresetPreferencesPath = false
   end
 
-  if FS and FS.fileExists then
-    local okExists, exists = safePcall(FS.fileExists, FS, path)
-    if okExists and not exists then
-      return {}
+  local candidates = getEditorPreferencesCandidates()
+  for _, candidate in ipairs(candidates) do
+    local data, resolved = tryReadPreferencesFromPath(candidate)
+    if data then
+      colorPresetPreferencesPath = resolved or candidate
+      return data
     end
   end
 
-  local okRead, data = safePcall(jsonReadFile, path)
-  if not okRead or type(data) ~= 'table' then
-    return {}
-  end
-  return data
+  return {}
 end
 
 local function quoteJsonString(value)
@@ -287,10 +355,9 @@ local function encodeColorPresetsForStorage(presets)
   return '[' .. table.concat(items, ',') .. ']'
 end
 
-local function writeEditorPreferences(data)
-  local path = getEditorPreferencesPath()
+local function tryWritePreferencesToPath(path, data)
   if not path or path == '' then
-    return false, 'preferences_path_unavailable'
+    return false, 'invalid_path'
   end
 
   local directory = path:match('^(.*)/[^/]+$')
@@ -299,13 +366,53 @@ local function writeEditorPreferences(data)
   end
 
   local okWrite, resultOrErr = safePcall(jsonWriteFile, path, data, true)
+  if okWrite and resultOrErr ~= false then
+    return true, path
+  end
+
+  if not isAbsolutePath(path) then
+    local absolute = makeAbsolutePath(path)
+    if absolute and absolute ~= path then
+      local absDir = absolute:match('^(.*)/[^/]+$')
+      if absDir and absDir ~= '' then
+        ensureDirectory(absDir)
+      end
+      okWrite, resultOrErr = safePcall(jsonWriteFile, absolute, data, true)
+      if okWrite and resultOrErr ~= false then
+        return true, absolute
+      end
+    end
+  end
+
   if not okWrite then
-    return false, resultOrErr
+    return false, tostring(resultOrErr)
   end
-  if resultOrErr == false then
-    return false, 'jsonWriteFile returned false'
+
+  return false, 'jsonWriteFile returned false'
+end
+
+local function writeEditorPreferences(data)
+  if colorPresetPreferencesPath and colorPresetPreferencesPath ~= false then
+    local okWrite, resolved = tryWritePreferencesToPath(colorPresetPreferencesPath, data)
+    if okWrite then
+      colorPresetPreferencesPath = resolved or colorPresetPreferencesPath
+      return true
+    end
+    colorPresetPreferencesPath = false
   end
-  return true
+
+  local candidates = getEditorPreferencesCandidates()
+  local lastError = nil
+  for _, candidate in ipairs(candidates) do
+    local okWrite, resolved = tryWritePreferencesToPath(candidate, data)
+    if okWrite then
+      colorPresetPreferencesPath = resolved or candidate
+      return true
+    end
+    lastError = resolved or lastError
+  end
+
+  return false, lastError or 'preferences_path_unavailable'
 end
 
 local function buildPresetNameFromValue(value)
@@ -527,7 +634,6 @@ local function addColorPresetEntry(entry)
   local okSave, err = saveColorPresetsToDisk(userColorPresets)
   if not okSave then
     log('W', logTag, string.format('Failed to save color presets: %s', tostring(err)))
-    return
   end
 
   sendColorPresets()
@@ -1639,13 +1745,20 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
     }
     local state = storedPartPaintsByVeh[vehId]
     local customEntry = state and state[partPath]
-    local paints = customEntry and customEntry.paints or nil
-    if not paints then
-      paints = basePaints
-    else
+    local customPaints = customEntry and customEntry.paints or nil
+    local hasCustomPaints = type(customPaints) == 'table' and not tableIsEmpty(customPaints)
+    if hasCustomPaints then
       entry.hasCustomPaint = true
+    else
+      customPaints = nil
     end
+    local paints = hasCustomPaints and customPaints or basePaints
     entry.currentPaints = copyPaints(paints)
+    if hasCustomPaints then
+      entry.customPaints = copyPaints(customPaints)
+    else
+      entry.customPaints = nil
+    end
     local descriptorIdentifiers
     if descriptors then
       descriptors[partPath] = descriptors[partPath] or {}

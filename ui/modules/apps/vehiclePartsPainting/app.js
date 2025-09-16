@@ -323,9 +323,22 @@ angular.module('beamng.apps')
           $scope.editedPaints = [];
           return;
         }
-        const source = Array.isArray(part.currentPaints) && part.currentPaints.length
-          ? part.currentPaints
-          : state.basePaints;
+        const candidates = [
+          part.currentPaints,
+          part.customPaints,
+          part.paints
+        ];
+        let source = null;
+        for (let i = 0; i < candidates.length; i++) {
+          const candidate = candidates[i];
+          if (Array.isArray(candidate) && candidate.length) {
+            source = candidate;
+            break;
+          }
+        }
+        if (!source || !source.length) {
+          source = state.basePaints;
+        }
         $scope.editedPaints = convertPaintsToView(source);
       }
 
