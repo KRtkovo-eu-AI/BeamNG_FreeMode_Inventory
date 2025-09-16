@@ -39,7 +39,8 @@ angular.module('beamng.apps')
         parts: [],
         basePaints: [],
         selectedPartPath: null,
-        selectedPart: null
+        selectedPart: null,
+        highlightSuspended: false
       };
 
       $scope.state = state;
@@ -61,16 +62,37 @@ angular.module('beamng.apps')
         return '#' + componentToHex(r) + componentToHex(g) + componentToHex(b);
       }
 
-      function hexToRgb(hex) {
-        if (!hex || typeof hex !== 'string') { return null; }
-        const match = /^#?([a-f\d]{6})$/i.exec(hex.trim());
-        if (!match) { return null; }
-        const value = parseInt(match[1], 16);
-        return [
-          ((value >> 16) & 255) / 255,
-          ((value >> 8) & 255) / 255,
-          (value & 255) / 255
-        ];
+      function clampColorByte(value) {
+        value = parseFloat(value);
+        if (!isFinite(value)) { return 0; }
+        return Math.min(255, Math.max(0, Math.round(value)));
+      }
+
+      function ensureColorObject(paint) {
+        if (!paint || typeof paint !== 'object') { return { r: 255, g: 255, b: 255 }; }
+        if (!paint.color || typeof paint.color !== 'object') {
+          paint.color = { r: 255, g: 255, b: 255 };
+        }
+        return paint.color;
+      }
+
+      function sanitizeColor(paint) {
+        const color = ensureColorObject(paint);
+        color.r = clampColorByte(color.r);
+        color.g = clampColorByte(color.g);
+        color.b = clampColorByte(color.b);
+        return color;
+      }
+
+      function getPaintHex(paint) {
+        const color = sanitizeColor(paint);
+        return rgbToHex(color.r / 255, color.g / 255, color.b / 255);
+      }
+
+      function getPaintCssColor(paint) {
+        const color = sanitizeColor(paint);
+        const alpha = clamp01(paint && typeof paint.alpha === 'number' ? paint.alpha : 1);
+        return 'rgba(' + color.r + ',' + color.g + ',' + color.b + ',' + alpha + ')';
       }
 
       function toLuaString(str) {
@@ -81,8 +103,13 @@ angular.module('beamng.apps')
       function createViewPaint(paint) {
         paint = paint || {};
         const base = Array.isArray(paint.baseColor) ? paint.baseColor : [];
+        const color = {
+          r: Math.round(clamp01(typeof base[0] === 'number' ? base[0] : 1) * 255),
+          g: Math.round(clamp01(typeof base[1] === 'number' ? base[1] : 1) * 255),
+          b: Math.round(clamp01(typeof base[2] === 'number' ? base[2] : 1) * 255)
+        };
         return {
-          hex: rgbToHex(base[0] || 1, base[1] || 1, base[2] || 1),
+          color: color,
           alpha: typeof base[3] === 'number' ? clamp01(base[3]) : 1,
           metallic: clamp01(paint.metallic),
           roughness: clamp01(paint.roughness),
@@ -113,9 +140,14 @@ angular.module('beamng.apps')
         for (let i = 0; i < viewPaints.length; i++) {
           const view = viewPaints[i];
           if (!view) { continue; }
-          const rgb = hexToRgb(view.hex) || [1, 1, 1];
+          const color = sanitizeColor(view);
           paints.push({
-            baseColor: [clamp01(rgb[0]), clamp01(rgb[1]), clamp01(rgb[2]), clamp01(view.alpha)],
+            baseColor: [
+              clamp01(color.r / 255),
+              clamp01(color.g / 255),
+              clamp01(color.b / 255),
+              clamp01(view.alpha)
+            ],
             metallic: clamp01(view.metallic),
             roughness: clamp01(view.roughness),
             clearcoat: clamp01(view.clearcoat),
@@ -125,7 +157,12 @@ angular.module('beamng.apps')
         return paints;
       }
 
+      function sendShowAllCommand() {
+        bngApi.engineLua('freeroam_vehiclePartsPainting.showAllParts()');
+      }
+
       function highlightPart(partPath) {
+        if (!partPath || state.highlightSuspended) { return; }
         const command = 'freeroam_vehiclePartsPainting.highlightPart(' + toLuaString(partPath) + ')';
         bngApi.engineLua(command);
       }
@@ -141,12 +178,16 @@ angular.module('beamng.apps')
         $scope.editedPaints = convertPaintsToView(source);
       }
 
-      $scope.onColorHexChanged = function (paint) {
-        if (!paint || typeof paint.hex !== 'string') { return; }
-        const rgb = hexToRgb(paint.hex);
-        if (!rgb) {
-          paint.hex = '#ffffff';
-        }
+      $scope.onColorChannelChanged = function (paint) {
+        sanitizeColor(paint);
+      };
+
+      $scope.getColorPreviewStyle = function (paint) {
+        return { background: getPaintCssColor(paint) };
+      };
+
+      $scope.getColorHex = function (paint) {
+        return getPaintHex(paint);
       };
 
       $scope.copyFromVehicle = function (index) {
@@ -158,6 +199,7 @@ angular.module('beamng.apps')
 
       $scope.selectPart = function (part) {
         if (!part) { return; }
+        state.highlightSuspended = false;
         state.selectedPartPath = part.partPath;
         state.selectedPart = part;
         updateEditedPaints(part);
@@ -185,18 +227,23 @@ angular.module('beamng.apps')
         bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(state.selectedPartPath) + ')');
       };
 
-      $scope.clearHighlight = function () {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.clearHighlight()');
+      $scope.showAllParts = function () {
+        state.highlightSuspended = true;
+        sendShowAllCommand();
       };
 
       $scope.$on('$destroy', function () {
-        $scope.clearHighlight();
+        sendShowAllCommand();
       });
 
       $scope.$on('VehiclePartsPaintingState', function (event, data) {
         data = data || {};
         $scope.$evalAsync(function () {
+          const previousVehicleId = state.vehicleId;
           state.vehicleId = data.vehicleId || null;
+          if (state.vehicleId !== previousVehicleId) {
+            state.highlightSuspended = false;
+          }
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
           state.parts = Array.isArray(data.parts) ? data.parts : [];
 
@@ -213,6 +260,7 @@ angular.module('beamng.apps')
           if (!selectedPart && state.parts.length) {
             selectedPart = state.parts[0];
             selectedPath = selectedPart.partPath;
+            state.highlightSuspended = false;
           }
 
           state.selectedPartPath = selectedPart ? selectedPart.partPath : null;
@@ -221,9 +269,11 @@ angular.module('beamng.apps')
           updateEditedPaints(selectedPart);
 
           if (selectedPart) {
-            highlightPart(selectedPart.partPath);
+            if (!state.highlightSuspended) {
+              highlightPart(selectedPart.partPath);
+            }
           } else {
-            $scope.clearHighlight();
+            sendShowAllCommand();
           }
         });
       });

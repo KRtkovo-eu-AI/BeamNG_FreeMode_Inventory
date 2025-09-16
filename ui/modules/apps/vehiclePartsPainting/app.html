@@ -52,12 +52,18 @@
       font-weight: 600;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
-    .vehicle-parts-painting .parts-panel .panel-header .clear-highlight {
-      background: none;
-      border: none;
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
       color: inherit;
-      font-size: 14px;
-      padding: 0 4px;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 3px;
     }
     .vehicle-parts-painting .parts-list {
       flex: 1;
@@ -159,11 +165,39 @@
       letter-spacing: 0.04em;
       opacity: 0.85;
     }
-    .vehicle-parts-painting .paint-card .field input[type="color"] {
+    .vehicle-parts-painting .paint-card .color-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-preview {
       width: 100%;
-      height: 34px;
-      border: none;
-      padding: 0;
+      height: 42px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-meta {
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      opacity: 0.8;
+      text-transform: uppercase;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-channels {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-channel {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-channel span {
+      width: 16px;
+      text-align: center;
+      font-size: 11px;
+      opacity: 0.85;
+      font-weight: 600;
     }
     .vehicle-parts-painting .paint-card .field-row {
       display: flex;
@@ -213,7 +247,9 @@
     <div class="parts-panel">
       <div class="panel-header">
         <span>Parts</span>
-        <button type="button" class="clear-highlight" ng-click="clearHighlight()" title="Clear highlights">&#x2715;</button>
+        <div class="panel-actions">
+          <button type="button" ng-click="showAllParts()">Show whole vehicle</button>
+        </div>
       </div>
       <div class="parts-list">
         <div class="part-row"
@@ -238,9 +274,27 @@
             <h4>Paint {{$index + 1}}</h4>
             <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
           </div>
-          <div class="field">
+          <div class="field color-field">
             <label>Color</label>
-            <input type="color" ng-model="paint.hex" ng-change="onColorHexChanged(paint)">
+            <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
+            <div class="color-meta">{{getColorHex(paint)}}</div>
+            <div class="color-channels">
+              <div class="color-channel">
+                <span>R</span>
+                <input type="range" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
+                <input type="number" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
+              </div>
+              <div class="color-channel">
+                <span>G</span>
+                <input type="range" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
+                <input type="number" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
+              </div>
+              <div class="color-channel">
+                <span>B</span>
+                <input type="range" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
+                <input type="number" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
+              </div>
+            </div>
           </div>
           <div class="field">
             <label>Alpha</label>

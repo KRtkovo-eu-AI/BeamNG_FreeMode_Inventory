@@ -11,6 +11,7 @@ local jbeamIO = require('jbeam/io')
 
 local storedPartPaintsByVeh = {}
 local highlightedParts = {}
+local validPartPathsByVeh = {}
 
 local function clamp01(value)
   return clamp(tonumber(value) or 0, 0, 1)
@@ -205,6 +206,16 @@ local function sendState(targetVehId)
   gatherParts(vehData.config.partsTree, parts, availableParts, basePaints, validPaths, 0, vehId)
   cleanupState(vehId, validPaths, vehData)
 
+  if tableIsEmpty(validPaths) then
+    validPartPathsByVeh[vehId] = nil
+  else
+    local highlightAll = {}
+    for partPath in pairs(validPaths) do
+      highlightAll[partPath] = true
+    end
+    validPartPathsByVeh[vehId] = highlightAll
+  end
+
   table.sort(parts, function(a, b)
     if a.displayName == b.displayName then
       return tostring(a.partPath) < tostring(b.partPath)
@@ -306,6 +317,39 @@ local function resetPartPaint(partPath)
   sendState(vehId)
 end
 
+local function showAllParts(targetVehId)
+  local vehId = targetVehId or be:getPlayerVehicleID(0)
+  if not vehId or vehId == -1 then return end
+
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+  if not vehObj or not vehData then return end
+
+  local highlight = validPartPathsByVeh[vehId]
+  if not highlight or tableIsEmpty(highlight) then
+    local basePaints = getVehicleBasePaints(vehData, vehObj)
+    local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
+    local tmpParts = {}
+    highlight = {}
+    gatherParts(vehData.config.partsTree, tmpParts, availableParts, basePaints, highlight, 0, vehId)
+    if tableIsEmpty(highlight) then
+      highlight = nil
+      validPartPathsByVeh[vehId] = nil
+    else
+      validPartPathsByVeh[vehId] = highlight
+    end
+  end
+
+  highlightedParts = {}
+
+  if highlight then
+    extensions.core_vehicle_partmgmt.highlightParts(highlight)
+  else
+    vehObj:setMeshAlpha(1, "", false)
+    vehObj:queueLuaCommand('bdebug.setPartsSelected({})')
+  end
+end
+
 local function highlightPart(partPath)
   local parts = {}
   if partPath and partPath ~= '' then
@@ -317,9 +361,8 @@ local function highlightPart(partPath)
   extensions.core_vehicle_partmgmt.highlightParts(parts)
 end
 
-local function clearHighlight()
-  highlightedParts = {}
-  extensions.core_vehicle_partmgmt.highlightParts({})
+local function clearHighlight(targetVehId)
+  showAllParts(targetVehId)
 end
 
 local function requestState()
@@ -342,6 +385,7 @@ end
 
 local function onVehicleDestroyed(vehId)
   storedPartPaintsByVeh[vehId] = nil
+  validPartPathsByVeh[vehId] = nil
   if vehId == be:getPlayerVehicleID(0) then
     sendState(-1)
   end
@@ -359,6 +403,7 @@ end
 
 local function onExtensionLoaded()
   storedPartPaintsByVeh = {}
+  validPartPathsByVeh = {}
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     applyStoredPaints(currentVeh)
@@ -370,6 +415,7 @@ end
 
 local function onExtensionUnloaded()
   storedPartPaintsByVeh = {}
+  validPartPathsByVeh = {}
   clearHighlight()
 end
 
@@ -378,6 +424,7 @@ M.applyPartPaintJson = applyPartPaintJson
 M.setPartPaint = setPartPaint
 M.resetPartPaint = resetPartPaint
 M.highlightPart = highlightPart
+M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
 
 M.onVehicleSpawned = onVehicleSpawned
