@@ -544,6 +544,50 @@
     .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"]::placeholder {
       color: rgba(255, 255, 255, 0.5);
     }
+    .vehicle-parts-painting .paint-card .color-field .color-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-presets .preset-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-presets .preset-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      padding: 0;
+      background: transparent;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-presets .preset-swatch:hover {
+      border-color: rgba(255, 255, 255, 0.75);
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-presets .add-preset {
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      padding: 0;
+      background: transparent;
+      border: 1px dashed rgba(255, 255, 255, 0.5);
+      color: #ffffff;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-presets .add-preset:hover {
+      border-color: #ffffff;
+      color: #ffffff;
+    }
+    .vehicle-parts-painting .paint-card .color-field .color-presets-empty {
+      font-size: 11px;
+      opacity: 0.75;
+    }
     .vehicle-parts-painting .paint-card .color-field .color-channels {
       display: flex;
       flex-direction: column;
@@ -687,7 +731,7 @@
           <div class="node-content">
             <div class="name">{{node.part.displayName || node.part.partName}}</div>
             <div class="slot" ng-if="node.part.slotName">{{node.part.slotName}}</div>
-            <span class="custom-tag" ng-if="node.part.hasCustomPaint">custom</span>
+            <span class="custom-tag" ng-if="node.part.hasCustomPaint">CUSTOM</span>
           </div>
         </div>
         <ul class="parts-children" ng-if="node.children && node.children.length && isNodeExpanded(node.part)">
@@ -763,6 +807,21 @@
                         autocapitalize="none"
                         spellcheck="false">
               </div>
+              <div class="color-presets">
+                <div class="preset-list" ng-if="state.colorPresets.length">
+                  <button type="button"
+                          class="preset-swatch"
+                          ng-repeat="preset in state.colorPresets track by $index"
+                          ng-style="getColorPresetStyle(preset)"
+                          ng-attr-title="{{getColorPresetTitle(preset)}}"
+                          ng-click="applyColorPreset(paint, preset)"></button>
+                </div>
+                <!--<button type="button"
+                        class="add-preset"
+                        ng-click="addColorPreset(paint)"
+                        title="Add current color to palette">+</button>-->
+              </div>
+              <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
               <div class="color-channels">
                 <div class="color-channel">
                   <span>R</span>

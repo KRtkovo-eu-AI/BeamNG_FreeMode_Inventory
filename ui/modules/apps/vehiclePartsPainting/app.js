@@ -43,6 +43,7 @@ angular.module('beamng.apps')
         selectedPartPath: null,
         selectedPart: null,
         highlightSuspended: false,
+        hasUserSelectedPart: false,
         filterText: '',
         filteredParts: [],
         expandedNodes: {},
@@ -56,7 +57,8 @@ angular.module('beamng.apps')
         showReplaceConfirmation: false,
         pendingConfigName: null,
         pendingSanitizedName: null,
-        pendingExistingConfig: null
+        pendingExistingConfig: null,
+        colorPresets: []
       };
 
       $scope.state = state;
@@ -137,6 +139,66 @@ angular.module('beamng.apps')
         const color = sanitizeColor(paint);
         const alpha = clamp01(paint && typeof paint.alpha === 'number' ? paint.alpha : 1);
         return 'rgba(' + color.r + ',' + color.g + ',' + color.b + ',' + alpha + ')';
+      }
+
+      function sanitizePresetEntry(preset) {
+        if (!preset || typeof preset !== 'object') { return null; }
+        const rawName = typeof preset.name === 'string' ? preset.name.trim() : '';
+        const valueArray = Array.isArray(preset.value) ? preset.value : [];
+        const valueObject = preset.value && typeof preset.value === 'object' ? preset.value : {};
+        const rawR = valueArray[0] !== undefined ? valueArray[0] : valueObject.r;
+        const rawG = valueArray[1] !== undefined ? valueArray[1] : valueObject.g;
+        const rawB = valueArray[2] !== undefined ? valueArray[2] : valueObject.b;
+        const alphaSource = valueArray[3] !== undefined ? valueArray[3] : (valueObject.a !== undefined ? valueObject.a : valueObject.alpha);
+        const r = clamp01(rawR);
+        const g = clamp01(rawG);
+        const b = clamp01(rawB);
+        const a = clamp01(alphaSource !== undefined ? alphaSource : 1);
+        const hex = rgbToHex(r, g, b);
+        return {
+          name: rawName || hex,
+          value: [r, g, b, a],
+          cssColor: 'rgba(' + Math.round(r * 255) + ',' + Math.round(g * 255) + ',' + Math.round(b * 255) + ',' + a + ')',
+          title: rawName ? (rawName + ' (' + hex + ')') : hex
+        };
+      }
+
+      function updateColorPresets(rawPresets) {
+        if (!Array.isArray(rawPresets)) {
+          state.colorPresets = [];
+          return;
+        }
+        const presets = [];
+        for (let i = 0; i < rawPresets.length; i++) {
+          const preset = sanitizePresetEntry(rawPresets[i]);
+          if (preset) {
+            presets.push(preset);
+          }
+        }
+        state.colorPresets = presets;
+      }
+
+      function getPresetStyle(preset) {
+        if (!preset || !preset.cssColor) { return { background: 'transparent' }; }
+        return { background: preset.cssColor };
+      }
+
+      function getPresetTitle(preset) {
+        if (!preset) { return ''; }
+        if (preset.title) { return preset.title; }
+        if (preset.name) { return preset.name; }
+        return '';
+      }
+
+      function applyPresetToPaint(paint, preset) {
+        if (!paint || !preset || !Array.isArray(preset.value)) { return; }
+        const value = preset.value;
+        const color = ensureColorObject(paint);
+        color.r = Math.round(clamp01(value[0]) * 255);
+        color.g = Math.round(clamp01(value[1]) * 255);
+        color.b = Math.round(clamp01(value[2]) * 255);
+        paint.alpha = clamp01(value[3] !== undefined ? value[3] : paint.alpha);
+        syncHtmlColor(paint);
       }
 
       function toLuaString(str) {
@@ -261,9 +323,22 @@ angular.module('beamng.apps')
           $scope.editedPaints = [];
           return;
         }
-        const source = Array.isArray(part.currentPaints) && part.currentPaints.length
-          ? part.currentPaints
-          : state.basePaints;
+        const candidates = [
+          part.currentPaints,
+          part.customPaints,
+          part.paints
+        ];
+        let source = null;
+        for (let i = 0; i < candidates.length; i++) {
+          const candidate = candidates[i];
+          if (Array.isArray(candidate) && candidate.length) {
+            source = candidate;
+            break;
+          }
+        }
+        if (!source || !source.length) {
+          source = state.basePaints;
+        }
         $scope.editedPaints = convertPaintsToView(source);
       }
 
@@ -275,6 +350,12 @@ angular.module('beamng.apps')
 
         state.selectedPartPath = newPath;
         state.selectedPart = part || null;
+
+        if (!part) {
+          state.hasUserSelectedPart = false;
+        } else if (options.userSelected) {
+          state.hasUserSelectedPart = true;
+        }
 
         updateEditedPaints(part);
 
@@ -506,10 +587,17 @@ angular.module('beamng.apps')
         const selectionOptions = {};
 
         if (!target) {
-          target = filtered[0];
-          selectionOptions.forceHighlight = true;
+          if (state.hasUserSelectedPart) {
+            target = filtered[0];
+            selectionOptions.forceHighlight = true;
+          } else {
+            setSelectedPart(null, { skipHighlight: false });
+            return;
+          }
         } else {
-          if (options.forceHighlightOnRefresh) {
+          if (!state.hasUserSelectedPart) {
+            selectionOptions.skipHighlight = true;
+          } else if (options.forceHighlightOnRefresh) {
             selectionOptions.forceHighlight = true;
           } else if (options.skipHighlightIfSame && previousPath === target.partPath) {
             selectionOptions.skipHighlight = true;
@@ -555,6 +643,50 @@ angular.module('beamng.apps')
         return getPaintHex(paint);
       };
 
+      $scope.getColorPresets = function () {
+        return Array.isArray(state.colorPresets) ? state.colorPresets : [];
+      };
+
+      $scope.getColorPresetStyle = function (preset) {
+        return getPresetStyle(preset);
+      };
+
+      $scope.getColorPresetTitle = function (preset) {
+        return getPresetTitle(preset);
+      };
+
+      $scope.applyColorPreset = function (paint, preset) {
+        applyPresetToPaint(paint, preset);
+      };
+
+      $scope.addColorPreset = function (paint) {
+        if (!paint) { return; }
+        const color = ensureColorObject(paint);
+        const payload = {
+          value: [
+            clamp01(color.r / 255),
+            clamp01(color.g / 255),
+            clamp01(color.b / 255),
+            clamp01(typeof paint.alpha === 'number' ? paint.alpha : 1)
+          ]
+        };
+        const defaultName = rgbToHex(payload.value[0], payload.value[1], payload.value[2]);
+        let chosenName = defaultName;
+        if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
+          const response = window.prompt('Name for color preset', defaultName);
+          if (response === null) {
+            return;
+          }
+          const trimmed = response.trim();
+          if (trimmed) {
+            chosenName = trimmed;
+          }
+        }
+        payload.name = chosenName;
+        const command = 'freeroam_vehiclePartsPainting.addColorPreset(' + toLuaString(JSON.stringify(payload)) + ')';
+        bngApi.engineLua(command);
+      };
+
       $scope.copyFromVehicle = function (index) {
         if (!state.basePaints.length) { return; }
         const paint = state.basePaints[index] || state.basePaints[state.basePaints.length - 1];
@@ -564,7 +696,7 @@ angular.module('beamng.apps')
 
       $scope.selectPart = function (part) {
         if (!part) { return; }
-        setSelectedPart(part, { forceHighlight: true });
+        setSelectedPart(part, { forceHighlight: true, userSelected: true });
       };
 
       $scope.toggleNode = function (part, $event) {
@@ -740,6 +872,10 @@ angular.module('beamng.apps')
           const previousVehicleId = state.vehicleId;
           state.vehicleId = data.vehicleId || null;
 
+          if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
+            updateColorPresets(data.colorPresets);
+          }
+
           if (!state.vehicleId) {
             clearPendingReplacement();
             state.basePaints = [];
@@ -747,7 +883,7 @@ angular.module('beamng.apps')
             state.partsTree = [];
             state.filteredTree = [];
             state.filteredParts = [];
-            state.highlightSuspended = false;
+            state.highlightSuspended = true;
             state.expandedNodes = {};
             state.savedConfigs = [];
             state.selectedSavedConfig = null;
@@ -755,13 +891,14 @@ angular.module('beamng.apps')
             state.isSavingConfig = false;
             state.isSpawningConfig = false;
             state.saveErrorMessage = null;
-            setSelectedPart(null, { skipHighlight: true });
+            state.hasUserSelectedPart = false;
+            setSelectedPart(null, { skipHighlight: false });
             return;
           }
 
           if (state.vehicleId !== previousVehicleId) {
             clearPendingReplacement();
-            state.highlightSuspended = false;
+            state.highlightSuspended = true;
             state.filterText = '';
             state.expandedNodes = {};
             state.savedConfigs = [];
@@ -770,6 +907,8 @@ angular.module('beamng.apps')
             state.isSavingConfig = false;
             state.isSpawningConfig = false;
             state.saveErrorMessage = null;
+            state.hasUserSelectedPart = false;
+            setSelectedPart(null, { skipHighlight: false });
             requestSavedConfigs();
           }
 
@@ -820,9 +959,19 @@ angular.module('beamng.apps')
         });
       });
 
+      $scope.$on('VehiclePartsPaintingColorPresets', function (event, data) {
+        data = data || {};
+        $scope.$evalAsync(function () {
+          if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
+            updateColorPresets(data.colorPresets);
+          }
+        });
+      });
+
       bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
       $scope.refresh();
       requestSavedConfigs();
+      bngApi.engineLua('freeroam_vehiclePartsPainting.requestColorPresets()');
     }]
   };
 }]);

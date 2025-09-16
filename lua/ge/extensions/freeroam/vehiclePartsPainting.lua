@@ -17,6 +17,13 @@ local partDescriptorsByVeh = {}
 local activePartIdSetByVeh = {}
 local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
+local userColorPresets = nil
+local colorPresetPreferencesPath = false
+local editorPreferencesCandidates = nil
+
+local function clampFraction01(value)
+  return clamp(tonumber(value) or 0, 0, 1)
+end
 
 local function safePcall(fn, ...)
   if type(fn) ~= 'function' then
@@ -140,6 +147,515 @@ local function ensureDirectory(path)
   end
 
   safePcall(FS.createDirectory, FS, normalized)
+end
+
+local function joinPaths(base, relative)
+  if not base or base == '' then
+    return relative
+  end
+  if not relative or relative == '' then
+    return base
+  end
+  local normalizedBase = tostring(base):gsub('\\', '/'):gsub('/+$', '')
+  local normalizedRelative = tostring(relative):gsub('\\', '/'):gsub('^/+', '')
+  return normalizedBase .. '/' .. normalizedRelative
+end
+
+local function isAbsolutePath(path)
+  if not path or path == '' then
+    return false
+  end
+  local first = string.sub(path, 1, 1)
+  if first == '/' or first == '\\' then
+    return true
+  end
+  if #path >= 2 and string.sub(path, 2, 2) == ':' then
+    return true
+  end
+  return false
+end
+
+local function makeAbsolutePath(path)
+  if not path or path == '' then
+    return nil
+  end
+  if isAbsolutePath(path) then
+    return path
+  end
+  if not FS or not FS.getUserPath then
+    return nil
+  end
+  local okUser, userPath = safePcall(FS.getUserPath, FS)
+  if not okUser or not userPath or userPath == '' then
+    return nil
+  end
+  local normalizedBase = tostring(userPath):gsub('\\', '/'):gsub('/+$', '')
+  return joinPaths(normalizedBase, path)
+end
+
+local function getEditorPreferencesCandidates()
+  if editorPreferencesCandidates then
+    return editorPreferencesCandidates
+  end
+
+  local candidates = {}
+  local seen = {}
+
+  local function addCandidate(path)
+    if not path or path == '' then return end
+    local normalized = tostring(path):gsub('\\', '/')
+    normalized = normalized:gsub('/+', '/')
+    normalized = normalized:gsub('/%./', '/')
+    normalized = normalized:gsub('^%./', '')
+    if normalized == '' or seen[normalized] then return end
+    seen[normalized] = true
+    table.insert(candidates, normalized)
+  end
+
+  addCandidate('settings/editor/preferences.json')
+
+  if FS and FS.getUserPath then
+    local okUser, userPath = safePcall(FS.getUserPath, FS)
+    if okUser and userPath and userPath ~= '' then
+      local normalized = tostring(userPath):gsub('\\', '/'):gsub('/+$', '')
+      addCandidate(joinPaths(normalized, 'settings/editor/preferences.json'))
+    end
+  end
+
+  local localAppData = os.getenv('LOCALAPPDATA') or os.getenv('AppData')
+  if localAppData and localAppData ~= '' then
+    local normalized = tostring(localAppData):gsub('\\', '/'):gsub('/+$', '')
+    normalized = normalized:gsub('/Roaming$', '/Local')
+    addCandidate(joinPaths(normalized, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
+    addCandidate(joinPaths(normalized, 'BeamNG.drive/current/settings/editor/preferences.json'))
+  end
+
+  local appData = os.getenv('APPDATA')
+  if appData and appData ~= '' then
+    local normalized = tostring(appData):gsub('\\', '/'):gsub('/+$', '')
+    local candidateBase = normalized:gsub('/Roaming$', '/Local')
+    addCandidate(joinPaths(candidateBase, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
+    addCandidate(joinPaths(candidateBase, 'BeamNG.drive/current/settings/editor/preferences.json'))
+  end
+
+  editorPreferencesCandidates = candidates
+  return candidates
+end
+
+local function readJsonFileAtPath(path)
+  if not path or path == '' then
+    return nil
+  end
+
+  local okRead, data = safePcall(jsonReadFile, path)
+  if okRead and type(data) == 'table' then
+    return data
+  end
+
+  if FS and FS.readFile then
+    local okFile, contents = safePcall(FS.readFile, FS, path)
+    if okFile and type(contents) == 'string' and contents ~= '' then
+      local okDecode, decoded = pcall(jsonDecode, contents)
+      if okDecode and type(decoded) == 'table' then
+        return decoded
+      end
+    end
+  end
+
+  local file = io.open(path, 'r')
+  if file then
+    local contents = file:read('*a')
+    file:close()
+    if contents and contents ~= '' then
+      local okDecode, decoded = pcall(jsonDecode, contents)
+      if okDecode and type(decoded) == 'table' then
+        return decoded
+      end
+    end
+  end
+
+  return nil
+end
+
+local function tryReadPreferencesFromPath(path)
+  if not path or path == '' then
+    return nil
+  end
+
+  local data = readJsonFileAtPath(path)
+  if data then
+    return data, path
+  end
+
+  if not isAbsolutePath(path) then
+    local absolute = makeAbsolutePath(path)
+    if absolute and absolute ~= path then
+      data = readJsonFileAtPath(absolute)
+      if data then
+        return data, absolute
+      end
+    end
+  end
+
+  return nil
+end
+
+local function readEditorPreferences()
+  if colorPresetPreferencesPath and colorPresetPreferencesPath ~= false then
+    local cachedData = readJsonFileAtPath(colorPresetPreferencesPath)
+    if cachedData then
+      return cachedData
+    end
+    colorPresetPreferencesPath = false
+  end
+
+  local candidates = getEditorPreferencesCandidates()
+  for _, candidate in ipairs(candidates) do
+    local data, resolved = tryReadPreferencesFromPath(candidate)
+    if data then
+      colorPresetPreferencesPath = resolved or candidate
+      return data
+    end
+  end
+
+  return {}
+end
+
+local function quoteJsonString(value)
+  local str = tostring(value or '')
+  str = str:gsub('\\', '\\\\')
+  str = str:gsub('"', '\\"')
+  str = str:gsub('\r', '\\r')
+  str = str:gsub('\n', '\\n')
+  return '"' .. str .. '"'
+end
+
+local function encodeColorPresetsForStorage(presets)
+  if type(presets) ~= 'table' then
+    return '[]'
+  end
+  local items = {}
+  for i = 1, #presets do
+    local preset = presets[i]
+    if type(preset) == 'table' then
+      local name = quoteJsonString(preset.name or '')
+      local value = preset.value
+      if type(value) ~= 'table' then
+        value = {}
+      end
+      local components = {}
+      for j = 1, 4 do
+        local component = clampFraction01(value[j])
+        components[j] = string.format('%.6f', component)
+      end
+      local valueStr = '[' .. table.concat(components, ',') .. ']'
+      items[#items + 1] = string.format('{"name":%s,"value":%s}', name, valueStr)
+    end
+  end
+  return '[' .. table.concat(items, ',') .. ']'
+end
+
+local function tryWritePreferencesToPath(path, data)
+  if not path or path == '' then
+    return false, 'invalid_path'
+  end
+
+  local directory = path:match('^(.*)/[^/]+$')
+  if directory and directory ~= '' then
+    ensureDirectory(directory)
+  end
+
+  local okWrite, resultOrErr = safePcall(jsonWriteFile, path, data, true)
+  if okWrite and resultOrErr ~= false then
+    return true, path
+  end
+
+  if not isAbsolutePath(path) then
+    local absolute = makeAbsolutePath(path)
+    if absolute and absolute ~= path then
+      local absDir = absolute:match('^(.*)/[^/]+$')
+      if absDir and absDir ~= '' then
+        ensureDirectory(absDir)
+      end
+      okWrite, resultOrErr = safePcall(jsonWriteFile, absolute, data, true)
+      if okWrite and resultOrErr ~= false then
+        return true, absolute
+      end
+    end
+  end
+
+  if not okWrite then
+    return false, tostring(resultOrErr)
+  end
+
+  return false, 'jsonWriteFile returned false'
+end
+
+local function writeEditorPreferences(data)
+  if colorPresetPreferencesPath and colorPresetPreferencesPath ~= false then
+    local okWrite, resolved = tryWritePreferencesToPath(colorPresetPreferencesPath, data)
+    if okWrite then
+      colorPresetPreferencesPath = resolved or colorPresetPreferencesPath
+      return true
+    end
+    colorPresetPreferencesPath = false
+  end
+
+  local candidates = getEditorPreferencesCandidates()
+  local lastError = nil
+  for _, candidate in ipairs(candidates) do
+    local okWrite, resolved = tryWritePreferencesToPath(candidate, data)
+    if okWrite then
+      colorPresetPreferencesPath = resolved or candidate
+      return true
+    end
+    lastError = resolved or lastError
+  end
+
+  return false, lastError or 'preferences_path_unavailable'
+end
+
+local function buildPresetNameFromValue(value)
+  if type(value) ~= 'table' then
+    return '#FFFFFF'
+  end
+  local r = math.floor((tonumber(value[1]) or 0) * 255 + 0.5)
+  local g = math.floor((tonumber(value[2]) or 0) * 255 + 0.5)
+  local b = math.floor((tonumber(value[3]) or 0) * 255 + 0.5)
+  r = clamp(r, 0, 255)
+  g = clamp(g, 0, 255)
+  b = clamp(b, 0, 255)
+  return string.format('#%02X%02X%02X', r, g, b)
+end
+
+local function sanitizeColorPresetEntry(entry)
+  if type(entry) ~= 'table' then
+    return nil
+  end
+
+  local rawName = entry.name
+  if rawName and rawName ~= '' then
+    rawName = tostring(rawName)
+    rawName = rawName:gsub('^%s+', ''):gsub('%s+$', '')
+    if rawName == '' then
+      rawName = nil
+    end
+  else
+    rawName = nil
+  end
+
+  local rawValue = entry.value
+  if type(rawValue) ~= 'table' then
+    return nil
+  end
+
+  local r = rawValue[1]
+  local g = rawValue[2]
+  local b = rawValue[3]
+  local a = rawValue[4]
+
+  if r == nil and rawValue.r ~= nil then r = rawValue.r end
+  if g == nil and rawValue.g ~= nil then g = rawValue.g end
+  if b == nil and rawValue.b ~= nil then b = rawValue.b end
+  if a == nil then
+    if rawValue.a ~= nil then
+      a = rawValue.a
+    elseif rawValue.alpha ~= nil then
+      a = rawValue.alpha
+    end
+  end
+
+  r = clampFraction01(r)
+  g = clampFraction01(g)
+  b = clampFraction01(b)
+  a = clampFraction01(a)
+
+  local value = {r, g, b, a}
+
+  local sanitized = {
+    name = rawName or buildPresetNameFromValue(value),
+    value = value
+  }
+
+  return sanitized
+end
+
+local function extractColorPresets(preferences)
+  local result = {}
+  if type(preferences) ~= 'table' then
+    return result
+  end
+
+  local dynamicTool = preferences.dynamicDecalsTool
+  if type(dynamicTool) ~= 'table' then
+    return result
+  end
+
+  local colorGroup = dynamicTool.colorPresets
+  if type(colorGroup) ~= 'table' then
+    return result
+  end
+
+  local presetsEntry = colorGroup.presets or colorGroup
+  local rawValue = presetsEntry and presetsEntry.value or nil
+  local decoded
+  if type(rawValue) == 'string' then
+    local okDecode, decodedValue = pcall(jsonDecode, rawValue)
+    if okDecode and type(decodedValue) == 'table' then
+      decoded = decodedValue
+    end
+  elseif type(rawValue) == 'table' then
+    decoded = rawValue
+  end
+
+  if type(decoded) ~= 'table' then
+    return result
+  end
+
+  for i = 1, #decoded do
+    local sanitized = sanitizeColorPresetEntry(decoded[i])
+    if sanitized then
+      result[#result + 1] = sanitized
+    end
+  end
+
+  return result
+end
+
+local function loadColorPresetsFromDisk()
+  local preferences = readEditorPreferences()
+  return extractColorPresets(preferences)
+end
+
+local function saveColorPresetsToDisk(presets)
+  local preferences = readEditorPreferences()
+
+  if type(preferences) ~= 'table' then
+    preferences = {}
+  end
+
+  if type(preferences.dynamicDecalsTool) ~= 'table' then
+    preferences.dynamicDecalsTool = {}
+  end
+
+  local dynamicTool = preferences.dynamicDecalsTool
+  if type(dynamicTool.colorPresets) ~= 'table' then
+    dynamicTool.colorPresets = {}
+  end
+
+  local colorGroup = dynamicTool.colorPresets
+  if type(colorGroup.presets) ~= 'table' then
+    colorGroup.presets = {}
+  end
+
+  colorGroup.presets.type = 'table'
+  colorGroup.presets.value = encodeColorPresetsForStorage(presets)
+  colorGroup.presets.version = colorGroup.presets.version or 0
+
+  local okWrite, err = writeEditorPreferences(preferences)
+  if not okWrite then
+    return false, err
+  end
+
+  return true
+end
+
+local function ensureColorPresetsLoaded()
+  if userColorPresets ~= nil then
+    return
+  end
+
+  local presets = loadColorPresetsFromDisk()
+  if type(presets) ~= 'table' then
+    presets = {}
+  end
+  userColorPresets = presets
+end
+
+local function copyColorPresets()
+  ensureColorPresetsLoaded()
+  local result = {}
+  if type(userColorPresets) ~= 'table' then
+    return result
+  end
+  for i = 1, #userColorPresets do
+    local preset = userColorPresets[i]
+    if type(preset) == 'table' then
+      local entry = { name = preset.name }
+      local value = preset.value
+      if type(value) == 'table' then
+        entry.value = {
+          clampFraction01(value[1]),
+          clampFraction01(value[2]),
+          clampFraction01(value[3]),
+          clampFraction01(value[4] ~= nil and value[4] or 1)
+        }
+      else
+        entry.value = {0, 0, 0, 1}
+      end
+      result[#result + 1] = entry
+    end
+  end
+  return result
+end
+
+local function sendColorPresets()
+  ensureColorPresetsLoaded()
+  guihooks.trigger('VehiclePartsPaintingColorPresets', { colorPresets = copyColorPresets() })
+end
+
+local function addColorPresetEntry(entry)
+  local sanitized = sanitizeColorPresetEntry(entry)
+  if not sanitized then
+    return
+  end
+
+  ensureColorPresetsLoaded()
+
+  userColorPresets = userColorPresets or {}
+
+  local targetName = sanitized.name and string.lower(tostring(sanitized.name)) or nil
+  local replaced = false
+  if targetName then
+    for index = 1, #userColorPresets do
+      local existing = userColorPresets[index]
+      if existing and existing.name and string.lower(tostring(existing.name)) == targetName then
+        userColorPresets[index] = sanitized
+        replaced = true
+        break
+      end
+    end
+  end
+
+  if not replaced then
+    table.insert(userColorPresets, sanitized)
+  end
+
+  local okSave, err = saveColorPresetsToDisk(userColorPresets)
+  if not okSave then
+    log('W', logTag, string.format('Failed to save color presets: %s', tostring(err)))
+  end
+
+  sendColorPresets()
+end
+
+local function addColorPreset(jsonStr)
+  if not jsonStr then return end
+  if type(jsonStr) == 'table' then
+    addColorPresetEntry(jsonStr)
+    return
+  end
+  if type(jsonStr) ~= 'string' then return end
+  local okDecode, data = pcall(jsonDecode, jsonStr)
+  if not okDecode then
+    log('W', logTag, 'Failed to decode color preset JSON: ' .. tostring(data))
+    return
+  end
+  addColorPresetEntry(data)
+end
+
+local function requestColorPresets()
+  sendColorPresets()
 end
 
 local function getUserVehiclesDir()
@@ -1229,13 +1745,20 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
     }
     local state = storedPartPaintsByVeh[vehId]
     local customEntry = state and state[partPath]
-    local paints = customEntry and customEntry.paints or nil
-    if not paints then
-      paints = basePaints
-    else
+    local customPaints = customEntry and customEntry.paints or nil
+    local hasCustomPaints = type(customPaints) == 'table' and not tableIsEmpty(customPaints)
+    if hasCustomPaints then
       entry.hasCustomPaint = true
+    else
+      customPaints = nil
     end
+    local paints = hasCustomPaints and customPaints or basePaints
     entry.currentPaints = copyPaints(paints)
+    if hasCustomPaints then
+      entry.customPaints = copyPaints(customPaints)
+    else
+      entry.customPaints = nil
+    end
     local descriptorIdentifiers
     if descriptors then
       descriptors[partPath] = descriptors[partPath] or {}
@@ -1271,13 +1794,13 @@ end
 local function sendState(targetVehId)
   local vehId = targetVehId or be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
-    guihooks.trigger('VehiclePartsPaintingState', {vehicleId = false, parts = {}, basePaints = {}})
+    guihooks.trigger('VehiclePartsPaintingState', {vehicleId = false, parts = {}, basePaints = {}, colorPresets = copyColorPresets()})
     return
   end
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   if not vehObj or not vehData then
-    guihooks.trigger('VehiclePartsPaintingState', {vehicleId = false, parts = {}, basePaints = {}})
+    guihooks.trigger('VehiclePartsPaintingState', {vehicleId = false, parts = {}, basePaints = {}, colorPresets = copyColorPresets()})
     return
   end
 
@@ -1336,7 +1859,8 @@ local function sendState(targetVehId)
   local data = {
     vehicleId = vehId,
     parts = parts,
-    basePaints = copyPaints(basePaints)
+    basePaints = copyPaints(basePaints),
+    colorPresets = copyColorPresets()
   }
 
   guihooks.trigger('VehiclePartsPaintingState', data)
@@ -1807,6 +2331,7 @@ local function onVehicleSpawned(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
   end
+  showAllParts(vehId)
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   sendSavedConfigs(vehId, vehData, vehObj)
@@ -1817,6 +2342,7 @@ local function onVehicleResetted(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
   end
+  showAllParts(vehId)
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   sendSavedConfigs(vehId, vehData, vehObj)
@@ -1837,9 +2363,13 @@ end
 
 local function onVehicleSwitched(oldId, newId, player)
   if not player then return end
+  if oldId and oldId ~= -1 then
+    showAllParts(oldId)
+  end
   if newId and newId ~= -1 then
     applyStoredPaints(newId)
     sendState(newId)
+    showAllParts(newId)
     local vehObj = getObjectByID(newId)
     local vehData = vehManager.getVehicleData(newId)
     sendSavedConfigs(newId, vehData, vehObj)
@@ -1856,10 +2386,12 @@ local function onExtensionLoaded()
   activePartIdSetByVeh = {}
   ensuredPartConditionsByVeh = {}
   savedConfigCacheByVeh = {}
+  userColorPresets = nil
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     applyStoredPaints(currentVeh)
     sendState(currentVeh)
+    showAllParts(currentVeh)
     local vehObj = getObjectByID(currentVeh)
     local vehData = vehManager.getVehicleData(currentVeh)
     sendSavedConfigs(currentVeh, vehData, vehObj)
@@ -1876,11 +2408,13 @@ local function onExtensionUnloaded()
   activePartIdSetByVeh = {}
   ensuredPartConditionsByVeh = {}
   savedConfigCacheByVeh = {}
+  userColorPresets = nil
   clearHighlight()
 end
 
 M.requestState = requestState
 M.requestSavedConfigs = requestSavedConfigs
+M.requestColorPresets = requestColorPresets
 M.applyPartPaintJson = applyPartPaintJson
 M.setPartPaint = setPartPaint
 M.resetPartPaint = resetPartPaint
@@ -1890,6 +2424,7 @@ M.clearHighlight = clearHighlight
 M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 M.saveCurrentConfiguration = saveCurrentConfiguration
 M.spawnSavedConfiguration = spawnSavedConfiguration
+M.addColorPreset = addColorPreset
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
