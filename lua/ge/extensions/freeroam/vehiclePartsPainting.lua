@@ -171,8 +171,8 @@ else
 end
 if obj and obj.queueGameEngineLua then
   local vehId = obj:getID()
-  local identifierLiteral = resultIdentifier and string.format('%q', resultIdentifier) or 'nil'
-  local errorLiteral = lastError and string.format('%q', lastError) or 'nil'
+  local identifierLiteral = resultIdentifier and string.format('%%q', resultIdentifier) or 'nil'
+  local errorLiteral = lastError and string.format('%%q', lastError) or 'nil'
   local cmd = 'extensions.hook("onVehiclePartsPaintingResult", ' .. tostring(vehId) .. ', ' .. partPathLiteral .. ', ' .. partNameLiteral .. ', ' .. slotPathLiteral .. ', ' .. tostring(applied) .. ', ' .. identifierLiteral .. ', ' .. errorLiteral .. ')'
   obj:queueGameEngineLua(cmd)
 end
