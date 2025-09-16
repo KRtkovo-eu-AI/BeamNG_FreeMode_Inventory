@@ -22,6 +22,8 @@ local colorPresetPreferencesPath = false
 local editorPreferencesCandidates = nil
 local lastKnownPlayerVehicleId = nil
 
+local collectCustomPartPaintsForSave -- forward declaration for fallback saves
+
 local function isLikelyPlayerVehicleId(vehId)
   if not vehId or vehId == -1 then
     return false
@@ -1929,7 +1931,7 @@ local function setConfigPaintsEntry(vehData, partPath, paints)
   end
 end
 
-local function collectCustomPartPaintsForSave(vehId, vehData)
+collectCustomPartPaintsForSave = function(vehId, vehData)
   local collected = {}
 
   if vehData and vehData.config and type(vehData.config.customPartPaints) == 'table' then
