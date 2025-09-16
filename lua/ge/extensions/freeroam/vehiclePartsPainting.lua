@@ -12,6 +12,8 @@ local jbeamIO = require('jbeam/io')
 local storedPartPaintsByVeh = {}
 local highlightedParts = {}
 local validPartPathsByVeh = {}
+local partDescriptorsByVeh = {}
+local activePartIdSetByVeh = {}
 
 local function findNodeByPartPath(node, targetPath)
   if not node or not targetPath then return nil end
@@ -36,15 +38,147 @@ local function resolvePartName(vehData, partPath)
   return nil
 end
 
-local function queuePartPaintCommands(vehObj, partPath, partName, paints)
-  if not vehObj or not paints then return end
-  local serialized = serialize(paints)
-  if partPath and partPath ~= '' then
-    vehObj:queueLuaCommand(string.format('partCondition.setPartPaints(%q, %s, 0)', partPath, serialized))
+local function queuePartPaintCommands(vehObj, identifiers, paints)
+  if not vehObj or not paints or tableIsEmpty(identifiers) then return end
+  local serializedPaints = serialize(paints)
+  local queued = {}
+  for _, identifier in ipairs(identifiers) do
+    if identifier and identifier ~= '' then
+      local serializedIdentifier = serialize(identifier)
+      if serializedIdentifier and not queued[serializedIdentifier] then
+        queued[serializedIdentifier] = true
+        vehObj:queueLuaCommand(string.format('partCondition.setPartPaints(%s, %s, 0)', serializedIdentifier, serializedPaints))
+      end
+    end
   end
-  if partName and partName ~= '' and partName ~= partPath then
-    vehObj:queueLuaCommand(string.format('partCondition.setPartPaints(%q, %s, 0)', partName, serialized))
+end
+
+local function collectPartIdentifierCandidates(partPath, partName, slotPath)
+  local candidates = {}
+  local seen = {}
+  local function addCandidate(value)
+    if type(value) ~= 'string' then return end
+    if value == '' then return end
+    if not seen[value] then
+      seen[value] = true
+      table.insert(candidates, value)
+    end
   end
+
+  addCandidate(partPath)
+  if partName and partName ~= '' then
+    addCandidate(partName)
+    addCandidate('/' .. partName)
+  end
+
+  if slotPath and slotPath ~= '' then
+    addCandidate(slotPath)
+    local trimmedSlot = slotPath:gsub('/+$', '')
+    if trimmedSlot ~= slotPath then
+      addCandidate(trimmedSlot)
+    end
+
+    if partName and partName ~= '' then
+      if slotPath:sub(-1) == '/' then
+        addCandidate(slotPath .. partName)
+        if trimmedSlot ~= slotPath and trimmedSlot ~= '' then
+          addCandidate(trimmedSlot .. partName)
+        end
+      else
+        addCandidate(slotPath .. '/' .. partName)
+        addCandidate(slotPath .. partName)
+      end
+
+      if slotPath:sub(1, 1) ~= '/' then
+        local prefixed = '/' .. slotPath
+        addCandidate(prefixed)
+        if prefixed:sub(-1) == '/' then
+          addCandidate(prefixed .. partName)
+        else
+          addCandidate(prefixed .. '/' .. partName)
+          addCandidate(prefixed .. partName)
+        end
+      end
+    end
+  end
+
+  return candidates
+end
+
+local function resolvePartIdentifiers(partPath, partName, slotPath, activePartIds)
+  local candidates = collectPartIdentifierCandidates(partPath, partName, slotPath)
+  if tableIsEmpty(candidates) then
+    if partPath and partPath ~= '' then
+      return {partPath}
+    end
+    if partName and partName ~= '' then
+      return {partName}
+    end
+    if slotPath and slotPath ~= '' then
+      return {slotPath}
+    end
+    return {}
+  end
+
+  if not activePartIds or tableIsEmpty(activePartIds) then
+    return candidates
+  end
+
+  local resolved = {}
+  local fallbacks = {}
+  local resolvedSeen = {}
+  local fallbackSeen = {}
+  for _, identifier in ipairs(candidates) do
+    if activePartIds[identifier] then
+      if not resolvedSeen[identifier] then
+        resolvedSeen[identifier] = true
+        table.insert(resolved, identifier)
+      end
+    else
+      if not fallbackSeen[identifier] then
+        fallbackSeen[identifier] = true
+        table.insert(fallbacks, identifier)
+      end
+    end
+  end
+
+  if tableIsEmpty(resolved) then
+    return fallbacks
+  end
+
+  for _, identifier in ipairs(fallbacks) do
+    table.insert(resolved, identifier)
+  end
+
+  return resolved
+end
+
+local function resolvePartIdentifiersForVehicle(vehId, partPath, partName, slotPath)
+  if not vehId then
+    return resolvePartIdentifiers(partPath, partName, slotPath, nil)
+  end
+
+  partDescriptorsByVeh[vehId] = partDescriptorsByVeh[vehId] or {}
+  local descriptors = partDescriptorsByVeh[vehId]
+  local descriptor = descriptors[partPath]
+
+  local activePartIds = activePartIdSetByVeh[vehId]
+
+  if descriptor then
+    descriptor.partName = partName or descriptor.partName
+    descriptor.slotPath = slotPath or descriptor.slotPath
+    descriptor.identifiers = resolvePartIdentifiers(descriptor.partPath or partPath, descriptor.partName, descriptor.slotPath, activePartIds)
+    return descriptor.identifiers, descriptor
+  end
+
+  local identifiers = resolvePartIdentifiers(partPath, partName, slotPath, activePartIds)
+  descriptors[partPath] = {
+    partPath = partPath,
+    partName = partName,
+    slotPath = slotPath,
+    identifiers = identifiers
+  }
+  return identifiers, descriptors[partPath]
 end
 
 local function clamp01(value)
@@ -148,7 +282,9 @@ local function syncStateWithConfig(vehId, vehData)
       local previous = state[partPath]
       state[partPath] = {
         paints = copyPaints(sanitized),
-        partName = previous and previous.partName or nil
+        partName = previous and previous.partName or nil,
+        slotPath = previous and previous.slotPath or nil,
+        identifiers = previous and previous.identifiers or nil
       }
     end
   end
@@ -173,6 +309,12 @@ local function cleanupState(vehId, validPaths, vehData)
       if vehData and vehData.config and vehData.config.customPartPaints then
         vehData.config.customPartPaints[partPath] = nil
       end
+      if partDescriptorsByVeh[vehId] then
+        partDescriptorsByVeh[vehId][partPath] = nil
+        if tableIsEmpty(partDescriptorsByVeh[vehId]) then
+          partDescriptorsByVeh[vehId] = nil
+        end
+      end
     end
   end
   if vehData and vehData.config and vehData.config.customPartPaints and tableIsEmpty(vehData.config.customPartPaints) then
@@ -183,10 +325,23 @@ local function cleanupState(vehId, validPaths, vehData)
   end
 end
 
-local function gatherParts(node, result, availableParts, basePaints, validPaths, depth, vehId)
+local function gatherParts(node, result, availableParts, basePaints, validPaths, depth, vehId, descriptors, activePartIds)
   if not node then return end
-  local partPath = node.partPath or node.path
+  local slotPath = node.path or ''
+  local partPath = node.partPath
   local chosenPartName = node.chosenPartName
+  if (not partPath or partPath == '') and chosenPartName and chosenPartName ~= '' then
+    if slotPath == '' then
+      partPath = '/' .. chosenPartName
+    else
+      if slotPath:sub(-1) == '/' then
+        partPath = slotPath .. chosenPartName
+      else
+        partPath = slotPath .. chosenPartName
+      end
+    end
+  end
+
   if partPath and chosenPartName and chosenPartName ~= '' then
     validPaths[partPath] = true
     local info = availableParts[chosenPartName] or {}
@@ -195,6 +350,7 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
       partPath = partPath,
       partName = chosenPartName,
       slotName = node.name or node.id,
+      slotPath = slotPath,
       depth = depth or 0,
       displayName = displayName,
       hasCustomPaint = false
@@ -208,9 +364,23 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
       entry.hasCustomPaint = true
     end
     entry.currentPaints = copyPaints(paints)
+    local descriptorIdentifiers
+    if descriptors then
+      descriptors[partPath] = descriptors[partPath] or {}
+      local descriptor = descriptors[partPath]
+      descriptor.partPath = partPath
+      descriptor.partName = chosenPartName
+      descriptor.slotPath = slotPath
+      descriptor.identifiers = resolvePartIdentifiers(partPath, chosenPartName, slotPath, activePartIds)
+      descriptorIdentifiers = descriptor.identifiers
+    else
+      descriptorIdentifiers = resolvePartIdentifiers(partPath, chosenPartName, slotPath, activePartIds)
+    end
     local vehState = storedPartPaintsByVeh[vehId]
     if vehState and vehState[partPath] then
       vehState[partPath].partName = chosenPartName
+      vehState[partPath].slotPath = slotPath
+      vehState[partPath].identifiers = descriptorIdentifiers
     end
     table.insert(result, entry)
   end
@@ -221,7 +391,7 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
     end
     table.sort(orderedChildren, function(a, b) return a.key < b.key end)
     for _, child in ipairs(orderedChildren) do
-      gatherParts(child.child, result, availableParts, basePaints, validPaths, (depth or 0) + 1, vehId)
+      gatherParts(child.child, result, availableParts, basePaints, validPaths, (depth or 0) + 1, vehId, descriptors, activePartIds)
     end
   end
 end
@@ -245,7 +415,19 @@ local function sendState(targetVehId)
   local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
   local parts = {}
   local validPaths = {}
-  gatherParts(vehData.config.partsTree, parts, availableParts, basePaints, validPaths, 0, vehId)
+  local activePartIds = nil
+  if vehData.vdata and type(vehData.vdata.activeParts) == 'table' then
+    activePartIds = {}
+    for partId in pairs(vehData.vdata.activeParts) do
+      activePartIds[partId] = true
+    end
+    if tableIsEmpty(activePartIds) then
+      activePartIds = nil
+    end
+  end
+
+  local descriptors = {}
+  gatherParts(vehData.config.partsTree, parts, availableParts, basePaints, validPaths, 0, vehId, descriptors, activePartIds)
   cleanupState(vehId, validPaths, vehData)
 
   if tableIsEmpty(validPaths) then
@@ -256,6 +438,18 @@ local function sendState(targetVehId)
       highlightAll[partPath] = true
     end
     validPartPathsByVeh[vehId] = highlightAll
+  end
+
+  if tableIsEmpty(descriptors) then
+    partDescriptorsByVeh[vehId] = nil
+  else
+    partDescriptorsByVeh[vehId] = descriptors
+  end
+
+  if activePartIds and not tableIsEmpty(activePartIds) then
+    activePartIdSetByVeh[vehId] = activePartIds
+  else
+    activePartIdSetByVeh[vehId] = nil
   end
 
   table.sort(parts, function(a, b)
@@ -285,7 +479,26 @@ local function applyStoredPaints(vehId)
     if entry and entry.paints then
       local resolvedName = entry.partName or resolvePartName(vehData, partPath)
       entry.partName = resolvedName
-      queuePartPaintCommands(vehObj, partPath, resolvedName, entry.paints)
+      local descriptorSlotPath = entry.slotPath
+      local identifiers, descriptor = resolvePartIdentifiersForVehicle(vehId, partPath, resolvedName, descriptorSlotPath)
+      if tableIsEmpty(identifiers) then
+        identifiers = {}
+        if partPath and partPath ~= '' then
+          table.insert(identifiers, partPath)
+        end
+        if resolvedName and resolvedName ~= '' and resolvedName ~= partPath then
+          table.insert(identifiers, resolvedName)
+        end
+      end
+
+      queuePartPaintCommands(vehObj, identifiers, entry.paints)
+
+      local identifierCopy = {}
+      for i = 1, #identifiers do
+        identifierCopy[i] = identifiers[i]
+      end
+      entry.identifiers = identifierCopy
+      entry.slotPath = descriptor and descriptor.slotPath or descriptorSlotPath
     end
   end
 end
@@ -303,7 +516,7 @@ local function setConfigPaintsEntry(vehData, partPath, paints)
   end
 end
 
-local function setPartPaint(partPath, paints, partName)
+local function setPartPaint(partPath, paints, partName, slotPath)
   if not partPath then return end
   local vehObj = getPlayerVehicle(0)
   if not vehObj then return end
@@ -322,12 +535,42 @@ local function setPartPaint(partPath, paints, partName)
     resolvedName = resolvePartName(vehData, partPath)
   end
 
-  queuePartPaintCommands(vehObj, partPath, resolvedName, sanitizedPaints)
+  local descriptorSlotPath = slotPath
+  if not descriptorSlotPath then
+    local existingDescriptor = partDescriptorsByVeh[vehId] and partDescriptorsByVeh[vehId][partPath]
+    if existingDescriptor and existingDescriptor.slotPath and existingDescriptor.slotPath ~= '' then
+      descriptorSlotPath = existingDescriptor.slotPath
+    else
+      local existingState = storedPartPaintsByVeh[vehId] and storedPartPaintsByVeh[vehId][partPath]
+      if existingState and existingState.slotPath and existingState.slotPath ~= '' then
+        descriptorSlotPath = existingState.slotPath
+      end
+    end
+  end
+
+  local identifiers, descriptor = resolvePartIdentifiersForVehicle(vehId, partPath, resolvedName, descriptorSlotPath)
+  if tableIsEmpty(identifiers) then
+    identifiers = {}
+    if partPath and partPath ~= '' then
+      table.insert(identifiers, partPath)
+    end
+    if resolvedName and resolvedName ~= '' and resolvedName ~= partPath then
+      table.insert(identifiers, resolvedName)
+    end
+  end
+
+  queuePartPaintCommands(vehObj, identifiers, sanitizedPaints)
 
   storedPartPaintsByVeh[vehId] = storedPartPaintsByVeh[vehId] or {}
+  local identifierCopy = {}
+  for i = 1, #identifiers do
+    identifierCopy[i] = identifiers[i]
+  end
   storedPartPaintsByVeh[vehId][partPath] = {
     paints = copyPaints(sanitizedPaints),
-    partName = resolvedName
+    partName = resolvedName,
+    slotPath = descriptor and descriptor.slotPath or descriptorSlotPath,
+    identifiers = identifierCopy
   }
   setConfigPaintsEntry(vehData, partPath, sanitizedPaints)
 
@@ -341,7 +584,7 @@ local function applyPartPaintJson(jsonStr)
     log('E', logTag, 'Failed to decode paint JSON: ' .. tostring(data))
     return
   end
-  setPartPaint(data.partPath or data.path, data.paints, data.partName or data.name)
+  setPartPaint(data.partPath or data.path, data.paints, data.partName or data.name, data.slotPath or data.slot or data.slotName)
 end
 
 local function resetPartPaint(partPath)
@@ -361,7 +604,27 @@ local function resetPartPaint(partPath)
     resolvedName = resolvePartName(vehData, partPath)
   end
 
-  queuePartPaintCommands(vehObj, partPath, resolvedName, basePaints)
+  local descriptorSlotPath = nil
+  if storedState and storedState[partPath] and storedState[partPath].slotPath then
+    descriptorSlotPath = storedState[partPath].slotPath
+  end
+  local existingDescriptor = partDescriptorsByVeh[vehId] and partDescriptorsByVeh[vehId][partPath]
+  if existingDescriptor and existingDescriptor.slotPath and existingDescriptor.slotPath ~= '' then
+    descriptorSlotPath = descriptorSlotPath or existingDescriptor.slotPath
+  end
+
+  local identifiers = resolvePartIdentifiersForVehicle(vehId, partPath, resolvedName, descriptorSlotPath)
+  if tableIsEmpty(identifiers) then
+    identifiers = {}
+    if partPath and partPath ~= '' then
+      table.insert(identifiers, partPath)
+    end
+    if resolvedName and resolvedName ~= '' and resolvedName ~= partPath then
+      table.insert(identifiers, resolvedName)
+    end
+  end
+
+  queuePartPaintCommands(vehObj, identifiers, basePaints)
 
   if storedPartPaintsByVeh[vehId] then
     storedPartPaintsByVeh[vehId][partPath] = nil
@@ -388,12 +651,36 @@ local function showAllParts(targetVehId)
     local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
     local tmpParts = {}
     highlight = {}
-    gatherParts(vehData.config.partsTree, tmpParts, availableParts, basePaints, highlight, 0, vehId)
+    local activePartIds = nil
+    if vehData.vdata and type(vehData.vdata.activeParts) == 'table' then
+      activePartIds = {}
+      for partId in pairs(vehData.vdata.activeParts) do
+        activePartIds[partId] = true
+      end
+      if tableIsEmpty(activePartIds) then
+        activePartIds = nil
+      end
+    end
+
+    local descriptors = {}
+    gatherParts(vehData.config.partsTree, tmpParts, availableParts, basePaints, highlight, 0, vehId, descriptors, activePartIds)
     if tableIsEmpty(highlight) then
       highlight = nil
       validPartPathsByVeh[vehId] = nil
     else
       validPartPathsByVeh[vehId] = highlight
+    end
+
+    if tableIsEmpty(descriptors) then
+      partDescriptorsByVeh[vehId] = nil
+    else
+      partDescriptorsByVeh[vehId] = descriptors
+    end
+
+    if activePartIds and not tableIsEmpty(activePartIds) then
+      activePartIdSetByVeh[vehId] = activePartIds
+    else
+      activePartIdSetByVeh[vehId] = nil
     end
   end
 
@@ -443,6 +730,8 @@ end
 local function onVehicleDestroyed(vehId)
   storedPartPaintsByVeh[vehId] = nil
   validPartPathsByVeh[vehId] = nil
+  partDescriptorsByVeh[vehId] = nil
+  activePartIdSetByVeh[vehId] = nil
   if vehId == be:getPlayerVehicleID(0) then
     sendState(-1)
   end
@@ -461,6 +750,8 @@ end
 local function onExtensionLoaded()
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
+  partDescriptorsByVeh = {}
+  activePartIdSetByVeh = {}
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     applyStoredPaints(currentVeh)
@@ -473,6 +764,8 @@ end
 local function onExtensionUnloaded()
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
+  partDescriptorsByVeh = {}
+  activePartIdSetByVeh = {}
   clearHighlight()
 end
 

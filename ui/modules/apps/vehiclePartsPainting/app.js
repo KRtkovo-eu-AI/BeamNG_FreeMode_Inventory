@@ -298,6 +298,7 @@ angular.module('beamng.apps')
         const payload = {
           partPath: state.selectedPartPath,
           partName: state.selectedPart ? state.selectedPart.partName : null,
+          slotPath: state.selectedPart ? state.selectedPart.slotPath : null,
           paints: paints
         };
         const command = 'freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')';
