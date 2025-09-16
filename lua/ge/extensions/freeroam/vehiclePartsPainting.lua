@@ -2246,11 +2246,15 @@ local function showAllParts(targetVehId)
   if not vehId or vehId == -1 then return end
 
   local vehObj = getObjectByID(vehId)
-  local vehData = vehManager.getVehicleData(vehId)
-  if not vehObj or not vehData then return end
+  if not vehObj then return end
+
+  local vehData = nil
+  if vehManager and type(vehManager.getVehicleData) == 'function' then
+    vehData = vehManager.getVehicleData(vehId)
+  end
 
   local highlight = validPartPathsByVeh[vehId]
-  if not highlight or tableIsEmpty(highlight) then
+  if (not highlight or tableIsEmpty(highlight)) and vehData then
     local basePaints = getVehicleBasePaints(vehData, vehObj)
     local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
     local tmpParts = {}
@@ -2290,11 +2294,16 @@ local function showAllParts(targetVehId)
 
   highlightedParts = {}
 
-  if highlight then
-    extensions.core_vehicle_partmgmt.highlightParts(highlight)
-    applyPartTransparency(vehId, nil)
-  else
-    vehObj:setMeshAlpha(1, "", false)
+  applyPartTransparency(vehId, nil)
+
+  local currentPlayerVehId = be:getPlayerVehicleID(0)
+  if vehId == currentPlayerVehId then
+    if extensions.core_vehicle_partmgmt and type(extensions.core_vehicle_partmgmt.highlightParts) == 'function' then
+      extensions.core_vehicle_partmgmt.highlightParts(highlight or {})
+    elseif vehObj then
+      vehObj:queueLuaCommand('bdebug.setPartsSelected({})')
+    end
+  elseif vehObj then
     vehObj:queueLuaCommand('bdebug.setPartsSelected({})')
   end
 end
