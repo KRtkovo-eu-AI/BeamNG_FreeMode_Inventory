@@ -59,6 +59,38 @@ local function deepCopy(value)
   return copy
 end
 
+local nativeTableUnpack = table and table.unpack or _G.unpack
+
+local function fallbackUnpack(list, index, maxIndex)
+  if index > maxIndex then
+    return
+  end
+  return list[index], fallbackUnpack(list, index + 1, maxIndex)
+end
+
+local function unpackArgs(list, startIndex, endIndex)
+  if type(list) ~= 'table' then
+    return list
+  end
+  local maxIndex = endIndex
+  if not maxIndex then
+    maxIndex = 0
+    for k in pairs(list) do
+      if type(k) == 'number' and k > maxIndex then
+        maxIndex = k
+      end
+    end
+  end
+  if maxIndex == 0 then
+    return
+  end
+  local firstIndex = startIndex or 1
+  if type(nativeTableUnpack) == 'function' then
+    return nativeTableUnpack(list, firstIndex, maxIndex)
+  end
+  return fallbackUnpack(list, firstIndex, maxIndex)
+end
+
 local function sanitizeFileName(name)
   if not name or name == '' then
     return nil
@@ -966,7 +998,7 @@ local function attemptCoreVehicleSave(vehId, relativePath, options, sanitizedFil
   end
   local lastError = nil
   for _, args in ipairs(attempts) do
-    local ok, resultOrErr = safePcall(coreVehicles.saveVehicleConfig, table.unpack(args))
+    local ok, resultOrErr = safePcall(coreVehicles.saveVehicleConfig, unpackArgs(args))
     if ok then
       local result = resultOrErr
       if result == false then
@@ -1003,7 +1035,7 @@ local function attemptCoreVehicleSpawn(vehId, relativePath, options)
   }
   local lastError = nil
   for _, args in ipairs(attempts) do
-    local ok, resultOrErr = tryReplace(table.unpack(args))
+    local ok, resultOrErr = tryReplace(unpackArgs(args))
     if ok then
       return true, resultOrErr
     end
@@ -1017,7 +1049,7 @@ local function attemptCoreVehicleSpawn(vehId, relativePath, options)
       {relativePath}
     }
     for _, args in ipairs(spawnAttempts) do
-      local ok, resultOrErr = safePcall(coreVehicles.spawnNewVehicle, table.unpack(args))
+      local ok, resultOrErr = safePcall(coreVehicles.spawnNewVehicle, unpackArgs(args))
       if ok then
         return true, resultOrErr
       end
