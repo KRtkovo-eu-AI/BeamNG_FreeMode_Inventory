@@ -304,6 +304,58 @@ angular.module('beamng.apps')
         return paints;
       }
 
+      function clonePaint(paint) {
+        if (!paint || typeof paint !== 'object') { return null; }
+        const baseColor = Array.isArray(paint.baseColor) ? paint.baseColor : [];
+        const clone = {
+          baseColor: [
+            clamp01(baseColor[0] !== undefined ? baseColor[0] : 1),
+            clamp01(baseColor[1] !== undefined ? baseColor[1] : 1),
+            clamp01(baseColor[2] !== undefined ? baseColor[2] : 1),
+            clamp01(baseColor[3] !== undefined ? baseColor[3] : 1)
+          ],
+          metallic: clamp01(paint.metallic !== undefined ? paint.metallic : 0),
+          roughness: clamp01(paint.roughness !== undefined ? paint.roughness : 0),
+          clearcoat: clamp01(paint.clearcoat !== undefined ? paint.clearcoat : 0),
+          clearcoatRoughness: clamp01(paint.clearcoatRoughness !== undefined ? paint.clearcoatRoughness : 0)
+        };
+
+        const reservedKeys = {
+          baseColor: true,
+          metallic: true,
+          roughness: true,
+          clearcoat: true,
+          clearcoatRoughness: true
+        };
+        if (paint && typeof paint === 'object') {
+          Object.keys(paint).forEach(function (key) {
+            if (reservedKeys[key]) { return; }
+            const value = paint[key];
+            if (Array.isArray(value)) {
+              clone[key] = value.slice();
+            } else if (value && typeof value === 'object') {
+              clone[key] = Object.assign({}, value);
+            } else {
+              clone[key] = value;
+            }
+          });
+        }
+
+        return clone;
+      }
+
+      function clonePaints(paints) {
+        if (!Array.isArray(paints)) { return []; }
+        const result = [];
+        for (let i = 0; i < paints.length; i++) {
+          const clone = clonePaint(paints[i]);
+          if (clone) {
+            result.push(clone);
+          }
+        }
+        return result;
+      }
+
       function sendShowAllCommand() {
         bngApi.engineLua('freeroam_vehiclePartsPainting.showAllParts()');
       }
@@ -371,6 +423,41 @@ angular.module('beamng.apps')
         } else {
           state.highlightSuspended = true;
           sendShowAllCommand();
+        }
+      }
+
+      function findPartByPath(partPath) {
+        if (!partPath || !Array.isArray(state.parts)) { return null; }
+        for (let i = 0; i < state.parts.length; i++) {
+          const candidate = state.parts[i];
+          if (candidate && candidate.partPath === partPath) {
+            return candidate;
+          }
+        }
+        return null;
+      }
+
+      function updateLocalPartPaintState(partPath, paints, hasCustomPaint) {
+        if (!partPath) { return; }
+        const part = findPartByPath(partPath) || (state.selectedPart && state.selectedPart.partPath === partPath ? state.selectedPart : null);
+        if (!part) { return; }
+
+        if (hasCustomPaint) {
+          const clonedPaints = clonePaints(paints);
+          if (!clonedPaints.length) { return; }
+          part.hasCustomPaint = true;
+          part.customPaints = clonedPaints;
+          part.currentPaints = clonePaints(clonedPaints);
+        } else {
+          part.hasCustomPaint = false;
+          part.customPaints = null;
+          const baseClone = clonePaints(state.basePaints);
+          part.currentPaints = baseClone.length ? baseClone : [];
+        }
+
+        if (state.selectedPart && state.selectedPart.partPath === part.partPath) {
+          state.selectedPart = part;
+          updateEditedPaints(part);
         }
       }
 
@@ -842,6 +929,7 @@ angular.module('beamng.apps')
         if (!state.selectedPartPath || !$scope.editedPaints.length) { return; }
         const paints = viewToPaints($scope.editedPaints);
         if (!paints.length) { return; }
+        updateLocalPartPaintState(state.selectedPartPath, paints, true);
         const payload = {
           partPath: state.selectedPartPath,
           partName: state.selectedPart ? state.selectedPart.partName : null,
@@ -854,6 +942,7 @@ angular.module('beamng.apps')
 
       $scope.resetPaint = function () {
         if (!state.selectedPartPath) { return; }
+        updateLocalPartPaintState(state.selectedPartPath, null, false);
         bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(state.selectedPartPath) + ')');
       };
 
