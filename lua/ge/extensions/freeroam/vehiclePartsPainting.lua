@@ -152,7 +152,21 @@ local function ensureDirectory(path)
   if not path or path == '' then return end
   if not FS or not FS.directoryExists or not FS.createDirectory then return end
 
-  local normalized = path:gsub('\\', '/')
+  local normalized = tostring(path):gsub('\\', '/')
+
+  if isAbsolutePath(normalized) and FS and FS.getUserPath then
+    local okUser, userPath = safePcall(FS.getUserPath, FS)
+    if okUser and userPath and userPath ~= '' then
+      local normalizedBase = tostring(userPath):gsub('\\', '/'):gsub('/+$', '') .. '/'
+      if normalized:sub(1, #normalizedBase) == normalizedBase then
+        normalized = normalized:sub(#normalizedBase + 1)
+        normalized = normalized:gsub('^/+', '')
+      end
+    end
+  end
+
+  if not normalized or normalized == '' then return end
+
   local okExists, exists = safePcall(FS.directoryExists, FS, normalized)
   if okExists and exists then
     return
@@ -671,18 +685,10 @@ local function requestColorPresets()
 end
 
 local function getUserVehiclesDir()
-  if not FS or not FS.getUserPath then
+  if not FS then
     return nil
   end
-  local ok, path = safePcall(FS.getUserPath, FS)
-  if not ok or not path or path == '' then
-    return nil
-  end
-  path = tostring(path):gsub('\\', '/')
-  if not path:find('/$', 1, true) then
-    path = path .. '/'
-  end
-  local vehiclesDir = path .. 'vehicles/'
+  local vehiclesDir = 'vehicles/'
   ensureDirectory(vehiclesDir)
   return vehiclesDir
 end
@@ -730,8 +736,8 @@ local function gatherSavedConfigsFromDisk(modelFolder)
                 local relativePath = string.format('vehicles/%s/%s.pc', modelFolder, fileName)
                 local isAbsolute = normalizedPath:match('^%a:/') or normalizedPath:sub(1, 1) == '/'
                 local absolutePath = normalizedPath
-                if targetDir and not isAbsolute then
-                  absolutePath = targetDir .. fileName .. '.pc'
+                if not isAbsolute then
+                  absolutePath = makeAbsolutePath(normalizedPath) or normalizedPath
                 end
 
                 local entry = {
@@ -746,9 +752,6 @@ local function gatherSavedConfigsFromDisk(modelFolder)
                 local okPng, hasPng = safePcall(FS.fileExists, FS, previewRelative)
                 if okPng and hasPng then
                   previewExists = true
-                elseif targetDir then
-                  okPng, hasPng = safePcall(FS.fileExists, FS, targetDir .. fileName .. '.png')
-                  previewExists = okPng and hasPng
                 end
                 if previewExists then
                   entry.previewImage = previewRelative
@@ -756,11 +759,6 @@ local function gatherSavedConfigsFromDisk(modelFolder)
 
                 local displayName = nil
                 local okRead, configData = safePcall(jsonReadFile, relativePath)
-                if not okRead or not configData then
-                  if targetDir then
-                    okRead, configData = safePcall(jsonReadFile, targetDir .. fileName .. '.pc')
-                  end
-                end
                 if okRead and type(configData) == 'table' then
                   displayName = sanitizeConfigDisplayName(configData.name)
                   if not displayName then
@@ -907,8 +905,9 @@ local function ensureConfigPreview(vehId, vehObj, modelFolder, sanitizedName, ta
     return
   end
 
-  local absoluteFilename = (targetDir .. sanitizedName .. '.png'):gsub('\\', '/')
   local relativeFilename = string.format('vehicles/%s/%s.png', modelFolder, sanitizedName)
+  local absoluteFilename = makeAbsolutePath(relativeFilename) or (targetDir .. sanitizedName .. '.png')
+  absoluteFilename = tostring(absoluteFilename or relativeFilename):gsub('\\', '/')
   local viewSuffix = sanitizedName:gsub('%s+', '_')
   local viewName = string.format('vehiclePartsPaintingPreview_%s_%s', tostring(vehId or (vehObj.getID and vehObj:getID()) or ''), viewSuffix)
   local options = {
@@ -1060,7 +1059,7 @@ local function saveCurrentUserConfig(configName)
   local targetDir = nil
   local targetPath = nil
   if userVehiclesDir then
-    targetDir = userVehiclesDir .. modelFolder .. '/'
+    targetDir = (userVehiclesDir .. modelFolder .. '/'):gsub('\\', '/')
     ensureDirectory(targetDir)
     targetPath = targetDir .. sanitizedName .. '.pc'
   else
@@ -1101,7 +1100,8 @@ local function saveCurrentUserConfig(configName)
     configCopy.name = configName
     configCopy.title = configCopy.title or configName
     configCopy.configType = configCopy.configType or 'User'
-    configCopy.customPartPaints = deepCopy(vehData.config and vehData.config.customPartPaints or storedPartPaintsByVeh[vehId])
+    local customPartPaints = collectCustomPartPaintsForSave(vehId, vehData)
+    configCopy.customPartPaints = customPartPaints and deepCopy(customPartPaints) or nil
 
     local writeTargets = {}
     local seenTarget = {}
@@ -1927,6 +1927,37 @@ local function setConfigPaintsEntry(vehData, partPath, paints)
       vehData.config.customPartPaints = nil
     end
   end
+end
+
+local function collectCustomPartPaintsForSave(vehId, vehData)
+  local collected = {}
+
+  if vehData and vehData.config and type(vehData.config.customPartPaints) == 'table' then
+    for partPath, paints in pairs(vehData.config.customPartPaints) do
+      local sanitized = sanitizePaints(paints)
+      if sanitized then
+        collected[partPath] = copyPaints(sanitized)
+      end
+    end
+  end
+
+  if tableIsEmpty(collected) then
+    local stored = storedPartPaintsByVeh[vehId]
+    if type(stored) == 'table' then
+      for partPath, entry in pairs(stored) do
+        local sanitized = sanitizePaints(entry and entry.paints)
+        if sanitized then
+          collected[partPath] = copyPaints(sanitized)
+        end
+      end
+    end
+  end
+
+  if tableIsEmpty(collected) then
+    return nil
+  end
+
+  return collected
 end
 
 local function setPartPaint(partPath, paints, partName, slotPath)
