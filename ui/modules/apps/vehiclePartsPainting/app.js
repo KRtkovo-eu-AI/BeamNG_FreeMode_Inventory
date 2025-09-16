@@ -1,5 +1,33 @@
 angular.module('beamng.apps')
-.directive('vehiclePartsPainting', ['bngApi', function (bngApi) {
+.directive('vehiclePartsPainting', ['$injector', function ($injector) {
+  function resolveBngApi() {
+    if ($injector) {
+      try {
+        const service = $injector.get('bngApi');
+        if (service) { return service; }
+      } catch (err) {
+        if (typeof window !== 'undefined' && window.console && typeof window.console.warn === 'function') {
+          window.console.warn('VehiclePartsPainting: Angular bngApi service unavailable, falling back to global.', err);
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined' && window.bngApi) {
+      return window.bngApi;
+    }
+
+    if (typeof window !== 'undefined' && window.console && typeof window.console.error === 'function') {
+      window.console.error('VehiclePartsPainting: Unable to access bngApi, vehicle highlighting and paint commands will be disabled.');
+    }
+
+    const noop = function () { };
+    return {
+      engineLua: noop
+    };
+  }
+
+  const bngApi = resolveBngApi();
+
   return {
     templateUrl: '/ui/modules/apps/vehiclePartsPainting/app.html',
     replace: true,
