@@ -146,9 +146,9 @@ local function queuePartPaintCommands(vehObj, vehId, partPath, partName, slotPat
     [[
 local identifiers = %s
 local paints = %s
-local partPathLiteral = %s
-local partNameLiteral = %s
-local slotPathLiteral = %s
+local partPathValue = %s
+local partNameValue = %s
+local slotPathValue = %s
 local resultIdentifier = nil
 local lastError = nil
 local applied = false
@@ -173,7 +173,22 @@ if obj and obj.queueGameEngineLua then
   local vehId = obj:getID()
   local identifierLiteral = resultIdentifier and string.format('%%q', resultIdentifier) or 'nil'
   local errorLiteral = lastError and string.format('%%q', lastError) or 'nil'
-  local cmd = 'extensions.hook("onVehiclePartsPaintingResult", ' .. tostring(vehId) .. ', ' .. partPathLiteral .. ', ' .. partNameLiteral .. ', ' .. slotPathLiteral .. ', ' .. tostring(applied) .. ', ' .. identifierLiteral .. ', ' .. errorLiteral .. ')'
+  local function toLiteral(value)
+    if value == nil then
+      return 'nil'
+    end
+    return string.format('%%q', value)
+  end
+  local cmd = string.format(
+    'extensions.hook("onVehiclePartsPaintingResult", %s, %s, %s, %s, %s, %s, %s)',
+    tostring(vehId),
+    toLiteral(partPathValue),
+    toLiteral(partNameValue),
+    toLiteral(slotPathValue),
+    tostring(applied),
+    identifierLiteral,
+    errorLiteral
+  )
   obj:queueGameEngineLua(cmd)
 end
 ]],
