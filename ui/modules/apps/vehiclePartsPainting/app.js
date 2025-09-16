@@ -65,7 +65,35 @@ angular.module('beamng.apps')
       }
 
       function rgbToHex(r, g, b) {
-        return '#' + componentToHex(r) + componentToHex(g) + componentToHex(b);
+        return ('#' + componentToHex(r) + componentToHex(g) + componentToHex(b)).toUpperCase();
+      }
+
+      function parseHtmlColor(value) {
+        if (typeof value !== 'string') { return null; }
+        let hex = value.trim();
+        if (!hex) { return null; }
+        if (hex.charAt(0) === '#') {
+          hex = hex.substring(1);
+        }
+        if (hex.length === 3) {
+          hex = hex.charAt(0) + hex.charAt(0) +
+            hex.charAt(1) + hex.charAt(1) +
+            hex.charAt(2) + hex.charAt(2);
+        } else if (hex.length !== 6) {
+          return null;
+        }
+        if (!/^[0-9a-fA-F]{6}$/.test(hex)) { return null; }
+        return {
+          r: parseInt(hex.substring(0, 2), 16),
+          g: parseInt(hex.substring(2, 4), 16),
+          b: parseInt(hex.substring(4, 6), 16)
+        };
+      }
+
+      function syncHtmlColor(paint) {
+        if (!paint) { return; }
+        const color = sanitizeColor(paint);
+        paint.htmlColor = rgbToHex(color.r / 255, color.g / 255, color.b / 255);
       }
 
       function clampColorByte(value) {
@@ -114,7 +142,7 @@ angular.module('beamng.apps')
           g: Math.round(clamp01(typeof base[1] === 'number' ? base[1] : 1) * 255),
           b: Math.round(clamp01(typeof base[2] === 'number' ? base[2] : 1) * 255)
         };
-        return {
+        const viewPaint = {
           color: color,
           alpha: typeof base[3] === 'number' ? clamp01(base[3]) : 1,
           metallic: clamp01(paint.metallic),
@@ -122,6 +150,8 @@ angular.module('beamng.apps')
           clearcoat: clamp01(paint.clearcoat),
           clearcoatRoughness: clamp01(paint.clearcoatRoughness)
         };
+        syncHtmlColor(viewPaint);
+        return viewPaint;
       }
 
       function convertPaintsToView(paints) {
@@ -434,6 +464,26 @@ angular.module('beamng.apps')
 
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
+        syncHtmlColor(paint);
+      };
+
+      $scope.onHtmlColorInputChanged = function (paint) {
+        if (!paint) { return; }
+        const parsed = parseHtmlColor(paint.htmlColor);
+        if (!parsed) { return; }
+        const color = ensureColorObject(paint);
+        color.r = parsed.r;
+        color.g = parsed.g;
+        color.b = parsed.b;
+        syncHtmlColor(paint);
+      };
+
+      $scope.onHtmlColorInputBlur = function (paint) {
+        if (!paint) { return; }
+        const parsed = parseHtmlColor(paint.htmlColor);
+        if (!parsed) {
+          syncHtmlColor(paint);
+        }
       };
 
       $scope.getColorPreviewStyle = function (paint) {

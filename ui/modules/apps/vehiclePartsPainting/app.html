@@ -177,6 +177,7 @@
     }
     .vehicle-parts-painting .parts-list .parts-children {
       margin-left: 16px;
+      padding-left: 12px;
       border-left: 1px solid rgba(255, 255, 255, 0.08);
     }
     .vehicle-parts-painting .parts-list .tree-node > .part-node {
@@ -207,13 +208,15 @@
       font-size: 12px;
       line-height: 1;
       padding: 0;
+      flex: 0 0 18px;
+      box-sizing: border-box;
     }
     .vehicle-parts-painting .part-node .toggle:hover {
       border-color: rgba(255, 255, 255, 0.6);
     }
     .vehicle-parts-painting .part-node .toggle.placeholder {
       visibility: hidden;
-      border: none;
+      border-color: transparent;
       background: transparent;
     }
     .vehicle-parts-painting .part-node .node-content {
@@ -323,6 +326,29 @@
       letter-spacing: 0.05em;
       opacity: 0.8;
       text-transform: uppercase;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input label {
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      opacity: 0.75;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"] {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: inherit;
+      padding: 6px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"]::placeholder {
+      color: rgba(255, 255, 255, 0.5);
     }
     .vehicle-parts-painting .paint-card .color-field .color-channels {
       display: flex;
@@ -475,6 +501,20 @@
             <label>Color</label>
             <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
             <div class="color-meta">{{getColorHex(paint)}}</div>
+            <div class="html-color-input">
+              <label for="vehiclePartsPaintingHtmlColor{{$index}}">HTML color code</label>
+              <input id="vehiclePartsPaintingHtmlColor{{$index}}"
+                     type="text"
+                     ng-model="paint.htmlColor"
+                     ng-change="onHtmlColorInputChanged(paint)"
+                     ng-blur="onHtmlColorInputBlur(paint)"
+                     placeholder="#RRGGBB"
+                     maxlength="7"
+                     autocomplete="off"
+                     autocorrect="off"
+                     autocapitalize="none"
+                     spellcheck="false">
+            </div>
             <div class="color-channels">
               <div class="color-channel">
                 <span>R</span>
