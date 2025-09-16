@@ -747,7 +747,7 @@
               <div class="field color-field">
                 <label>Color</label>
                 <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
-                <div class="color-meta">{{getColorHex(paint)}}</div>
+                <!--<div class="color-meta">{{getColorHex(paint)}}</div>-->
                 <div class="html-color-input">
                   <label for="vehiclePartsPaintingHtmlColor{{$index}}">HTML color code</label>
                   <input id="vehiclePartsPaintingHtmlColor{{$index}}"
@@ -778,13 +778,6 @@
                     <input type="range" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
                     <input type="number" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
                   </div>
-                </div>
-              </div>
-              <div class="field">
-                <label>Alpha</label>
-                <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="paint.alpha">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="paint.alpha">
                 </div>
               </div>
               <div class="field">
