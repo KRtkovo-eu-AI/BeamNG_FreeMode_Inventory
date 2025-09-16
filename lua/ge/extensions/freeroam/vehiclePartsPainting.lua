@@ -73,6 +73,20 @@ local function normalizePathString(path)
   return str
 end
 
+local function isAbsolutePath(path)
+  if not path or path == '' then
+    return false
+  end
+  local first = string.sub(path, 1, 1)
+  if first == '/' or first == '\\' then
+    return true
+  end
+  if #path >= 2 and string.sub(path, 2, 2) == ':' then
+    return true
+  end
+  return false
+end
+
 local function getNormalizedUserPath()
   if userPathCacheComputed then
     return cachedUserPath, cachedUserPathWithSlash
@@ -326,20 +340,6 @@ local function joinPaths(base, relative)
   local normalizedBase = tostring(base):gsub('\\', '/'):gsub('/+$', '')
   local normalizedRelative = tostring(relative):gsub('\\', '/'):gsub('^/+', '')
   return normalizedBase .. '/' .. normalizedRelative
-end
-
-local function isAbsolutePath(path)
-  if not path or path == '' then
-    return false
-  end
-  local first = string.sub(path, 1, 1)
-  if first == '/' or first == '\\' then
-    return true
-  end
-  if #path >= 2 and string.sub(path, 2, 2) == ':' then
-    return true
-  end
-  return false
 end
 
 local function makeAbsolutePath(path)
