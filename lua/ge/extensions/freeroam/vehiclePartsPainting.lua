@@ -473,6 +473,40 @@ local function sanitizePaints(paints)
   return sanitized
 end
 
+local function getUserPalettePaints()
+  local settingsExt = extensions and extensions.core_settings
+  if not settingsExt or type(settingsExt.getValue) ~= 'function' then return {} end
+
+  local rawValue = settingsExt.getValue('userPaintPresets')
+  if not rawValue or rawValue == '' then return {} end
+
+  local paintsData = nil
+  if type(rawValue) == 'string' then
+    local ok, decoded = pcall(jsonDecode, rawValue)
+    if ok and type(decoded) == 'table' then
+      paintsData = decoded
+    elseif not ok then
+      log('W', logTag, 'Failed to decode user paint presets JSON: ' .. tostring(decoded))
+    end
+  elseif type(rawValue) == 'table' then
+    paintsData = rawValue
+  end
+
+  if type(paintsData) ~= 'table' then return {} end
+
+  local sanitized = {}
+  for i = 1, #paintsData do
+    local preset = sanitizePaint(paintsData[i])
+    if preset then
+      sanitized[#sanitized + 1] = preset
+    end
+  end
+
+  if tableIsEmpty(sanitized) then return {} end
+
+  return sanitized
+end
+
 local function getVehicleBasePaints(vehData, vehObj)
   local basePaints = {}
   if vehData and vehData.config and type(vehData.config.paints) == 'table' then
@@ -690,10 +724,13 @@ local function sendState(targetVehId)
     return tostring(a.displayName) < tostring(b.displayName)
   end)
 
+  local userPaintPresets = getUserPalettePaints()
+
   local data = {
     vehicleId = vehId,
     parts = parts,
-    basePaints = copyPaints(basePaints)
+    basePaints = copyPaints(basePaints),
+    userPaintPresets = copyPaints(userPaintPresets)
   }
 
   guihooks.trigger('VehiclePartsPaintingState', data)

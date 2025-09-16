@@ -40,6 +40,8 @@ angular.module('beamng.apps')
         partsTree: [],
         filteredTree: [],
         basePaints: [],
+        userPaintPresets: [],
+        userPaintPresetViews: [],
         selectedPartPath: null,
         selectedPart: null,
         highlightSuspended: false,
@@ -509,6 +511,17 @@ angular.module('beamng.apps')
         $scope.editedPaints[index] = createViewPaint(paint);
       };
 
+      $scope.applyUserPaintPreset = function (presetIndex, paintIndex) {
+        if (!Array.isArray(state.userPaintPresetViews) || !state.userPaintPresetViews.length) { return; }
+        if (typeof presetIndex !== 'number' || typeof paintIndex !== 'number') { return; }
+        if (presetIndex < 0 || presetIndex >= state.userPaintPresetViews.length) { return; }
+        if (paintIndex < 0 || paintIndex >= $scope.editedPaints.length) { return; }
+        const presetView = state.userPaintPresetViews[presetIndex];
+        if (!presetView) { return; }
+        $scope.editedPaints[paintIndex] = angular.copy(presetView);
+        syncHtmlColor($scope.editedPaints[paintIndex]);
+      };
+
       $scope.selectPart = function (part) {
         if (!part) { return; }
         setSelectedPart(part, { forceHighlight: true });
@@ -595,6 +608,8 @@ angular.module('beamng.apps')
 
           if (!state.vehicleId) {
             state.basePaints = [];
+            state.userPaintPresets = [];
+            state.userPaintPresetViews = [];
             state.parts = [];
             state.partsTree = [];
             state.filteredTree = [];
@@ -612,6 +627,11 @@ angular.module('beamng.apps')
           }
 
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
+          const userPaintPresets = Array.isArray(data.userPaintPresets) ? data.userPaintPresets : [];
+          state.userPaintPresets = copyPaints(userPaintPresets);
+          state.userPaintPresetViews = state.userPaintPresets.map(function (preset) {
+            return preset ? createViewPaint(preset) : null;
+          }).filter(function (preset) { return !!preset; });
           state.parts = Array.isArray(data.parts) ? data.parts : [];
           state.partsTree = buildPartsTree(state.parts);
 
