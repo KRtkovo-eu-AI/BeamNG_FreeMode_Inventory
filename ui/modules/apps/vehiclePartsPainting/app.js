@@ -172,6 +172,35 @@ angular.module('beamng.apps')
         return view;
       }
 
+      function copyPaint(paint) {
+        if (!paint || typeof paint !== 'object') { return null; }
+        const base = Array.isArray(paint.baseColor) ? paint.baseColor : [];
+        return {
+          baseColor: [
+            typeof base[0] === 'number' ? base[0] : 1,
+            typeof base[1] === 'number' ? base[1] : 1,
+            typeof base[2] === 'number' ? base[2] : 1,
+            typeof base[3] === 'number' ? base[3] : 1
+          ],
+          metallic: typeof paint.metallic === 'number' ? paint.metallic : 0,
+          roughness: typeof paint.roughness === 'number' ? paint.roughness : 0.5,
+          clearcoat: typeof paint.clearcoat === 'number' ? paint.clearcoat : 0,
+          clearcoatRoughness: typeof paint.clearcoatRoughness === 'number' ? paint.clearcoatRoughness : 0
+        };
+      }
+
+      function copyPaints(paints) {
+        if (!Array.isArray(paints)) { return []; }
+        const copies = [];
+        for (let i = 0; i < paints.length; i++) {
+          const copied = copyPaint(paints[i]);
+          if (copied) {
+            copies.push(copied);
+          }
+        }
+        return copies;
+      }
+
       function viewToPaints(viewPaints) {
         const paints = [];
         if (!Array.isArray(viewPaints)) { return paints; }
