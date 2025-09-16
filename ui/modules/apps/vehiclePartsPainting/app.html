@@ -1,0 +1,291 @@
+<div class="vehicle-parts-painting" ng-controller="VehiclePartsPaintingController">
+  <style>
+    .vehicle-parts-painting {
+      min-width: 460px;
+      max-width: 720px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: inherit;
+    }
+    .vehicle-parts-painting button {
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .vehicle-parts-painting .app-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .vehicle-parts-painting .app-header .header-actions button {
+      margin-left: 6px;
+    }
+    .vehicle-parts-painting .no-vehicle,
+    .vehicle-parts-painting .placeholder {
+      text-align: center;
+      padding: 20px 8px;
+      font-size: 14px;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .app-body {
+      display: flex;
+      gap: 12px;
+      align-items: stretch;
+    }
+    .vehicle-parts-painting .parts-panel {
+      width: 190px;
+      display: flex;
+      flex-direction: column;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+    .vehicle-parts-painting .parts-panel .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .vehicle-parts-painting .parts-panel .panel-header .clear-highlight {
+      background: none;
+      border: none;
+      color: inherit;
+      font-size: 14px;
+      padding: 0 4px;
+    }
+    .vehicle-parts-painting .parts-list {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 420px;
+    }
+    .vehicle-parts-painting .parts-list .part-row {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      transition: background 0.15s ease;
+    }
+    .vehicle-parts-painting .parts-list .part-row:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .parts-list .part-row.selected {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .vehicle-parts-painting .parts-list .part-row.custom::after {
+      content: 'custom';
+      font-size: 10px;
+      font-weight: 600;
+      align-self: flex-start;
+      padding: 2px 6px;
+      background: rgba(0, 180, 255, 0.3);
+      border-radius: 10px;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .vehicle-parts-painting .parts-list .part-row .name {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting .parts-list .part-row .slot {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    .vehicle-parts-painting .parts-list .empty {
+      padding: 20px 10px;
+      text-align: center;
+      opacity: 0.7;
+    }
+    .vehicle-parts-painting .editor-panel {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 440px;
+      overflow: hidden;
+    }
+    .vehicle-parts-painting .part-summary h3 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+    .vehicle-parts-painting .part-summary .meta {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .paint-editors {
+      flex: 1;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+    .vehicle-parts-painting .paint-card {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .paint-card .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .paint-card .card-header h4 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .vehicle-parts-painting .paint-card .card-header button {
+      font-size: 11px;
+      padding: 4px 6px;
+    }
+    .vehicle-parts-painting .paint-card .field label {
+      display: block;
+      font-size: 11px;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .paint-card .field input[type="color"] {
+      width: 100%;
+      height: 34px;
+      border: none;
+      padding: 0;
+    }
+    .vehicle-parts-painting .paint-card .field-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .paint-card input[type="range"] {
+      flex: 1;
+    }
+    .vehicle-parts-painting .paint-card input[type="number"] {
+      width: 62px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: inherit;
+    }
+    .vehicle-parts-painting .editor-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .vehicle-parts-painting .editor-actions .primary {
+      background: rgba(0, 170, 255, 0.8);
+      border: none;
+      padding: 8px 14px;
+      font-weight: 600;
+      color: #fff;
+      border-radius: 4px;
+    }
+    .vehicle-parts-painting .editor-actions .secondary {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      padding: 8px 14px;
+      border-radius: 4px;
+    }
+  </style>
+  <div class="app-header">
+    <h2>Vehicle Parts Painting</h2>
+    <div class="header-actions">
+      <button type="button" ng-click="refresh()">Refresh</button>
+    </div>
+  </div>
+  <div class="no-vehicle" ng-if="!state.vehicleId">
+    <p>No active player vehicle detected.</p>
+  </div>
+  <div class="app-body" ng-if="state.vehicleId">
+    <div class="parts-panel">
+      <div class="panel-header">
+        <span>Parts</span>
+        <button type="button" class="clear-highlight" ng-click="clearHighlight()" title="Clear highlights">&#x2715;</button>
+      </div>
+      <div class="parts-list">
+        <div class="part-row"
+             ng-repeat="part in state.parts track by part.partPath"
+             ng-class="{selected: part.partPath === state.selectedPartPath, custom: part.hasCustomPaint}"
+             ng-click="selectPart(part)">
+          <div class="name">{{part.displayName || part.partName}}</div>
+          <div class="slot" ng-if="part.slotName">{{part.slotName}}</div>
+        </div>
+        <div class="empty" ng-if="!state.parts.length">No paintable parts detected.</div>
+      </div>
+    </div>
+    <div class="editor-panel" ng-if="state.selectedPart">
+      <div class="part-summary">
+        <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
+        <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
+        <div class="meta" ng-if="state.selectedPart.slotName">Slot: {{state.selectedPart.slotName}}</div>
+      </div>
+      <div class="paint-editors">
+        <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
+          <div class="card-header">
+            <h4>Paint {{$index + 1}}</h4>
+            <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
+          </div>
+          <div class="field">
+            <label>Color</label>
+            <input type="color" ng-model="paint.hex" ng-change="onColorHexChanged(paint)">
+          </div>
+          <div class="field">
+            <label>Alpha</label>
+            <div class="field-row">
+              <input type="range" min="0" max="1" step="0.01" ng-model="paint.alpha">
+              <input type="number" min="0" max="1" step="0.01" ng-model="paint.alpha">
+            </div>
+          </div>
+          <div class="field">
+            <label>Metallic</label>
+            <div class="field-row">
+              <input type="range" min="0" max="1" step="0.01" ng-model="paint.metallic">
+              <input type="number" min="0" max="1" step="0.01" ng-model="paint.metallic">
+            </div>
+          </div>
+          <div class="field">
+            <label>Roughness</label>
+            <div class="field-row">
+              <input type="range" min="0" max="1" step="0.01" ng-model="paint.roughness">
+              <input type="number" min="0" max="1" step="0.01" ng-model="paint.roughness">
+            </div>
+          </div>
+          <div class="field">
+            <label>Clearcoat</label>
+            <div class="field-row">
+              <input type="range" min="0" max="1" step="0.01" ng-model="paint.clearcoat">
+              <input type="number" min="0" max="1" step="0.01" ng-model="paint.clearcoat">
+            </div>
+          </div>
+          <div class="field">
+            <label>Clearcoat Roughness</label>
+            <div class="field-row">
+              <input type="range" min="0" max="1" step="0.01" ng-model="paint.clearcoatRoughness">
+              <input type="number" min="0" max="1" step="0.01" ng-model="paint.clearcoatRoughness">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="editor-actions">
+        <button type="button" class="primary" ng-click="applyPaint()" ng-disabled="!editedPaints.length">Apply paint to part</button>
+        <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
+      </div>
+    </div>
+    <div class="placeholder" ng-if="state.vehicleId && !state.selectedPart && state.parts.length">
+      <p>Select a part to edit its paint.</p>
+    </div>
+  </div>
+</div>

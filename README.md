@@ -1,5 +1,26 @@
-# BeamNG FreeMode Inventory
+# Vehicle Parts Painting Mod
 
-This repository contains a generic template for creating BeamNG.drive UI apps.
-See the `uiAppTemplate/ui/modules/apps/uiAppTemplate` folder for the template files.
+This repository contains a BeamNG.drive mod that enables per-part paint customization while playing in Freeroam. The mod introduces a dedicated UI app that lets you pick any installed vehicle part and assign individual paint parameters—matching the flexibility that previously existed only in Career mode.
 
+## Features
+
+- **Freeroam-compatible part paints** – Apply unique paint definitions to every installed vehicle part without switching to Career mode.
+- **Live part highlighting** – Selecting a part in the UI highlights it in the world for easy identification.
+- **Full paint controls** – Adjust base color (including alpha), metallic, roughness, clearcoat and clearcoat roughness values for each paint slot.
+- **Per-vehicle persistence during a session** – Custom paints are tracked on the active vehicle so they can be reapplied after respawns within the same play session.
+
+## Installation
+
+1. Copy the repository contents into your BeamNG user directory, e.g. `Documents/BeamNG.drive/mods/unpacked/vehicle-parts-painting/`.
+2. Launch BeamNG.drive and enter Freeroam.
+3. Open the UI layout editor, add the **Vehicle Parts Painting** app from the *Vehicle* category, and save your layout.
+
+## Usage
+
+1. Make sure the vehicle you want to edit is the active player vehicle.
+2. Open the Vehicle Parts Painting app.
+3. Select a part from the list on the left – the part is highlighted in-game to help you locate it.
+4. Modify the paint values (color, alpha, metallic, roughness, clearcoat, clearcoat roughness) for each paint slot.
+5. Click **Apply paint to part** to push the changes to the vehicle. Use **Reset to vehicle paints** to revert to the current vehicle-wide paint scheme.
+
+The mod adds a game-side Lua extension (`lua/ge/extensions/freeroam/vehiclePartsPainting.lua`) that bridges the UI app and the vehicle simulation, ensuring paints are validated and synchronized with the vehicle state.
