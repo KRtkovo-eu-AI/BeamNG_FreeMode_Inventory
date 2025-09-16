@@ -16,6 +16,39 @@ local validPartPathsByVeh = {}
 local partDescriptorsByVeh = {}
 local activePartIdSetByVeh = {}
 local ensuredPartConditionsByVeh = {}
+local cachedCoreSettingsExt = nil
+local warnedMissingCoreSettings = false
+
+local function getCoreSettingsExtension()
+  if cachedCoreSettingsExt and type(cachedCoreSettingsExt.getValue) == 'function' then
+    return cachedCoreSettingsExt
+  end
+
+  if not extensions then return nil end
+
+  if not cachedCoreSettingsExt and type(extensions.load) == 'function' then
+    local ok, err = pcall(extensions.load, 'core_settings')
+    if not ok then
+      if not warnedMissingCoreSettings then
+        log('W', logTag, 'Unable to load core_settings extension: ' .. tostring(err))
+        warnedMissingCoreSettings = true
+      end
+    end
+  end
+
+  cachedCoreSettingsExt = extensions.core_settings
+  if cachedCoreSettingsExt and type(cachedCoreSettingsExt.getValue) == 'function' then
+    warnedMissingCoreSettings = false
+    return cachedCoreSettingsExt
+  end
+
+  if not warnedMissingCoreSettings then
+    log('W', logTag, 'core_settings extension unavailable; saved user paint presets cannot be loaded.')
+    warnedMissingCoreSettings = true
+  end
+
+  return nil
+end
 
 local function ensureVehiclePartConditionInitialized(vehObj, vehId)
   if not vehObj or not vehObj.queueLuaCommand then return end
@@ -474,7 +507,7 @@ local function sanitizePaints(paints)
 end
 
 local function getUserPalettePaints()
-  local settingsExt = extensions and extensions.core_settings
+  local settingsExt = getCoreSettingsExtension()
   if not settingsExt or type(settingsExt.getValue) ~= 'function' then return {} end
 
   local rawValue = settingsExt.getValue('userPaintPresets')
@@ -495,10 +528,34 @@ local function getUserPalettePaints()
   if type(paintsData) ~= 'table' then return {} end
 
   local sanitized = {}
-  for i = 1, #paintsData do
-    local preset = sanitizePaint(paintsData[i])
-    if preset then
-      sanitized[#sanitized + 1] = preset
+  local count = #paintsData
+  if count > 0 then
+    for i = 1, count do
+      local preset = sanitizePaint(paintsData[i])
+      if preset then
+        sanitized[#sanitized + 1] = preset
+      end
+    end
+  else
+    local keyed = {}
+    for key, value in pairs(paintsData) do
+      local preset = sanitizePaint(value)
+      if preset then
+        keyed[#keyed + 1] = {key = key, paint = preset}
+      end
+    end
+    if not tableIsEmpty(keyed) then
+      table.sort(keyed, function(a, b)
+        local aNum = tonumber(a.key)
+        local bNum = tonumber(b.key)
+        if aNum and bNum then
+          if aNum ~= bNum then return aNum < bNum end
+        end
+        return tostring(a.key) < tostring(b.key)
+      end)
+      for i = 1, #keyed do
+        sanitized[#sanitized + 1] = keyed[i].paint
+      end
     end
   end
 

@@ -245,6 +245,44 @@ angular.module('beamng.apps')
         $scope.editedPaints = convertPaintsToView(source);
       }
 
+      function collectPartReferences(partPath) {
+        const references = [];
+        if (!partPath) { return references; }
+        if (state.selectedPart && state.selectedPart.partPath === partPath) {
+          references.push(state.selectedPart);
+        }
+        const lists = [state.parts, state.filteredParts];
+        for (let i = 0; i < lists.length; i++) {
+          const list = lists[i];
+          if (!Array.isArray(list)) { continue; }
+          for (let j = 0; j < list.length; j++) {
+            const entry = list[j];
+            if (entry && entry.partPath === partPath && entry !== state.selectedPart) {
+              references.push(entry);
+              break;
+            }
+          }
+        }
+        return references;
+      }
+
+      function applyLocalPartState(partPath, options) {
+        if (!partPath) { return; }
+        options = options || {};
+        const targets = collectPartReferences(partPath);
+        if (!targets.length) { return; }
+        const paints = Array.isArray(options.paints) ? options.paints : null;
+        for (let i = 0; i < targets.length; i++) {
+          const target = targets[i];
+          if (paints) {
+            target.currentPaints = copyPaints(paints);
+          }
+          if (options.hasCustomPaint !== undefined) {
+            target.hasCustomPaint = !!options.hasCustomPaint;
+          }
+        }
+      }
+
       function setSelectedPart(part, options) {
         options = options || {};
         const newPath = part ? part.partPath : null;
@@ -613,11 +651,21 @@ angular.module('beamng.apps')
         };
         const command = 'freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')';
         bngApi.engineLua(command);
+        applyLocalPartState(state.selectedPartPath, {
+          paints: paints,
+          hasCustomPaint: true
+        });
+        updateEditedPaints(state.selectedPart);
       };
 
       $scope.resetPaint = function () {
         if (!state.selectedPartPath) { return; }
         bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(state.selectedPartPath) + ')');
+        applyLocalPartState(state.selectedPartPath, {
+          paints: state.basePaints,
+          hasCustomPaint: false
+        });
+        updateEditedPaints(state.selectedPart);
       };
 
       $scope.showAllParts = function () {
