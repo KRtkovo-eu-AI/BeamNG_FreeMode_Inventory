@@ -14,6 +14,24 @@ local highlightedParts = {}
 local validPartPathsByVeh = {}
 local partDescriptorsByVeh = {}
 local activePartIdSetByVeh = {}
+local ensuredPartConditionsByVeh = {}
+
+local function ensureVehiclePartConditionInitialized(vehObj, vehId)
+  if not vehObj or not vehObj.queueLuaCommand then return end
+  local id = vehId or (vehObj.getID and vehObj:getID())
+  if not id or id == -1 then return end
+  if ensuredPartConditionsByVeh[id] then return end
+
+  local ensureCmd = [=[if partCondition and partCondition.ensureConditionsInit then
+  local ok, err = pcall(partCondition.ensureConditionsInit, 0, 1, 1)
+  if not ok then
+    log('W', 'vehiclePartsPainting', string.format('ensureConditionsInit failed during preflight for vehicle %s: %s', tostring(obj:getID()), tostring(err)))
+  end
+end]=]
+
+  vehObj:queueLuaCommand(ensureCmd)
+  ensuredPartConditionsByVeh[id] = true
+end
 
 local function findNodeByPartPath(node, targetPath)
   if not node or not targetPath then return nil end
@@ -151,22 +169,45 @@ local function queuePartPaintCommands(vehObj, vehId, partPath, partName, slotPat
     'local resultIdentifier = nil\n',
     'local lastError = nil\n',
     'local applied = false\n',
-    [=[if partCondition and partCondition.setPartPaints then
-  for _, identifier in ipairs(identifiers) do
-    local ok, err = pcall(partCondition.setPartPaints, identifier, paints, 0)
-    if ok then
-      applied = true
-      resultIdentifier = identifier
-      break
-    else
-      resultIdentifier = identifier
-      lastError = tostring(err)
-      log('W', 'vehiclePartsPainting', string.format('Failed to set part paint for %s: %s', tostring(identifier), lastError))
+    'local ensureError = nil\n',
+    [=[if partCondition then
+  if partCondition.ensureConditionsInit then
+    local ok, err = pcall(partCondition.ensureConditionsInit, 0, 1, 1)
+    if not ok then
+      ensureError = tostring(err)
+      log('W', 'vehiclePartsPainting', string.format(
+        'ensureConditionsInit failed for part=%s (name=%s slot=%s): %s',
+        tostring(partPathValue),
+        tostring(partNameValue),
+        tostring(slotPathValue),
+        ensureError
+      ))
     end
   end
+
+  if partCondition.setPartPaints then
+    for _, identifier in ipairs(identifiers) do
+      local ok, err = pcall(partCondition.setPartPaints, identifier, paints, 0)
+      if ok then
+        applied = true
+        resultIdentifier = identifier
+        break
+      else
+        resultIdentifier = identifier
+        lastError = tostring(err)
+        log('W', 'vehiclePartsPainting', string.format('Failed to set part paint for %s: %s', tostring(identifier), lastError))
+      end
+    end
+  else
+    lastError = 'partCondition.setPartPaints unavailable'
+    log('E', 'vehiclePartsPainting', lastError)
+  end
 else
-  lastError = 'partCondition.setPartPaints unavailable'
+  lastError = 'partCondition module unavailable'
   log('E', 'vehiclePartsPainting', lastError)
+end
+if not applied and not lastError and ensureError then
+  lastError = ensureError
 end
 if obj and obj.queueGameEngineLua then
   local vehId = obj:getID()
@@ -596,6 +637,8 @@ local function sendState(targetVehId)
     return
   end
 
+  ensureVehiclePartConditionInitialized(vehObj, vehId)
+
   syncStateWithConfig(vehId, vehData)
 
   local basePaints = getVehicleBasePaints(vehData, vehObj)
@@ -659,6 +702,7 @@ local function applyStoredPaints(vehId)
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   if not vehObj or not vehData then return end
+  ensureVehiclePartConditionInitialized(vehObj, vehId)
   syncStateWithConfig(vehId, vehData)
   local state = storedPartPaintsByVeh[vehId]
   if not state then return end
@@ -711,6 +755,8 @@ local function setPartPaint(partPath, paints, partName, slotPath)
   local vehId = vehObj:getID()
   local vehData = vehManager.getVehicleData(vehId)
   if not vehData then return end
+
+  ensureVehiclePartConditionInitialized(vehObj, vehId)
 
   local sanitizedPaints = sanitizePaints(paints)
   if not sanitizedPaints then
@@ -803,6 +849,8 @@ local function resetPartPaint(partPath)
   local vehId = vehObj:getID()
   local vehData = vehManager.getVehicleData(vehId)
   if not vehData then return end
+
+  ensureVehiclePartConditionInitialized(vehObj, vehId)
 
   local basePaints = getVehicleBasePaints(vehData, vehObj)
   local resolvedName
@@ -1061,6 +1109,7 @@ local function onVehicleDestroyed(vehId)
   validPartPathsByVeh[vehId] = nil
   partDescriptorsByVeh[vehId] = nil
   activePartIdSetByVeh[vehId] = nil
+  ensuredPartConditionsByVeh[vehId] = nil
   if vehId == be:getPlayerVehicleID(0) then
     sendState(-1)
   end
@@ -1081,6 +1130,7 @@ local function onExtensionLoaded()
   validPartPathsByVeh = {}
   partDescriptorsByVeh = {}
   activePartIdSetByVeh = {}
+  ensuredPartConditionsByVeh = {}
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     applyStoredPaints(currentVeh)
@@ -1095,6 +1145,7 @@ local function onExtensionUnloaded()
   validPartPathsByVeh = {}
   partDescriptorsByVeh = {}
   activePartIdSetByVeh = {}
+  ensuredPartConditionsByVeh = {}
   clearHighlight()
 end
 
