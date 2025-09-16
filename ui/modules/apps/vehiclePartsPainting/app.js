@@ -325,10 +325,6 @@ angular.module('beamng.apps')
             _order: i
           };
 
-          if (part.partPath && state.expandedNodes[part.partPath] === undefined) {
-            state.expandedNodes[part.partPath] = true;
-          }
-
           nodesBySlotPath[normalizedSlotPath] = node;
         }
 
@@ -410,6 +406,18 @@ angular.module('beamng.apps')
           }
           if (node.children && node.children.length) {
             expandFilteredNodes(node.children);
+          }
+        }
+      }
+
+      function setExpansionForNodes(nodes, expanded) {
+        if (!Array.isArray(nodes)) { return; }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part || !node.part.partPath) { continue; }
+          state.expandedNodes[node.part.partPath] = !!expanded;
+          if (node.children && node.children.length) {
+            setExpansionForNodes(node.children, expanded);
           }
         }
       }
@@ -514,7 +522,7 @@ angular.module('beamng.apps')
         const path = part.partPath;
         const current = state.expandedNodes[path];
         if (current === undefined) {
-          state.expandedNodes[path] = false;
+          state.expandedNodes[path] = true;
         } else {
           state.expandedNodes[path] = !current;
         }
@@ -523,8 +531,16 @@ angular.module('beamng.apps')
       $scope.isNodeExpanded = function (part) {
         if (!part || !part.partPath) { return true; }
         const value = state.expandedNodes[part.partPath];
-        if (value === undefined) { return true; }
+        if (value === undefined) { return false; }
         return !!value;
+      };
+
+      $scope.expandAllNodes = function () {
+        setExpansionForNodes(state.partsTree, true);
+      };
+
+      $scope.collapseAllNodes = function () {
+        setExpansionForNodes(state.partsTree, false);
       };
 
       $scope.clearFilter = function () {
