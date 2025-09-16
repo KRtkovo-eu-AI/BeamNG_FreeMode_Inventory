@@ -10,6 +10,8 @@ This repository contains a BeamNG.drive mod that enables per-part paint customiz
 - **Visibility recovery control** – A dedicated *Show whole vehicle* action restores every part instantly after isolating one for editing.
 - **BeamNG-friendly color editing** – RGB sliders and numeric inputs replace the unsupported browser color picker, ensuring reliable in-game color selection.
 - **Per-vehicle persistence during a session** – Custom paints are tracked on the active vehicle so they can be reapplied after respawns within the same play session.
+- **Part search and filtering** – Quickly narrow down the part list by typing any portion of a part name, slot label, or identifier.
+- **Responsive UI layout** – The app adjusts to the widget window, remaining usable from compact overlays to large panels.
 
 ## Installation
 
@@ -21,7 +23,7 @@ This repository contains a BeamNG.drive mod that enables per-part paint customiz
 
 1. Make sure the vehicle you want to edit is the active player vehicle.
 2. Open the Vehicle Parts Painting app.
-3. Select a part from the list on the left – the part is highlighted in-game to help you locate it.
+3. Select a part from the list on the left – use the search field to filter by name if needed. The part is highlighted in-game to help you locate it.
 4. Use **Show whole vehicle** whenever you want to bring every part back into view (for example before closing the app).
 5. Modify the paint values (RGB color, alpha, metallic, roughness, clearcoat, clearcoat roughness) for each paint slot.
 6. Click **Apply paint to part** to push the changes to the vehicle. Use **Reset to vehicle paints** to revert to the current vehicle-wide paint scheme.

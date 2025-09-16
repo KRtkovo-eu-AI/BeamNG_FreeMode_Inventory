@@ -13,6 +13,40 @@ local storedPartPaintsByVeh = {}
 local highlightedParts = {}
 local validPartPathsByVeh = {}
 
+local function findNodeByPartPath(node, targetPath)
+  if not node or not targetPath then return nil end
+  if node.partPath == targetPath or node.path == targetPath then
+    return node
+  end
+  if node.children then
+    for _, child in pairs(node.children) do
+      local found = findNodeByPartPath(child, targetPath)
+      if found then return found end
+    end
+  end
+  return nil
+end
+
+local function resolvePartName(vehData, partPath)
+  if not vehData or not vehData.config or not partPath then return nil end
+  local node = findNodeByPartPath(vehData.config.partsTree, partPath)
+  if node and node.chosenPartName and node.chosenPartName ~= '' then
+    return node.chosenPartName
+  end
+  return nil
+end
+
+local function queuePartPaintCommands(vehObj, partPath, partName, paints)
+  if not vehObj or not paints then return end
+  local serialized = serialize(paints)
+  if partPath and partPath ~= '' then
+    vehObj:queueLuaCommand(string.format('partCondition.setPartPaints(%q, %s, 0)', partPath, serialized))
+  end
+  if partName and partName ~= '' and partName ~= partPath then
+    vehObj:queueLuaCommand(string.format('partCondition.setPartPaints(%q, %s, 0)', partName, serialized))
+  end
+end
+
 local function clamp01(value)
   return clamp(tonumber(value) or 0, 0, 1)
 end
@@ -111,7 +145,11 @@ local function syncStateWithConfig(vehId, vehData)
   for partPath, paints in pairs(configPaints) do
     local sanitized = sanitizePaints(paints)
     if sanitized then
-      state[partPath] = {paints = copyPaints(sanitized)}
+      local previous = state[partPath]
+      state[partPath] = {
+        paints = copyPaints(sanitized),
+        partName = previous and previous.partName or nil
+      }
     end
   end
   for partPath in pairs(state) do
@@ -170,6 +208,10 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
       entry.hasCustomPaint = true
     end
     entry.currentPaints = copyPaints(paints)
+    local vehState = storedPartPaintsByVeh[vehId]
+    if vehState and vehState[partPath] then
+      vehState[partPath].partName = chosenPartName
+    end
     table.insert(result, entry)
   end
   if node.children then
@@ -241,8 +283,9 @@ local function applyStoredPaints(vehId)
   if not state then return end
   for partPath, entry in pairs(state) do
     if entry and entry.paints then
-      local command = string.format('partCondition.setPartPaints(%s, %s, 0)', serialize(partPath), serialize(entry.paints))
-      vehObj:queueLuaCommand(command)
+      local resolvedName = entry.partName or resolvePartName(vehData, partPath)
+      entry.partName = resolvedName
+      queuePartPaintCommands(vehObj, partPath, resolvedName, entry.paints)
     end
   end
 end
@@ -260,7 +303,7 @@ local function setConfigPaintsEntry(vehData, partPath, paints)
   end
 end
 
-local function setPartPaint(partPath, paints)
+local function setPartPaint(partPath, paints, partName)
   if not partPath then return end
   local vehObj = getPlayerVehicle(0)
   if not vehObj then return end
@@ -274,11 +317,18 @@ local function setPartPaint(partPath, paints)
     return
   end
 
-  local command = string.format('partCondition.setPartPaints(%s, %s, 0)', serialize(partPath), serialize(sanitizedPaints))
-  vehObj:queueLuaCommand(command)
+  local resolvedName = partName
+  if not resolvedName or resolvedName == '' then
+    resolvedName = resolvePartName(vehData, partPath)
+  end
+
+  queuePartPaintCommands(vehObj, partPath, resolvedName, sanitizedPaints)
 
   storedPartPaintsByVeh[vehId] = storedPartPaintsByVeh[vehId] or {}
-  storedPartPaintsByVeh[vehId][partPath] = {paints = copyPaints(sanitizedPaints)}
+  storedPartPaintsByVeh[vehId][partPath] = {
+    paints = copyPaints(sanitizedPaints),
+    partName = resolvedName
+  }
   setConfigPaintsEntry(vehData, partPath, sanitizedPaints)
 
   sendState(vehId)
@@ -291,7 +341,7 @@ local function applyPartPaintJson(jsonStr)
     log('E', logTag, 'Failed to decode paint JSON: ' .. tostring(data))
     return
   end
-  setPartPaint(data.partPath or data.path, data.paints)
+  setPartPaint(data.partPath or data.path, data.paints, data.partName or data.name)
 end
 
 local function resetPartPaint(partPath)
@@ -303,8 +353,15 @@ local function resetPartPaint(partPath)
   if not vehData then return end
 
   local basePaints = getVehicleBasePaints(vehData, vehObj)
-  local command = string.format('partCondition.setPartPaints(%s, %s, 0)', serialize(partPath), serialize(basePaints))
-  vehObj:queueLuaCommand(command)
+  local resolvedName
+  local storedState = storedPartPaintsByVeh[vehId]
+  if storedState and storedState[partPath] and storedState[partPath].partName then
+    resolvedName = storedState[partPath].partName
+  else
+    resolvedName = resolvePartName(vehData, partPath)
+  end
+
+  queuePartPaintCommands(vehObj, partPath, resolvedName, basePaints)
 
   if storedPartPaintsByVeh[vehId] then
     storedPartPaintsByVeh[vehId][partPath] = nil

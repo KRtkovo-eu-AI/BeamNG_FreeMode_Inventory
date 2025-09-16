@@ -1,8 +1,13 @@
 <div class="vehicle-parts-painting">
   <style>
     .vehicle-parts-painting {
-      min-width: 460px;
-      max-width: 720px;
+      width: 100%;
+      height: 100%;
+      min-width: 280px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
       background: rgba(0, 0, 0, 0.65);
       color: #fff;
       padding: 12px;
@@ -17,6 +22,7 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 10px;
+      flex: 0 0 auto;
     }
     .vehicle-parts-painting .app-header h2 {
       margin: 0;
@@ -27,22 +33,30 @@
     }
     .vehicle-parts-painting .no-vehicle,
     .vehicle-parts-painting .placeholder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       text-align: center;
       padding: 20px 8px;
       font-size: 14px;
       opacity: 0.85;
     }
     .vehicle-parts-painting .app-body {
+      flex: 1;
       display: flex;
       gap: 12px;
-      align-items: stretch;
+      min-height: 0;
     }
     .vehicle-parts-painting .parts-panel {
-      width: 190px;
+      flex: 0 0 260px;
+      min-width: 200px;
+      max-width: 340px;
       display: flex;
       flex-direction: column;
       background: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
+      overflow: hidden;
     }
     .vehicle-parts-painting .parts-panel .panel-header {
       display: flex;
@@ -65,10 +79,26 @@
       padding: 4px 8px;
       border-radius: 3px;
     }
+    .vehicle-parts-painting .filter-field {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .filter-field input {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.3);
+      color: inherit;
+      font-size: 13px;
+    }
+    .vehicle-parts-painting .filter-field input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
     .vehicle-parts-painting .parts-list {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
-      max-height: 420px;
     }
     .vehicle-parts-painting .parts-list .part-row {
       padding: 8px 10px;
@@ -104,20 +134,22 @@
       font-size: 11px;
       opacity: 0.8;
     }
-    .vehicle-parts-painting .parts-list .empty {
+    .vehicle-parts-painting .parts-list .empty,
+    .vehicle-parts-painting .parts-list .no-results {
       padding: 20px 10px;
       text-align: center;
       opacity: 0.7;
     }
     .vehicle-parts-painting .editor-panel {
       flex: 1;
+      min-width: 0;
+      min-height: 0;
       background: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
       padding: 12px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      max-height: 440px;
       overflow: hidden;
     }
     .vehicle-parts-painting .part-summary h3 {
@@ -127,13 +159,16 @@
     .vehicle-parts-painting .part-summary .meta {
       font-size: 12px;
       opacity: 0.85;
+      word-break: break-all;
     }
     .vehicle-parts-painting .paint-editors {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 10px;
+      align-content: start;
     }
     .vehicle-parts-painting .paint-card {
       background: rgba(0, 0, 0, 0.35);
@@ -142,6 +177,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      min-width: 0;
     }
     .vehicle-parts-painting .paint-card .card-header {
       display: flex;
@@ -217,6 +253,7 @@
       display: flex;
       gap: 8px;
       justify-content: flex-end;
+      flex: 0 0 auto;
     }
     .vehicle-parts-painting .editor-actions .primary {
       background: rgba(0, 170, 255, 0.8);
@@ -232,6 +269,18 @@
       color: inherit;
       padding: 8px 14px;
       border-radius: 4px;
+    }
+    @media (max-width: 760px) {
+      .vehicle-parts-painting .app-body {
+        flex-direction: column;
+      }
+      .vehicle-parts-painting .parts-panel {
+        flex: 0 0 auto;
+        max-width: none;
+      }
+      .vehicle-parts-painting .editor-panel {
+        flex: 1;
+      }
     }
   </style>
   <div class="app-header">
@@ -251,14 +300,22 @@
           <button type="button" ng-click="showAllParts()">Show whole vehicle</button>
         </div>
       </div>
+      <div class="filter-field">
+        <input type="search"
+               placeholder="Search parts..."
+               ng-model="state.filterText"
+               ng-model-options="{ debounce: 150 }"
+               autocomplete="off">
+      </div>
       <div class="parts-list">
         <div class="part-row"
-             ng-repeat="part in state.parts track by part.partPath"
+             ng-repeat="part in state.filteredParts track by part.partPath"
              ng-class="{selected: part.partPath === state.selectedPartPath, custom: part.hasCustomPaint}"
              ng-click="selectPart(part)">
           <div class="name">{{part.displayName || part.partName}}</div>
           <div class="slot" ng-if="part.slotName">{{part.slotName}}</div>
         </div>
+        <div class="no-results" ng-if="state.parts.length && !state.filteredParts.length">No parts match your search.</div>
         <div class="empty" ng-if="!state.parts.length">No paintable parts detected.</div>
       </div>
     </div>
@@ -338,7 +395,7 @@
         <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
       </div>
     </div>
-    <div class="placeholder" ng-if="state.vehicleId && !state.selectedPart && state.parts.length">
+    <div class="placeholder" ng-if="state.vehicleId && !state.selectedPart && state.filteredParts.length">
       <p>Select a part to edit its paint.</p>
     </div>
   </div>
