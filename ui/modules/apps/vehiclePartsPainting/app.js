@@ -42,7 +42,7 @@ angular.module('beamng.apps')
         basePaints: [],
         selectedPartPath: null,
         selectedPart: null,
-        highlightSuspended: false,
+        hoveredPartPath: null,
         hasUserSelectedPart: false,
         filterText: '',
         filteredParts: [],
@@ -365,9 +365,28 @@ angular.module('beamng.apps')
       }
 
       function highlightPart(partPath) {
-        if (!partPath || state.highlightSuspended) { return; }
+        if (!partPath) { return; }
         const command = 'freeroam_vehiclePartsPainting.highlightPart(' + toLuaString(partPath) + ')';
         bngApi.engineLua(command);
+      }
+
+      function beginPartHover(part) {
+        if (!part || !part.partPath) { return; }
+        const path = part.partPath;
+        if (state.hoveredPartPath === path) { return; }
+        state.hoveredPartPath = path;
+        highlightPart(path);
+      }
+
+      function endPartHover(part) {
+        if (!state.hoveredPartPath) {
+          return;
+        }
+        if (part && part.partPath && state.hoveredPartPath !== part.partPath) {
+          return;
+        }
+        state.hoveredPartPath = null;
+        sendShowAllCommand();
       }
 
       function updateEditedPaints(part) {
@@ -396,9 +415,8 @@ angular.module('beamng.apps')
 
       function setSelectedPart(part, options) {
         options = options || {};
-        const newPath = part ? part.partPath : null;
         const previousPath = state.selectedPartPath;
-        const pathChanged = newPath !== previousPath;
+        const newPath = part ? part.partPath : null;
 
         state.selectedPartPath = newPath;
         state.selectedPart = part || null;
@@ -411,17 +429,7 @@ angular.module('beamng.apps')
 
         updateEditedPaints(part);
 
-        if (options.skipHighlight) {
-          return;
-        }
-
-        if (part) {
-          if (options.forceHighlight || pathChanged || state.highlightSuspended) {
-            state.highlightSuspended = false;
-            highlightPart(part.partPath);
-          }
-        } else {
-          state.highlightSuspended = true;
+        if (newPath !== previousPath && !state.hoveredPartPath) {
           sendShowAllCommand();
         }
       }
@@ -645,8 +653,7 @@ angular.module('beamng.apps')
         }
       }
 
-      function computeFilteredParts(options) {
-        options = options || {};
+      function computeFilteredParts() {
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
         const normalized = rawFilter.trim().toLowerCase();
         const parts = Array.isArray(state.parts) ? state.parts.slice() : [];
@@ -666,38 +673,47 @@ angular.module('beamng.apps')
           expandFilteredNodes(tree);
         }
 
-        if (!filtered.length) {
-          setSelectedPart(null, { skipHighlight: false });
-          return;
+        const hoveredPath = state.hoveredPartPath;
+        if (hoveredPath && !filtered.some(function (part) { return part.partPath === hoveredPath; })) {
+          state.hoveredPartPath = null;
+          sendShowAllCommand();
         }
 
         const previousPath = state.selectedPartPath;
+        const hadHover = !!hoveredPath;
+
+        if (!filtered.length) {
+          state.hoveredPartPath = null;
+          setSelectedPart(null);
+          if (hadHover && !previousPath) {
+            sendShowAllCommand();
+          }
+          return;
+        }
+
         let target = filtered.find(function (part) { return part.partPath === previousPath; });
-        const selectionOptions = {};
 
         if (!target) {
           if (state.hasUserSelectedPart) {
             target = filtered[0];
-            selectionOptions.forceHighlight = true;
           } else {
-            setSelectedPart(null, { skipHighlight: false });
+            const hoverBeforeClear = !!state.hoveredPartPath;
+            state.hoveredPartPath = null;
+            setSelectedPart(null);
+            if (hoverBeforeClear && !previousPath) {
+              sendShowAllCommand();
+            }
             return;
-          }
-        } else {
-          if (!state.hasUserSelectedPart) {
-            selectionOptions.skipHighlight = true;
-          } else if (options.forceHighlightOnRefresh) {
-            selectionOptions.forceHighlight = true;
-          } else if (options.skipHighlightIfSame && previousPath === target.partPath) {
-            selectionOptions.skipHighlight = true;
           }
         }
 
-        setSelectedPart(target, selectionOptions);
+        if (target) {
+          setSelectedPart(target);
+        }
       }
 
       $scope.$watch(function () { return state.filterText; }, function () {
-        computeFilteredParts({ skipHighlightIfSame: true });
+        computeFilteredParts();
       });
 
       $scope.onColorChannelChanged = function (paint) {
@@ -785,7 +801,15 @@ angular.module('beamng.apps')
 
       $scope.selectPart = function (part) {
         if (!part) { return; }
-        setSelectedPart(part, { forceHighlight: true, userSelected: true });
+        setSelectedPart(part, { userSelected: true });
+      };
+
+      $scope.onPartMouseEnter = function (part) {
+        beginPartHover(part);
+      };
+
+      $scope.onPartMouseLeave = function (part) {
+        endPartHover(part);
       };
 
       $scope.toggleNode = function (part, $event) {
@@ -933,7 +957,7 @@ angular.module('beamng.apps')
         if (!paints.length) { return; }
         const updatedLocally = updateLocalPartPaintState(state.selectedPartPath, paints, true);
         if (updatedLocally) {
-          computeFilteredParts({ skipHighlightIfSame: true });
+          computeFilteredParts();
         }
         const payload = {
           partPath: state.selectedPartPath,
@@ -947,19 +971,32 @@ angular.module('beamng.apps')
 
       $scope.resetPaint = function () {
         if (!state.selectedPartPath) { return; }
-        const updatedLocally = updateLocalPartPaintState(state.selectedPartPath, null, false);
-        if (updatedLocally) {
-          computeFilteredParts({ skipHighlightIfSame: true });
+        const partPath = state.selectedPartPath;
+        const updatedLocally = updateLocalPartPaintState(partPath, null, false);
+        if (!updatedLocally) {
+          const part = findPartByPath(partPath);
+          if (part) {
+            part.hasCustomPaint = false;
+            part.customPaints = null;
+            const baseClone = clonePaints(state.basePaints);
+            part.currentPaints = baseClone.length ? baseClone : [];
+            if (state.selectedPart && state.selectedPart.partPath === part.partPath) {
+              state.selectedPart = part;
+              updateEditedPaints(part);
+            }
+          }
         }
-        bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(state.selectedPartPath) + ')');
+        computeFilteredParts();
+        bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
       };
 
       $scope.showAllParts = function () {
-        state.highlightSuspended = true;
+        state.hoveredPartPath = null;
         sendShowAllCommand();
       };
 
       $scope.$on('$destroy', function () {
+        state.hoveredPartPath = null;
         sendShowAllCommand();
       });
 
@@ -980,7 +1017,6 @@ angular.module('beamng.apps')
             state.partsTree = [];
             state.filteredTree = [];
             state.filteredParts = [];
-            state.highlightSuspended = true;
             state.expandedNodes = {};
             state.savedConfigs = [];
             state.selectedSavedConfig = null;
@@ -989,13 +1025,14 @@ angular.module('beamng.apps')
             state.isSpawningConfig = false;
             state.saveErrorMessage = null;
             state.hasUserSelectedPart = false;
-            setSelectedPart(null, { skipHighlight: false });
+            state.hoveredPartPath = null;
+            setSelectedPart(null);
+            sendShowAllCommand();
             return;
           }
 
           if (state.vehicleId !== previousVehicleId) {
             clearPendingReplacement();
-            state.highlightSuspended = true;
             state.filterText = '';
             state.expandedNodes = {};
             state.savedConfigs = [];
@@ -1005,7 +1042,9 @@ angular.module('beamng.apps')
             state.isSpawningConfig = false;
             state.saveErrorMessage = null;
             state.hasUserSelectedPart = false;
-            setSelectedPart(null, { skipHighlight: false });
+            state.hoveredPartPath = null;
+            setSelectedPart(null);
+            sendShowAllCommand();
             requestSavedConfigs();
           }
 
@@ -1013,10 +1052,7 @@ angular.module('beamng.apps')
           state.parts = Array.isArray(data.parts) ? data.parts : [];
           state.partsTree = buildPartsTree(state.parts);
 
-          computeFilteredParts({
-            skipHighlightIfSame: true,
-            forceHighlightOnRefresh: state.vehicleId !== previousVehicleId
-          });
+          computeFilteredParts();
           state.isSpawningConfig = false;
           state.isSavingConfig = false;
         });
