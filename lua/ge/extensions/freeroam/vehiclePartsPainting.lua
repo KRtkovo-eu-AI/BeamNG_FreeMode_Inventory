@@ -48,6 +48,143 @@ local function safePcall(fn, ...)
   return true, resultOrErr
 end
 
+local userPathCacheComputed = false
+local cachedUserPath = nil
+local cachedUserPathWithSlash = nil
+
+local function normalizePathString(path)
+  if not path or path == '' then
+    return nil
+  end
+  local str = tostring(path)
+  str = str:gsub('\\', '/')
+  str = str:gsub('/%./', '/')
+  str = str:gsub('//+', '/')
+  if str ~= '/' then
+    local trailing = str:sub(-1) == '/'
+    str = str:gsub('/+$', '')
+    if trailing then
+      str = str .. '/'
+    end
+  end
+  if str == '' then
+    return nil
+  end
+  return str
+end
+
+local function getNormalizedUserPath()
+  if userPathCacheComputed then
+    return cachedUserPath, cachedUserPathWithSlash
+  end
+  userPathCacheComputed = true
+  if not FS or not FS.getUserPath then
+    cachedUserPath = nil
+    cachedUserPathWithSlash = nil
+    return nil, nil
+  end
+  local okUser, userPath = safePcall(FS.getUserPath, FS)
+  if not okUser or not userPath or userPath == '' then
+    cachedUserPath = nil
+    cachedUserPathWithSlash = nil
+    return nil, nil
+  end
+  local normalized = normalizePathString(userPath)
+  if not normalized then
+    cachedUserPath = nil
+    cachedUserPathWithSlash = nil
+    return nil, nil
+  end
+  local withSlash = normalized
+  if withSlash:sub(-1) ~= '/' then
+    withSlash = withSlash .. '/'
+  end
+  cachedUserPath = normalized
+  cachedUserPathWithSlash = withSlash
+  return cachedUserPath, cachedUserPathWithSlash
+end
+
+local function getFilesystemPathCandidates(path)
+  local normalized = normalizePathString(path)
+  if not normalized then
+    return {}
+  end
+
+  local candidates = {}
+  local seen = {}
+
+  local function addCandidate(value)
+    local normalizedValue = normalizePathString(value)
+    if not normalizedValue or normalizedValue == '' then
+      return
+    end
+    if not seen[normalizedValue] then
+      seen[normalizedValue] = true
+      table.insert(candidates, normalizedValue)
+    end
+  end
+
+  if isAbsolutePath(normalized) then
+    local _, baseWithSlash = getNormalizedUserPath()
+    if baseWithSlash then
+      local baseLower = string.lower(baseWithSlash)
+      local normalizedLower = string.lower(normalized)
+      if normalizedLower:sub(1, #baseLower) == baseLower then
+        local relative = normalized:sub(#baseWithSlash + 1)
+        relative = relative:gsub('^/+', '')
+        if relative ~= '' then
+          if normalized:sub(-1) == '/' then
+            relative = relative:gsub('/+$', '') .. '/'
+          end
+          addCandidate(relative)
+        end
+      end
+    end
+  end
+
+  addCandidate(normalized)
+
+  return candidates
+end
+
+local function callFsFunction(func, path, ...)
+  if type(func) ~= 'function' or not FS then
+    return false, 'fs_unavailable'
+  end
+  local candidates = getFilesystemPathCandidates(path)
+  if #candidates == 0 then
+    return false, 'invalid_path'
+  end
+  local lastErr = nil
+  for _, candidate in ipairs(candidates) do
+    local ok, result = safePcall(func, FS, candidate, ...)
+    if ok then
+      return true, result, candidate
+    end
+    lastErr = result
+  end
+  return false, lastErr or 'fs_call_failed'
+end
+
+local function callFileFunction(func, path, ...)
+  if type(func) ~= 'function' then
+    return false, 'function_unavailable'
+  end
+  local candidates = getFilesystemPathCandidates(path)
+  if #candidates == 0 then
+    return false, 'invalid_path'
+  end
+  local lastErr = nil
+  for _, candidate in ipairs(candidates) do
+    local ok, result = safePcall(func, candidate, ...)
+    if ok then
+      return true, result, candidate
+    end
+    lastErr = result
+  end
+  return false, lastErr or 'file_call_failed'
+end
+
 local function deepCopy(value)
   if type(value) ~= 'table' then
     return value
@@ -152,13 +289,31 @@ local function ensureDirectory(path)
   if not path or path == '' then return end
   if not FS or not FS.directoryExists or not FS.createDirectory then return end
 
-  local normalized = path:gsub('\\', '/')
-  local okExists, exists = safePcall(FS.directoryExists, FS, normalized)
-  if okExists and exists then
+  local candidates = getFilesystemPathCandidates(path)
+  if #candidates == 0 then
     return
   end
 
-  safePcall(FS.createDirectory, FS, normalized)
+  for _, candidate in ipairs(candidates) do
+    local okExists, exists = safePcall(FS.directoryExists, FS, candidate)
+    if okExists and exists then
+      return
+    end
+  end
+
+  for _, candidate in ipairs(candidates) do
+    local okCreate, result = safePcall(FS.createDirectory, FS, candidate)
+    if okCreate then
+      if result == false then
+        local verifyOk, verifyExists = safePcall(FS.directoryExists, FS, candidate)
+        if verifyOk and verifyExists then
+          return
+        end
+      else
+        return
+      end
+    end
+  end
 end
 
 local function joinPaths(base, relative)
@@ -191,18 +346,19 @@ local function makeAbsolutePath(path)
   if not path or path == '' then
     return nil
   end
-  if isAbsolutePath(path) then
-    return path
-  end
-  if not FS or not FS.getUserPath then
+  local normalized = normalizePathString(path)
+  if not normalized then
     return nil
   end
-  local okUser, userPath = safePcall(FS.getUserPath, FS)
-  if not okUser or not userPath or userPath == '' then
+  if isAbsolutePath(normalized) then
+    return normalized
+  end
+  local _, baseWithSlash = getNormalizedUserPath()
+  if not baseWithSlash then
     return nil
   end
-  local normalizedBase = tostring(userPath):gsub('\\', '/'):gsub('/+$', '')
-  return joinPaths(normalizedBase, path)
+  local combined = joinPaths(baseWithSlash, normalized)
+  return normalizePathString(combined)
 end
 
 local function getEditorPreferencesCandidates()
@@ -259,29 +415,37 @@ local function readJsonFileAtPath(path)
     return nil
   end
 
-  local okRead, data = safePcall(jsonReadFile, path)
-  if okRead and type(data) == 'table' then
-    return data
+  local candidates = getFilesystemPathCandidates(path)
+  if #candidates == 0 then
+    candidates = {path}
   end
 
   if FS and FS.readFile then
-    local okFile, contents = safePcall(FS.readFile, FS, path)
-    if okFile and type(contents) == 'string' and contents ~= '' then
-      local okDecode, decoded = pcall(jsonDecode, contents)
-      if okDecode and type(decoded) == 'table' then
-        return decoded
+    for _, candidate in ipairs(candidates) do
+      local okFile, contents = safePcall(FS.readFile, FS, candidate)
+      if okFile and type(contents) == 'string' and contents ~= '' then
+        local okDecode, decoded = pcall(jsonDecode, contents)
+        if okDecode and type(decoded) == 'table' then
+          return decoded
+        end
       end
     end
   end
 
-  local file = io.open(path, 'r')
-  if file then
-    local contents = file:read('*a')
-    file:close()
-    if contents and contents ~= '' then
-      local okDecode, decoded = pcall(jsonDecode, contents)
-      if okDecode and type(decoded) == 'table' then
-        return decoded
+  for _, candidate in ipairs(candidates) do
+    local absolute = candidate
+    if not isAbsolutePath(absolute) then
+      absolute = makeAbsolutePath(absolute) or absolute
+    end
+    local file = io.open(absolute, 'r')
+    if file then
+      local contents = file:read('*a')
+      file:close()
+      if contents and contents ~= '' then
+        local okDecode, decoded = pcall(jsonDecode, contents)
+        if okDecode and type(decoded) == 'table' then
+          return decoded
+        end
       end
     end
   end
@@ -372,35 +536,46 @@ local function tryWritePreferencesToPath(path, data)
     return false, 'invalid_path'
   end
 
-  local directory = path:match('^(.*)/[^/]+$')
-  if directory and directory ~= '' then
-    ensureDirectory(directory)
+  local candidates = getFilesystemPathCandidates(path)
+  if #candidates == 0 then
+    candidates = {path}
   end
 
-  local okWrite, resultOrErr = safePcall(jsonWriteFile, path, data, true)
-  if okWrite and resultOrErr ~= false then
-    return true, path
-  end
-
-  if not isAbsolutePath(path) then
-    local absolute = makeAbsolutePath(path)
-    if absolute and absolute ~= path then
-      local absDir = absolute:match('^(.*)/[^/]+$')
-      if absDir and absDir ~= '' then
-        ensureDirectory(absDir)
+  local extra = {}
+  for _, candidate in ipairs(candidates) do
+    if not isAbsolutePath(candidate) then
+      local absolute = makeAbsolutePath(candidate)
+      if absolute and absolute ~= candidate then
+        table.insert(extra, absolute)
       end
-      okWrite, resultOrErr = safePcall(jsonWriteFile, absolute, data, true)
+    end
+  end
+  for _, candidate in ipairs(extra) do
+    table.insert(candidates, candidate)
+  end
+
+  local lastError = nil
+  local seen = {}
+  for _, candidate in ipairs(candidates) do
+    if candidate and candidate ~= '' and not seen[candidate] then
+      seen[candidate] = true
+      local directory = candidate:match('^(.*)/[^/]+$')
+      if directory and directory ~= '' then
+        ensureDirectory(directory)
+      end
+      local okWrite, resultOrErr = safePcall(jsonWriteFile, candidate, data, true)
       if okWrite and resultOrErr ~= false then
-        return true, absolute
+        return true, candidate
+      end
+      if not okWrite then
+        lastError = tostring(resultOrErr)
+      else
+        lastError = 'jsonWriteFile returned false'
       end
     end
   end
 
-  if not okWrite then
-    return false, tostring(resultOrErr)
-  end
-
-  return false, 'jsonWriteFile returned false'
+  return false, lastError or 'jsonWriteFile returned false'
 end
 
 local function writeEditorPreferences(data)
@@ -671,18 +846,12 @@ local function requestColorPresets()
 end
 
 local function getUserVehiclesDir()
-  if not FS or not FS.getUserPath then
+  local _, baseWithSlash = getNormalizedUserPath()
+  if not baseWithSlash then
     return nil
   end
-  local ok, path = safePcall(FS.getUserPath, FS)
-  if not ok or not path or path == '' then
-    return nil
-  end
-  path = tostring(path):gsub('\\', '/')
-  if not path:find('/$', 1, true) then
-    path = path .. '/'
-  end
-  local vehiclesDir = path .. 'vehicles/'
+  local vehiclesDir = joinPaths(baseWithSlash, 'vehicles/')
+  vehiclesDir = normalizePathString(vehiclesDir) or vehiclesDir
   ensureDirectory(vehiclesDir)
   return vehiclesDir
 end
@@ -694,7 +863,7 @@ local function gatherSavedConfigsFromDisk(modelFolder)
   local userVehiclesDir = getUserVehiclesDir()
   local targetDir = nil
   if userVehiclesDir then
-    targetDir = (userVehiclesDir .. modelFolder .. '/'):gsub('\\', '/')
+    targetDir = normalizePathString(joinPaths(userVehiclesDir, modelFolder .. '/')) or joinPaths(userVehiclesDir, modelFolder .. '/')
     ensureDirectory(targetDir)
   end
   if not FS or not FS.findFiles then
@@ -712,75 +881,81 @@ local function gatherSavedConfigsFromDisk(modelFolder)
   local seenNames = {}
 
   for _, root in ipairs(searchRoots) do
-    if root and root ~= '' and not visitedRoots[root] then
-      visitedRoots[root] = true
-      local okFind, files = safePcall(FS.findFiles, FS, root, '*.pc', 0, false, true)
-      if okFind and type(files) == 'table' then
-        for _, filePath in ipairs(files) do
-          if type(filePath) == 'string' and filePath ~= '' then
-            local normalizedPath = filePath:gsub('\\', '/')
-            local fileName = normalizedPath:match('([^/]+)%.pc$')
-            if not fileName or fileName == '' then
-              fileName = filePath:match('([^/\\]+)%.pc$')
-            end
-            if fileName and fileName ~= '' then
-              local key = string.lower(fileName)
-              if not seenNames[key] then
-                seenNames[key] = true
-                local relativePath = string.format('vehicles/%s/%s.pc', modelFolder, fileName)
-                local isAbsolute = normalizedPath:match('^%a:/') or normalizedPath:sub(1, 1) == '/'
-                local absolutePath = normalizedPath
-                if targetDir and not isAbsolute then
-                  absolutePath = targetDir .. fileName .. '.pc'
-                end
-
-                local entry = {
-                  fileName = fileName,
-                  modelFolder = modelFolder,
-                  relativePath = relativePath,
-                  absolutePath = absolutePath
-                }
-
-                local previewRelative = string.format('vehicles/%s/%s.png', modelFolder, fileName)
-                local previewExists = false
-                local okPng, hasPng = safePcall(FS.fileExists, FS, previewRelative)
-                if okPng and hasPng then
-                  previewExists = true
-                elseif targetDir then
-                  okPng, hasPng = safePcall(FS.fileExists, FS, targetDir .. fileName .. '.png')
-                  previewExists = okPng and hasPng
-                end
-                if previewExists then
-                  entry.previewImage = previewRelative
-                end
-
-                local displayName = nil
-                local okRead, configData = safePcall(jsonReadFile, relativePath)
-                if not okRead or not configData then
-                  if targetDir then
-                    okRead, configData = safePcall(jsonReadFile, targetDir .. fileName .. '.pc')
+    if root and root ~= '' then
+      local visitKey = normalizePathString(root) or root
+      if not visitedRoots[visitKey] then
+        visitedRoots[visitKey] = true
+        local altRoots = getFilesystemPathCandidates(root)
+        for _, alt in ipairs(altRoots) do
+          visitedRoots[alt] = true
+        end
+        local okFind, files = callFsFunction(FS.findFiles, root, '*.pc', 0, false, true)
+        if okFind and type(files) == 'table' then
+          for _, filePath in ipairs(files) do
+            if type(filePath) == 'string' and filePath ~= '' then
+              local normalizedPath = normalizePathString(filePath) or filePath
+              local fileName = normalizedPath:match('([^/]+)%.pc$')
+              if not fileName or fileName == '' then
+                fileName = filePath:match('([^/\\]+)%.pc$')
+              end
+              if fileName and fileName ~= '' then
+                local key = string.lower(fileName)
+                if not seenNames[key] then
+                  seenNames[key] = true
+                  local relativePath = string.format('vehicles/%s/%s.pc', modelFolder, fileName)
+                  local absolutePath = normalizedPath
+                  if targetDir and (not isAbsolutePath(absolutePath)) then
+                    absolutePath = normalizePathString(joinPaths(targetDir, fileName .. '.pc')) or (targetDir .. fileName .. '.pc')
                   end
-                end
-                if okRead and type(configData) == 'table' then
-                  displayName = sanitizeConfigDisplayName(configData.name)
-                  if not displayName then
-                    displayName = sanitizeConfigDisplayName(configData.title)
-                  end
-                  if not displayName and type(configData.config) == 'table' then
-                    displayName = sanitizeConfigDisplayName(configData.config.name or configData.config.title)
-                  end
-                  if not displayName then
-                    displayName = sanitizeConfigDisplayName(configData.displayName)
-                  end
-                  entry.configType = configData.configType
-                  entry.displayName = displayName
-                end
 
-                if not entry.displayName or entry.displayName == '' then
-                  entry.displayName = fileName
-                end
+                  local entry = {
+                    fileName = fileName,
+                    modelFolder = modelFolder,
+                    relativePath = relativePath,
+                    absolutePath = absolutePath
+                  }
 
-                list[#list + 1] = entry
+                  local previewRelative = string.format('vehicles/%s/%s.png', modelFolder, fileName)
+                  local previewExists = false
+                  local okPng, hasPng = callFsFunction(FS.fileExists, previewRelative)
+                  if okPng and hasPng then
+                    previewExists = true
+                  elseif targetDir then
+                    local altPreview = normalizePathString(joinPaths(targetDir, fileName .. '.png')) or (targetDir .. fileName .. '.png')
+                    okPng, hasPng = callFsFunction(FS.fileExists, altPreview)
+                    previewExists = okPng and hasPng
+                  end
+                  if previewExists then
+                    entry.previewImage = previewRelative
+                  end
+
+                  local displayName = nil
+                  local configData = readJsonFileAtPath(relativePath)
+                  if (not configData or type(configData) ~= 'table') and targetDir then
+                    local altPath = normalizePathString(joinPaths(targetDir, fileName .. '.pc')) or (targetDir .. fileName .. '.pc')
+                    configData = readJsonFileAtPath(altPath)
+                  end
+                  if type(configData) == 'table' then
+                    displayName = sanitizeConfigDisplayName(configData.name)
+                    if not displayName then
+                      displayName = sanitizeConfigDisplayName(configData.title)
+                    end
+                    if not displayName and type(configData.config) == 'table' then
+                      displayName = sanitizeConfigDisplayName(configData.config.name or configData.config.title)
+                    end
+                    if not displayName then
+                      displayName = sanitizeConfigDisplayName(configData.displayName)
+                    end
+                    entry.configType = configData.configType
+                    entry.displayName = displayName
+                  end
+
+                  if not entry.displayName or entry.displayName == '' then
+                    entry.displayName = fileName
+                  end
+
+                  list[#list + 1] = entry
+                end
               end
             end
           end
@@ -1060,9 +1235,9 @@ local function saveCurrentUserConfig(configName)
   local targetDir = nil
   local targetPath = nil
   if userVehiclesDir then
-    targetDir = userVehiclesDir .. modelFolder .. '/'
+    targetDir = normalizePathString(joinPaths(userVehiclesDir, modelFolder .. '/')) or joinPaths(userVehiclesDir, modelFolder .. '/')
     ensureDirectory(targetDir)
-    targetPath = targetDir .. sanitizedName .. '.pc'
+    targetPath = normalizePathString(joinPaths(targetDir, sanitizedName .. '.pc')) or (targetDir .. sanitizedName .. '.pc')
   else
     log('W', logTag, 'Unable to resolve user vehicles directory; skipping saved config verification')
   end
@@ -1079,7 +1254,7 @@ local function saveCurrentUserConfig(configName)
   local finalSaveSuccessful = false
   if ok then
     if targetPath and FS and FS.fileExists then
-      local existsOk, exists = safePcall(FS.fileExists, FS, targetPath)
+      local existsOk, exists = callFsFunction(FS.fileExists, targetPath)
       if not existsOk then
         needsFallback = true
         fallbackReason = string.format('file existence check failed: %s', tostring(exists))
@@ -1117,27 +1292,30 @@ local function saveCurrentUserConfig(configName)
     local wroteFallback = false
     local writeError = nil
     for _, candidate in ipairs(writeTargets) do
-      if options.allowOverwrite and candidate == targetPath and FS and FS.fileExists and FS.removeFile then
-        local okExists, exists = safePcall(FS.fileExists, FS, candidate)
-        if okExists and exists then
-          safePcall(FS.removeFile, FS, candidate)
+      if candidate and candidate ~= '' then
+        local normalizedCandidate = normalizePathString(candidate) or candidate
+        if options.allowOverwrite and targetPath and normalizedCandidate == targetPath and FS and FS.fileExists and FS.removeFile then
+          local okExists, exists = callFsFunction(FS.fileExists, normalizedCandidate)
+          if okExists and exists then
+            callFsFunction(FS.removeFile, normalizedCandidate)
+          end
         end
-      end
 
-      local okWrite, resultOrErr = safePcall(jsonWriteFile, candidate, configCopy, true)
-      if okWrite and resultOrErr then
-        log('I', logTag, string.format('Saved fallback vehicle config to %s', tostring(candidate)))
-        wroteFallback = true
-        finalSaveSuccessful = true
-        break
-      end
+        local okWrite, resultOrErr = callFileFunction(jsonWriteFile, normalizedCandidate, configCopy, true)
+        if okWrite and resultOrErr then
+          log('I', logTag, string.format('Saved fallback vehicle config to %s', tostring(normalizedCandidate)))
+          wroteFallback = true
+          finalSaveSuccessful = true
+          break
+        end
 
-      if not okWrite then
-        writeError = resultOrErr
-      else
-        writeError = 'jsonWriteFile returned false'
+        if not okWrite then
+          writeError = resultOrErr
+        else
+          writeError = 'jsonWriteFile returned false'
+        end
+        log('W', logTag, string.format('jsonWriteFile failed for %s: %s', tostring(normalizedCandidate), tostring(writeError)))
       end
-      log('W', logTag, string.format('jsonWriteFile failed for %s: %s', tostring(candidate), tostring(writeError)))
     end
 
     if not wroteFallback then
