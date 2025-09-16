@@ -46,7 +46,17 @@ angular.module('beamng.apps')
         filterText: '',
         filteredParts: [],
         expandedNodes: {},
-        minimized: false
+        minimized: false,
+        savedConfigs: [],
+        selectedSavedConfig: null,
+        configNameInput: '',
+        isSavingConfig: false,
+        isSpawningConfig: false,
+        saveErrorMessage: null,
+        showReplaceConfirmation: false,
+        pendingConfigName: null,
+        pendingSanitizedName: null,
+        pendingExistingConfig: null
       };
 
       $scope.state = state;
@@ -134,6 +144,45 @@ angular.module('beamng.apps')
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
       }
 
+      function sanitizeConfigFileName(name) {
+        if (typeof name !== 'string') { return null; }
+        let sanitized = name.replace(/[<>:"/\\|?*]/g, '_');
+        sanitized = sanitized.replace(/\s+/g, ' ').trim();
+        return sanitized ? sanitized : null;
+      }
+
+      function resolveExistingConfig(name) {
+        const sanitized = sanitizeConfigFileName(name);
+        if (!sanitized) { return { sanitized: null, existing: null }; }
+        const lower = sanitized.toLowerCase();
+        const configs = Array.isArray(state.savedConfigs) ? state.savedConfigs : [];
+        for (let i = 0; i < configs.length; i++) {
+          const cfg = configs[i];
+          if (!cfg) { continue; }
+          const candidate = typeof cfg.fileName === 'string' ? cfg.fileName.trim() : '';
+          if (candidate && candidate.toLowerCase() === lower) {
+            return { sanitized: sanitized, existing: cfg };
+          }
+        }
+        return { sanitized: sanitized, existing: null };
+      }
+
+      function clearPendingReplacement() {
+        state.showReplaceConfirmation = false;
+        state.pendingConfigName = null;
+        state.pendingSanitizedName = null;
+        state.pendingExistingConfig = null;
+      }
+
+      function performSaveConfiguration(name) {
+        clearPendingReplacement();
+        state.saveErrorMessage = null;
+        state.isSavingConfig = true;
+        const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
+        bngApi.engineLua(command);
+        requestSavedConfigs();
+      }
+
       function createViewPaint(paint) {
         paint = paint || {};
         const base = Array.isArray(paint.baseColor) ? paint.baseColor : [];
@@ -195,6 +244,10 @@ angular.module('beamng.apps')
 
       function sendShowAllCommand() {
         bngApi.engineLua('freeroam_vehiclePartsPainting.showAllParts()');
+      }
+
+      function requestSavedConfigs() {
+        bngApi.engineLua('freeroam_vehiclePartsPainting.requestSavedConfigs()');
       }
 
       function highlightPart(partPath) {
@@ -559,6 +612,100 @@ angular.module('beamng.apps')
         bngApi.engineLua('freeroam_vehiclePartsPainting.requestState()');
       };
 
+      $scope.refreshSavedConfigs = function () {
+        requestSavedConfigs();
+      };
+
+      function getSavedConfigDisplayName(config) {
+        if (!config || typeof config !== 'object') { return ''; }
+        if (config.displayName && typeof config.displayName === 'string' && config.displayName.trim()) {
+          return config.displayName.trim();
+        }
+        if (config.fileName && typeof config.fileName === 'string' && config.fileName.trim()) {
+          return config.fileName.trim();
+        }
+        if (config.relativePath && typeof config.relativePath === 'string' && config.relativePath.trim()) {
+          const relative = config.relativePath.trim();
+          const parts = relative.split('/');
+          const last = parts[parts.length - 1] || '';
+          if (last.toLowerCase().endsWith('.pc')) {
+            return last.substring(0, last.length - 3) || last;
+          }
+          return last || relative;
+        }
+        return 'Configuration';
+      }
+
+      $scope.getSavedConfigs = function () {
+        return Array.isArray(state.savedConfigs) ? state.savedConfigs : [];
+      };
+
+      $scope.hasSavedConfigs = function () {
+        return Array.isArray(state.savedConfigs) && state.savedConfigs.length > 0;
+      };
+
+      $scope.getSavedConfigLabel = function (config) {
+        return getSavedConfigDisplayName(config);
+      };
+
+      $scope.isSavedConfigSelected = function (config) {
+        if (!config || !state.selectedSavedConfig) { return false; }
+        return state.selectedSavedConfig.relativePath === config.relativePath;
+      };
+
+      $scope.selectSavedConfig = function (config) {
+        if (!config) {
+          state.selectedSavedConfig = null;
+          return;
+        }
+        state.selectedSavedConfig = config;
+      };
+
+      $scope.saveCurrentConfiguration = function () {
+        if (state.isSavingConfig || state.showReplaceConfirmation) { return; }
+        const name = typeof state.configNameInput === 'string' ? state.configNameInput.trim() : '';
+        if (!name) {
+          state.saveErrorMessage = 'Please enter a configuration name.';
+          return;
+        }
+        const result = resolveExistingConfig(name);
+        if (!result.sanitized) {
+          state.saveErrorMessage = 'Please enter a configuration name.';
+          return;
+        }
+        state.saveErrorMessage = null;
+        if (result.existing) {
+          state.pendingConfigName = name;
+          state.pendingSanitizedName = result.sanitized;
+          state.pendingExistingConfig = result.existing;
+          state.showReplaceConfirmation = true;
+          return;
+        }
+        performSaveConfiguration(name);
+      };
+
+      $scope.confirmReplaceSavedConfig = function () {
+        if (state.isSavingConfig) { return; }
+        const name = typeof state.pendingConfigName === 'string' ? state.pendingConfigName : null;
+        if (!name) {
+          clearPendingReplacement();
+          return;
+        }
+        performSaveConfiguration(name);
+      };
+
+      $scope.cancelReplaceSavedConfig = function () {
+        clearPendingReplacement();
+      };
+
+      $scope.spawnSavedConfiguration = function (config) {
+        const target = config || state.selectedSavedConfig;
+        if (!target || !target.relativePath) { return; }
+        state.isSpawningConfig = true;
+        const command = 'freeroam_vehiclePartsPainting.spawnSavedConfiguration(' + toLuaString(target.relativePath) + ')';
+        bngApi.engineLua(command);
+      };
+
       $scope.applyPaint = function () {
         if (!state.selectedPartPath || !$scope.editedPaints.length) { return; }
         const paints = viewToPaints($scope.editedPaints);
@@ -594,6 +741,7 @@ angular.module('beamng.apps')
           state.vehicleId = data.vehicleId || null;
 
           if (!state.vehicleId) {
+            clearPendingReplacement();
             state.basePaints = [];
             state.parts = [];
             state.partsTree = [];
@@ -601,14 +749,28 @@ angular.module('beamng.apps')
             state.filteredParts = [];
             state.highlightSuspended = false;
             state.expandedNodes = {};
+            state.savedConfigs = [];
+            state.selectedSavedConfig = null;
+            state.configNameInput = '';
+            state.isSavingConfig = false;
+            state.isSpawningConfig = false;
+            state.saveErrorMessage = null;
             setSelectedPart(null, { skipHighlight: true });
             return;
           }
 
           if (state.vehicleId !== previousVehicleId) {
+            clearPendingReplacement();
             state.highlightSuspended = false;
             state.filterText = '';
             state.expandedNodes = {};
+            state.savedConfigs = [];
+            state.selectedSavedConfig = null;
+            state.configNameInput = '';
+            state.isSavingConfig = false;
+            state.isSpawningConfig = false;
+            state.saveErrorMessage = null;
+            requestSavedConfigs();
           }
 
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
@@ -619,11 +781,48 @@ angular.module('beamng.apps')
             skipHighlightIfSame: true,
             forceHighlightOnRefresh: state.vehicleId !== previousVehicleId
           });
+          state.isSpawningConfig = false;
+          state.isSavingConfig = false;
+        });
+      });
+
+      $scope.$on('VehiclePartsPaintingSavedConfigs', function (event, data) {
+        data = data || {};
+        $scope.$evalAsync(function () {
+          const wasSaving = state.isSavingConfig;
+          clearPendingReplacement();
+          const configs = Array.isArray(data.configs) ? data.configs.map(function (config) {
+            if (!config || typeof config !== 'object') { return null; }
+            const clone = Object.assign({}, config);
+            clone.displayName = getSavedConfigDisplayName(clone);
+            return clone;
+          }).filter(function (entry) { return !!entry; }) : [];
+
+          const previousSelection = state.selectedSavedConfig ? state.selectedSavedConfig.relativePath : null;
+          state.savedConfigs = configs;
+
+          if (!configs.length) {
+            state.selectedSavedConfig = null;
+          } else {
+            let selected = configs.find(function (entry) { return entry.relativePath === previousSelection; });
+            if (!selected) {
+              selected = configs[0];
+            }
+            state.selectedSavedConfig = selected || null;
+          }
+
+          state.isSavingConfig = false;
+          state.isSpawningConfig = false;
+          if (wasSaving) {
+            state.configNameInput = '';
+            state.saveErrorMessage = null;
+          }
         });
       });
 
       bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
       $scope.refresh();
+      requestSavedConfigs();
     }]
   };
 }]);
