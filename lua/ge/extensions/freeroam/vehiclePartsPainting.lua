@@ -18,32 +18,125 @@ local activePartIdSetByVeh = {}
 local ensuredPartConditionsByVeh = {}
 local cachedCoreSettingsExt = nil
 local warnedMissingCoreSettings = false
+local userPaletteDecodeWarnings = {}
 
-local function getCoreSettingsExtension()
-  if cachedCoreSettingsExt and type(cachedCoreSettingsExt.getValue) == 'function' then
-    return cachedCoreSettingsExt
-  end
+local function registerSettingsFunction(accessor, candidate, field)
+  if type(candidate) ~= 'table' then return end
+  local func = candidate[field]
+  if type(func) ~= 'function' then return end
+  if accessor[field] then return end
+  accessor[field] = {owner = candidate, func = func}
+end
 
-  if not extensions then return nil end
+local function buildSettingsAccessor(candidate, visited)
+  if type(candidate) ~= 'table' then return nil end
+  visited = visited or {}
+  if visited[candidate] then return nil end
+  visited[candidate] = true
 
-  if not cachedCoreSettingsExt and type(extensions.load) == 'function' then
-    local ok, err = pcall(extensions.load, 'core_settings')
-    if not ok then
-      if not warnedMissingCoreSettings then
-        log('W', logTag, 'Unable to load core_settings extension: ' .. tostring(err))
-        warnedMissingCoreSettings = true
+  local accessor = {}
+  registerSettingsFunction(accessor, candidate, 'invalidateCache')
+  registerSettingsFunction(accessor, candidate, 'getValue')
+  registerSettingsFunction(accessor, candidate, 'getValues')
+
+  if type(candidate.impl) == 'table' then
+    local nested = buildSettingsAccessor(candidate.impl, visited)
+    if nested then
+      for key, entry in pairs(nested) do
+        if not accessor[key] then
+          accessor[key] = entry
+        end
       end
     end
   end
 
-  cachedCoreSettingsExt = extensions.core_settings
-  if cachedCoreSettingsExt and type(cachedCoreSettingsExt.getValue) == 'function' then
-    warnedMissingCoreSettings = false
+  if accessor.getValue or accessor.getValues then
+    return accessor
+  end
+
+  return nil
+end
+
+local function callSettingsFunction(accessor, field, ...)
+  if not accessor then return false, nil, nil end
+  local entry = accessor[field]
+  if not entry or type(entry.func) ~= 'function' then return false, nil, nil end
+  local owner = entry.owner
+  if owner then
+    local ok, result = pcall(entry.func, owner, ...)
+    if ok then
+      if field ~= 'invalidateCache' and result == nil then
+        local okSecond, resultSecond = pcall(entry.func, ...)
+        if okSecond then return true, resultSecond, nil end
+      else
+        return true, result, nil
+      end
+    end
+    local okFallback, resultFallback = pcall(entry.func, ...)
+    if okFallback then return true, resultFallback, nil end
+    return false, nil, resultFallback or result
+  end
+  local ok, result = pcall(entry.func, ...)
+  if ok then return true, result, nil end
+  return false, nil, result
+end
+
+local function getCoreSettingsExtension()
+  if cachedCoreSettingsExt and cachedCoreSettingsExt ~= false then
     return cachedCoreSettingsExt
   end
 
+  if cachedCoreSettingsExt == false then
+    local potentialAvailable = false
+    if type(extensions) == 'table' and type(extensions.core_settings) == 'table' then
+      potentialAvailable = true
+    elseif type(_G) == 'table' then
+      if type(_G.core_settings) == 'table' or type(_G.settings) == 'table' then
+        potentialAvailable = true
+      end
+    end
+    if not potentialAvailable then
+      return nil
+    end
+  end
+
+  local candidates = {}
+
+  if type(extensions) == 'table' then
+    if type(extensions.core_settings) == 'table' then
+      table.insert(candidates, extensions.core_settings)
+    end
+  end
+
+  if type(_G) == 'table' then
+    if type(_G.core_settings) == 'table' then
+      table.insert(candidates, _G.core_settings)
+    end
+    if type(_G.settings) == 'table' then
+      table.insert(candidates, _G.settings)
+    end
+  end
+
+  local requireTargets = {'core.settings', 'core_settings', 'core/settings'}
+  for _, target in ipairs(requireTargets) do
+    local ok, module = pcall(require, target)
+    if ok and type(module) == 'table' then
+      table.insert(candidates, module)
+    end
+  end
+
+  for _, candidate in ipairs(candidates) do
+    local accessor = buildSettingsAccessor(candidate)
+    if accessor then
+      cachedCoreSettingsExt = accessor
+      warnedMissingCoreSettings = false
+      return cachedCoreSettingsExt
+    end
+  end
+
+  cachedCoreSettingsExt = false
   if not warnedMissingCoreSettings then
-    log('W', logTag, 'core_settings extension unavailable; saved user paint presets cannot be loaded.')
+    log('W', logTag, 'core settings provider unavailable; saved user paint presets cannot be loaded.')
     warnedMissingCoreSettings = true
   end
 
@@ -506,31 +599,84 @@ local function sanitizePaints(paints)
   return sanitized
 end
 
-local function getUserPalettePaints()
-  local settingsExt = getCoreSettingsExtension()
-  if not settingsExt or type(settingsExt.getValue) ~= 'function' then return {} end
+local function trimUserPaletteString(value)
+  if type(value) ~= 'string' then return nil end
+  return value:match('^%s*(.-)%s*$')
+end
 
-  local rawValue = settingsExt.getValue('userPaintPresets')
-  if not rawValue or rawValue == '' then return {} end
+local function decodeUserPaletteData(rawValue, keyName)
+  if rawValue == nil then return nil end
 
-  local paintsData = nil
   if type(rawValue) == 'string' then
-    local ok, decoded = pcall(jsonDecode, rawValue)
+    local trimmed = trimUserPaletteString(rawValue) or ''
+    if trimmed == '' then return nil end
+    local sanitizedStr = trimmed:gsub("'", '"')
+    local ok, decoded = pcall(jsonDecode, sanitizedStr)
     if ok and type(decoded) == 'table' then
-      paintsData = decoded
-    elseif not ok then
-      log('W', logTag, 'Failed to decode user paint presets JSON: ' .. tostring(decoded))
+      return decoded
     end
+    local warningKey = keyName or 'value'
+    if not userPaletteDecodeWarnings[warningKey] then
+      log('W', logTag, string.format('Failed to decode %s JSON: %s', warningKey, tostring(decoded)))
+      log('W', logTag, string.format('JSON data (%s): %s', warningKey, tostring(trimmed)))
+      userPaletteDecodeWarnings[warningKey] = true
+    end
+    return nil
   elseif type(rawValue) == 'table' then
-    paintsData = rawValue
+    return rawValue
   end
 
+  return nil
+end
+
+local function convertLegacyUserColorPresets(rawValue)
+  local decoded = decodeUserPaletteData(rawValue, 'userColorPresets')
+  if type(decoded) ~= 'table' then return nil end
+
+  local emptyMetallicData = {}
+  local paints = {}
+  for _, entry in ipairs(decoded) do
+    local colorString = nil
+    if type(entry) == 'string' then
+      colorString = entry
+    elseif type(entry) == 'table' then
+      local components = {}
+      for i = 1, #entry do
+        components[#components + 1] = tostring(entry[i])
+      end
+      if #components > 0 then
+        colorString = table.concat(components, ' ')
+      end
+    end
+
+    if colorString then
+      local color = stringToTable(colorString)
+      if type(color) == 'table' then
+        local paint = createVehiclePaint({
+          x = tonumber(color[1]) or 1,
+          y = tonumber(color[2]) or 1,
+          z = tonumber(color[3]) or 1,
+          w = tonumber(color[4]) or 1
+        }, emptyMetallicData)
+        local sanitizedPaint = sanitizePaint(paint)
+        if sanitizedPaint then
+          paints[#paints + 1] = sanitizedPaint
+        end
+      end
+    end
+  end
+
+  if #paints == 0 then return nil end
+
+  return paints
+end
+
+local function sanitizeUserPaintPresetList(paintsData)
   if type(paintsData) ~= 'table' then return {} end
 
   local sanitized = {}
-  local count = #paintsData
-  if count > 0 then
-    for i = 1, count do
+  if #paintsData > 0 then
+    for i = 1, #paintsData do
       local preset = sanitizePaint(paintsData[i])
       if preset then
         sanitized[#sanitized + 1] = preset
@@ -544,12 +690,12 @@ local function getUserPalettePaints()
         keyed[#keyed + 1] = {key = key, paint = preset}
       end
     end
-    if not tableIsEmpty(keyed) then
+    if #keyed > 0 then
       table.sort(keyed, function(a, b)
         local aNum = tonumber(a.key)
         local bNum = tonumber(b.key)
-        if aNum and bNum then
-          if aNum ~= bNum then return aNum < bNum end
+        if aNum and bNum and aNum ~= bNum then
+          return aNum < bNum
         end
         return tostring(a.key) < tostring(b.key)
       end)
@@ -559,6 +705,48 @@ local function getUserPalettePaints()
     end
   end
 
+  return sanitized
+end
+
+local function getUserPalettePaints()
+  local settingsAccessor = getCoreSettingsExtension()
+  if not settingsAccessor then return {} end
+
+  callSettingsFunction(settingsAccessor, 'invalidateCache')
+
+  local rawPaintPresets = nil
+  local rawColorPresets = nil
+
+  local okPaints, valuePaints = callSettingsFunction(settingsAccessor, 'getValue', 'userPaintPresets')
+  if okPaints and valuePaints ~= nil then
+    rawPaintPresets = valuePaints
+  end
+
+  if rawPaintPresets == nil or rawPaintPresets == '' or (type(rawPaintPresets) == 'table' and tableIsEmpty(rawPaintPresets)) then
+    local okColors, valueColors = callSettingsFunction(settingsAccessor, 'getValue', 'userColorPresets')
+    if okColors and valueColors ~= nil then
+      rawColorPresets = valueColors
+    end
+  end
+
+  if (rawPaintPresets == nil or rawPaintPresets == '' or (type(rawPaintPresets) == 'table' and tableIsEmpty(rawPaintPresets))) or rawColorPresets == nil then
+    local okValues, values = callSettingsFunction(settingsAccessor, 'getValues')
+    if okValues and type(values) == 'table' then
+      if rawPaintPresets == nil or rawPaintPresets == '' or (type(rawPaintPresets) == 'table' and tableIsEmpty(rawPaintPresets)) then
+        rawPaintPresets = values.userPaintPresets
+      end
+      if rawColorPresets == nil then
+        rawColorPresets = values.userColorPresets
+      end
+    end
+  end
+
+  local paintsData = decodeUserPaletteData(rawPaintPresets, 'userPaintPresets')
+  if (not paintsData or tableIsEmpty(paintsData)) and rawColorPresets ~= nil then
+    paintsData = convertLegacyUserColorPresets(rawColorPresets)
+  end
+
+  local sanitized = sanitizeUserPaintPresetList(paintsData or {})
   if tableIsEmpty(sanitized) then return {} end
 
   return sanitized
