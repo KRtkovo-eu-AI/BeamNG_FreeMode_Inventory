@@ -1,4 +1,4 @@
-<div class="vehicle-parts-painting">
+<div class="vehicle-parts-painting" ng-class="{'is-minimized': state.minimized}">
   <style>
     .vehicle-parts-painting {
       width: 100%;
@@ -14,8 +14,20 @@
       border-radius: 6px;
       font-family: inherit;
     }
+    .vehicle-parts-painting.is-minimized {
+      height: auto;
+      min-height: 0;
+      flex: 0 0 auto;
+      padding: 10px 12px;
+    }
     .vehicle-parts-painting button {
       cursor: pointer;
+    }
+    .vehicle-parts-painting .app-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .vehicle-parts-painting .app-header {
       display: flex;
@@ -30,6 +42,41 @@
     }
     .vehicle-parts-painting .app-header .header-actions button {
       margin-left: 6px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .vehicle-parts-painting .app-header .header-actions button:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .minimized-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+    }
+    .vehicle-parts-painting .minimized-bar .title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .vehicle-parts-painting .minimized-bar button {
+      background: rgba(0, 170, 255, 0.85);
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      padding: 6px 12px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting.is-minimized .app-content {
+      display: none;
+    }
+    .vehicle-parts-painting.is-minimized .minimized-bar {
+      display: flex;
     }
     .vehicle-parts-painting .no-vehicle,
     .vehicle-parts-painting .placeholder {
@@ -82,9 +129,13 @@
     .vehicle-parts-painting .filter-field {
       padding: 8px 10px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .vehicle-parts-painting .filter-field input {
-      width: 90%;
+      flex: 1;
+      width: 100%;
       padding: 6px 8px;
       border-radius: 3px;
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -95,44 +146,102 @@
     .vehicle-parts-painting .filter-field input::placeholder {
       color: rgba(255, 255, 255, 0.6);
     }
+    .vehicle-parts-painting .filter-field .clear-filter {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 18px;
+      line-height: 1;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .filter-field .clear-filter:hover {
+      color: #fff;
+    }
     .vehicle-parts-painting .parts-list {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
     }
-    .vehicle-parts-painting .parts-list .part-row {
+    .vehicle-parts-painting .parts-list .parts-tree,
+    .vehicle-parts-painting .parts-list .parts-tree ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .vehicle-parts-painting .parts-list .parts-tree > .tree-node > .part-node {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .vehicle-parts-painting .parts-list .parts-tree > .tree-node:first-child > .part-node {
+      border-top: none;
+    }
+    .vehicle-parts-painting .parts-list .parts-children {
+      margin-left: 16px;
+      padding-left: 12px;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .parts-list .tree-node > .part-node {
       padding: 8px 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease;
+      cursor: pointer;
+      position: relative;
+    }
+    .vehicle-parts-painting .parts-list .tree-node > .part-node:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .parts-list .tree-node > .part-node.selected {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .vehicle-parts-painting .part-node .toggle {
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(0, 0, 0, 0.2);
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0;
+      flex: 0 0 18px;
+      box-sizing: border-box;
+    }
+    .vehicle-parts-painting .part-node .toggle:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .part-node .toggle.placeholder {
+      visibility: hidden;
+      border-color: transparent;
+      background: transparent;
+    }
+    .vehicle-parts-painting .part-node .node-content {
       display: flex;
       flex-direction: column;
       gap: 2px;
-      transition: background 0.15s ease;
     }
-    .vehicle-parts-painting .parts-list .part-row:hover {
-      background: rgba(255, 255, 255, 0.08);
+    .vehicle-parts-painting .part-node .name {
+      font-size: 13px;
+      font-weight: 600;
     }
-    .vehicle-parts-painting .parts-list .part-row.selected {
-      background: rgba(255, 255, 255, 0.18);
+    .vehicle-parts-painting .part-node .slot {
+      font-size: 11px;
+      opacity: 0.8;
     }
-    .vehicle-parts-painting .parts-list .part-row.custom::after {
-      content: 'custom';
+    .vehicle-parts-painting .part-node .custom-tag {
       font-size: 10px;
       font-weight: 600;
       align-self: flex-start;
       padding: 2px 6px;
       background: rgba(0, 180, 255, 0.3);
       border-radius: 10px;
-      margin-top: 2px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-    }
-    .vehicle-parts-painting .parts-list .part-row .name {
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .vehicle-parts-painting .parts-list .part-row .slot {
-      font-size: 11px;
-      opacity: 0.8;
+      margin-top: 2px;
     }
     .vehicle-parts-painting .parts-list .empty,
     .vehicle-parts-painting .parts-list .no-results {
@@ -218,6 +327,29 @@
       opacity: 0.8;
       text-transform: uppercase;
     }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input label {
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      opacity: 0.75;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"] {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: inherit;
+      padding: 6px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"]::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
     .vehicle-parts-painting .paint-card .color-field .color-channels {
       display: flex;
       flex-direction: column;
@@ -283,20 +415,28 @@
       }
     }
   </style>
-  <div class="app-header">
-    <h2>Vehicle Parts Painting</h2>
-    <div class="header-actions">
-      <button type="button" ng-click="refresh()">Refresh</button>
+  <div class="minimized-bar" ng-if="state.minimized">
+    <span class="title">Vehicle Parts Painting</span>
+    <button type="button" ng-click="restoreApp()">Restore</button>
+  </div>
+  <div class="app-content" ng-if="!state.minimized">
+    <div class="app-header">
+      <h2>Vehicle Parts Painting</h2>
+      <div class="header-actions">
+        <button type="button" ng-click="refresh()">Refresh</button>
+        <button type="button" ng-click="minimizeApp()">Minimize</button>
+      </div>
     </div>
-  </div>
-  <div class="no-vehicle" ng-if="!state.vehicleId">
-    <p>No active player vehicle detected.</p>
-  </div>
-  <div class="app-body" ng-if="state.vehicleId">
+    <div class="no-vehicle" ng-if="!state.vehicleId">
+      <p>No active player vehicle detected.</p>
+    </div>
+    <div class="app-body" ng-if="state.vehicleId">
     <div class="parts-panel">
       <div class="panel-header">
         <span>Parts</span>
         <div class="panel-actions">
+          <button type="button" ng-click="collapseAllNodes()">Collapse all</button>
+          <button type="button" ng-click="expandAllNodes()">Expand all</button>
           <button type="button" ng-click="showAllParts()">Show whole vehicle</button>
         </div>
       </div>
@@ -306,18 +446,46 @@
                ng-model="state.filterText"
                ng-model-options="{ debounce: 150 }"
                autocomplete="off">
+        <button type="button"
+                class="clear-filter"
+                ng-if="state.filterText"
+                ng-click="clearFilter()"
+                aria-label="Clear search">
+          &times;
+        </button>
       </div>
       <div class="parts-list">
-        <div class="part-row"
-             ng-repeat="part in state.filteredParts track by part.partPath"
-             ng-class="{selected: part.partPath === state.selectedPartPath, custom: part.hasCustomPaint}"
-             ng-click="selectPart(part)">
-          <div class="name">{{part.displayName || part.partName}}</div>
-          <div class="slot" ng-if="part.slotName">{{part.slotName}}</div>
-        </div>
+        <ul class="parts-tree" ng-if="state.filteredTree.length">
+          <li class="tree-node"
+              ng-repeat="node in state.filteredTree track by node.part.partPath"
+              ng-include="'vehiclePartsPaintingTreeNode.html'"></li>
+        </ul>
         <div class="no-results" ng-if="state.parts.length && !state.filteredParts.length">No parts match your search.</div>
         <div class="empty" ng-if="!state.parts.length">No paintable parts detected.</div>
       </div>
+      <script type="text/ng-template" id="vehiclePartsPaintingTreeNode.html">
+        <div class="part-node"
+             ng-class="{selected: node.part.partPath === state.selectedPartPath}"
+             ng-click="selectPart(node.part)">
+          <button type="button"
+                  class="toggle"
+                  ng-if="node.children && node.children.length"
+                  ng-click="toggleNode(node.part, $event)"
+                  ng-bind="isNodeExpanded(node.part) ? '▾' : '▸'"></button>
+          <span class="toggle placeholder" ng-if="!node.children || !node.children.length"></span>
+          <div class="node-content">
+            <div class="name">{{node.part.displayName || node.part.partName}}</div>
+            <div class="slot" ng-if="node.part.slotName">{{node.part.slotName}}</div>
+            <span class="custom-tag" ng-if="node.part.hasCustomPaint">custom</span>
+          </div>
+        </div>
+        <ul class="parts-children" ng-if="node.children && node.children.length && isNodeExpanded(node.part)">
+          <li class="tree-node"
+              ng-repeat="child in node.children track by child.part.partPath"
+              ng-init="node = child"
+              ng-include="'vehiclePartsPaintingTreeNode.html'"></li>
+        </ul>
+      </script>
     </div>
     <div class="editor-panel" ng-if="state.selectedPart">
       <div class="part-summary">
@@ -335,6 +503,20 @@
             <label>Color</label>
             <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
             <div class="color-meta">{{getColorHex(paint)}}</div>
+            <div class="html-color-input">
+              <label for="vehiclePartsPaintingHtmlColor{{$index}}">HTML color code</label>
+              <input id="vehiclePartsPaintingHtmlColor{{$index}}"
+                     type="text"
+                     ng-model="paint.htmlColor"
+                     ng-change="onHtmlColorInputChanged(paint)"
+                     ng-blur="onHtmlColorInputBlur(paint)"
+                     placeholder="#RRGGBB"
+                     maxlength="7"
+                     autocomplete="off"
+                     autocorrect="off"
+                     autocapitalize="none"
+                     spellcheck="false">
+            </div>
             <div class="color-channels">
               <div class="color-channel">
                 <span>R</span>
@@ -399,4 +581,5 @@
       <p>Select a part to edit its paint.</p>
     </div>
   </div>
+</div>
 </div>

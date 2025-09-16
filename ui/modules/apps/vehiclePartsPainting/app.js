@@ -37,12 +37,16 @@ angular.module('beamng.apps')
       const state = {
         vehicleId: null,
         parts: [],
+        partsTree: [],
+        filteredTree: [],
         basePaints: [],
         selectedPartPath: null,
         selectedPart: null,
         highlightSuspended: false,
         filterText: '',
-        filteredParts: []
+        filteredParts: [],
+        expandedNodes: {},
+        minimized: false
       };
 
       $scope.state = state;
@@ -61,7 +65,35 @@ angular.module('beamng.apps')
       }
 
       function rgbToHex(r, g, b) {
-        return '#' + componentToHex(r) + componentToHex(g) + componentToHex(b);
+        return ('#' + componentToHex(r) + componentToHex(g) + componentToHex(b)).toUpperCase();
+      }
+
+      function parseHtmlColor(value) {
+        if (typeof value !== 'string') { return null; }
+        let hex = value.trim();
+        if (!hex) { return null; }
+        if (hex.charAt(0) === '#') {
+          hex = hex.substring(1);
+        }
+        if (hex.length === 3) {
+          hex = hex.charAt(0) + hex.charAt(0) +
+            hex.charAt(1) + hex.charAt(1) +
+            hex.charAt(2) + hex.charAt(2);
+        } else if (hex.length !== 6) {
+          return null;
+        }
+        if (!/^[0-9a-fA-F]{6}$/.test(hex)) { return null; }
+        return {
+          r: parseInt(hex.substring(0, 2), 16),
+          g: parseInt(hex.substring(2, 4), 16),
+          b: parseInt(hex.substring(4, 6), 16)
+        };
+      }
+
+      function syncHtmlColor(paint) {
+        if (!paint) { return; }
+        const color = sanitizeColor(paint);
+        paint.htmlColor = rgbToHex(color.r / 255, color.g / 255, color.b / 255);
       }
 
       function clampColorByte(value) {
@@ -110,7 +142,7 @@ angular.module('beamng.apps')
           g: Math.round(clamp01(typeof base[1] === 'number' ? base[1] : 1) * 255),
           b: Math.round(clamp01(typeof base[2] === 'number' ? base[2] : 1) * 255)
         };
-        return {
+        const viewPaint = {
           color: color,
           alpha: typeof base[3] === 'number' ? clamp01(base[3]) : 1,
           metallic: clamp01(paint.metallic),
@@ -118,6 +150,8 @@ angular.module('beamng.apps')
           clearcoat: clamp01(paint.clearcoat),
           clearcoatRoughness: clamp01(paint.clearcoatRoughness)
         };
+        syncHtmlColor(viewPaint);
+        return viewPaint;
       }
 
       function convertPaintsToView(paints) {
@@ -223,6 +257,171 @@ angular.module('beamng.apps')
         return false;
       }
 
+      function normalizeSlotPath(slotPath) {
+        if (slotPath === undefined || slotPath === null) { return ''; }
+        let normalized = String(slotPath);
+        normalized = normalized.replace(/\\/g, '/');
+        normalized = normalized.trim();
+        if (!normalized) { return ''; }
+        normalized = normalized.replace(/\/+/g, '/');
+        normalized = normalized.replace(/^\/+/g, '');
+        normalized = normalized.replace(/\/+$/g, '');
+        return normalized;
+      }
+
+      function getParentSlotKey(normalizedSlotPath) {
+        if (!normalizedSlotPath) { return null; }
+        const index = normalizedSlotPath.lastIndexOf('/');
+        if (index === -1) { return ''; }
+        return normalizedSlotPath.substring(0, index);
+      }
+
+      function compareTreeNodes(a, b) {
+        const orderA = typeof a._order === 'number' ? a._order : Number.POSITIVE_INFINITY;
+        const orderB = typeof b._order === 'number' ? b._order : Number.POSITIVE_INFINITY;
+        if (orderA !== orderB) { return orderA - orderB; }
+
+        const slotA = a.part && a.part.slotName ? String(a.part.slotName).toLowerCase() : '';
+        const slotB = b.part && b.part.slotName ? String(b.part.slotName).toLowerCase() : '';
+        if (slotA && slotB && slotA !== slotB) { return slotA < slotB ? -1 : 1; }
+
+        const nameA = a.part && a.part.displayName ? String(a.part.displayName).toLowerCase() : '';
+        const nameB = b.part && b.part.displayName ? String(b.part.displayName).toLowerCase() : '';
+        if (nameA !== nameB) { return nameA < nameB ? -1 : 1; }
+
+        const pathA = a.part && a.part.partPath ? String(a.part.partPath) : '';
+        const pathB = b.part && b.part.partPath ? String(b.part.partPath) : '';
+        return pathA < pathB ? -1 : (pathA > pathB ? 1 : 0);
+      }
+
+      function cloneTreeNodes(nodes) {
+        if (!Array.isArray(nodes)) { return []; }
+        const result = [];
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          result.push({
+            part: node.part,
+            children: cloneTreeNodes(Array.isArray(node.children) ? node.children : [])
+          });
+        }
+        return result;
+      }
+
+      function buildPartsTree(parts) {
+        if (!Array.isArray(parts)) { return []; }
+
+        const nodesBySlotPath = Object.create(null);
+        const roots = [];
+
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (!part || typeof part !== 'object') { continue; }
+          const normalizedSlotPath = normalizeSlotPath(part.slotPath);
+          const node = {
+            part: part,
+            children: [],
+            _normalizedSlotPath: normalizedSlotPath,
+            _order: i
+          };
+
+          nodesBySlotPath[normalizedSlotPath] = node;
+        }
+
+        const slotKeys = Object.keys(nodesBySlotPath);
+        for (let i = 0; i < slotKeys.length; i++) {
+          const slotKey = slotKeys[i];
+          const node = nodesBySlotPath[slotKey];
+          const parentKey = getParentSlotKey(node._normalizedSlotPath);
+          if (parentKey === null) {
+            roots.push(node);
+            continue;
+          }
+          const parent = nodesBySlotPath[parentKey];
+          if (parent) {
+            parent.children.push(node);
+          } else {
+            roots.push(node);
+          }
+        }
+
+        function sortNodes(list) {
+          list.sort(compareTreeNodes);
+          for (let i = 0; i < list.length; i++) {
+            const childNode = list[i];
+            if (childNode.children && childNode.children.length) {
+              sortNodes(childNode.children);
+            }
+          }
+        }
+
+        sortNodes(roots);
+
+        function cleanupMetadata(list) {
+          for (let i = 0; i < list.length; i++) {
+            const entry = list[i];
+            delete entry._normalizedSlotPath;
+            delete entry._order;
+            if (entry.children && entry.children.length) {
+              cleanupMetadata(entry.children);
+            }
+          }
+        }
+
+        cleanupMetadata(roots);
+
+        return roots;
+      }
+
+      function filterTreeNodes(nodes, filter) {
+        if (!Array.isArray(nodes)) { return []; }
+        const result = [];
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          const matchesSelf = matchesFilter(node.part, filter);
+          let children = [];
+          if (matchesSelf) {
+            children = cloneTreeNodes(Array.isArray(node.children) ? node.children : []);
+          } else {
+            children = filterTreeNodes(Array.isArray(node.children) ? node.children : [], filter);
+          }
+          if (matchesSelf || children.length) {
+            result.push({
+              part: node.part,
+              children: children
+            });
+          }
+        }
+        return result;
+      }
+
+      function expandFilteredNodes(nodes) {
+        if (!Array.isArray(nodes)) { return; }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          if (node.part.partPath) {
+            state.expandedNodes[node.part.partPath] = true;
+          }
+          if (node.children && node.children.length) {
+            expandFilteredNodes(node.children);
+          }
+        }
+      }
+
+      function setExpansionForNodes(nodes, expanded) {
+        if (!Array.isArray(nodes)) { return; }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part || !node.part.partPath) { continue; }
+          state.expandedNodes[node.part.partPath] = !!expanded;
+          if (node.children && node.children.length) {
+            setExpansionForNodes(node.children, expanded);
+          }
+        }
+      }
+
       function computeFilteredParts(options) {
         options = options || {};
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
@@ -235,6 +434,14 @@ angular.module('beamng.apps')
           });
         }
         state.filteredParts = filtered;
+
+        if (!normalized) {
+          state.filteredTree = state.partsTree;
+        } else {
+          const tree = filterTreeNodes(state.partsTree, normalized);
+          state.filteredTree = tree;
+          expandFilteredNodes(tree);
+        }
 
         if (!filtered.length) {
           setSelectedPart(null, { skipHighlight: false });
@@ -265,6 +472,26 @@ angular.module('beamng.apps')
 
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
+        syncHtmlColor(paint);
+      };
+
+      $scope.onHtmlColorInputChanged = function (paint) {
+        if (!paint) { return; }
+        const parsed = parseHtmlColor(paint.htmlColor);
+        if (!parsed) { return; }
+        const color = ensureColorObject(paint);
+        color.r = parsed.r;
+        color.g = parsed.g;
+        color.b = parsed.b;
+        syncHtmlColor(paint);
+      };
+
+      $scope.onHtmlColorInputBlur = function (paint) {
+        if (!paint) { return; }
+        const parsed = parseHtmlColor(paint.htmlColor);
+        if (!parsed) {
+          syncHtmlColor(paint);
+        }
       };
 
       $scope.getColorPreviewStyle = function (paint) {
@@ -285,6 +512,47 @@ angular.module('beamng.apps')
       $scope.selectPart = function (part) {
         if (!part) { return; }
         setSelectedPart(part, { forceHighlight: true });
+      };
+
+      $scope.toggleNode = function (part, $event) {
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        if (!part || !part.partPath) { return; }
+        const path = part.partPath;
+        const current = state.expandedNodes[path];
+        if (current === undefined) {
+          state.expandedNodes[path] = true;
+        } else {
+          state.expandedNodes[path] = !current;
+        }
+      };
+
+      $scope.isNodeExpanded = function (part) {
+        if (!part || !part.partPath) { return true; }
+        const value = state.expandedNodes[part.partPath];
+        if (value === undefined) { return false; }
+        return !!value;
+      };
+
+      $scope.expandAllNodes = function () {
+        setExpansionForNodes(state.partsTree, true);
+      };
+
+      $scope.collapseAllNodes = function () {
+        setExpansionForNodes(state.partsTree, false);
+      };
+
+      $scope.clearFilter = function () {
+        state.filterText = '';
+      };
+
+      $scope.minimizeApp = function () {
+        state.minimized = true;
+      };
+
+      $scope.restoreApp = function () {
+        state.minimized = false;
       };
 
       $scope.refresh = function () {
@@ -328,8 +596,11 @@ angular.module('beamng.apps')
           if (!state.vehicleId) {
             state.basePaints = [];
             state.parts = [];
+            state.partsTree = [];
+            state.filteredTree = [];
             state.filteredParts = [];
             state.highlightSuspended = false;
+            state.expandedNodes = {};
             setSelectedPart(null, { skipHighlight: true });
             return;
           }
@@ -337,10 +608,12 @@ angular.module('beamng.apps')
           if (state.vehicleId !== previousVehicleId) {
             state.highlightSuspended = false;
             state.filterText = '';
+            state.expandedNodes = {};
           }
 
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
           state.parts = Array.isArray(data.parts) ? data.parts : [];
+          state.partsTree = buildPartsTree(state.parts);
 
           computeFilteredParts({
             skipHighlightIfSame: true,
