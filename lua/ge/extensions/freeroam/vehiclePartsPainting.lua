@@ -38,19 +38,163 @@ local function resolvePartName(vehData, partPath)
   return nil
 end
 
-local function queuePartPaintCommands(vehObj, identifiers, paints)
-  if not vehObj or not paints or tableIsEmpty(identifiers) then return end
-  local serializedPaints = serialize(paints)
-  local queued = {}
-  for _, identifier in ipairs(identifiers) do
+local function formatNumberLiteral(value)
+  local num = tonumber(value) or 0
+  if math.abs(num) < 1e-6 then num = 0 end
+  return string.format('%.6f', num)
+end
+
+local function toLuaStringLiteral(value)
+  if not value or value == '' then return 'nil' end
+  return string.format('%q', value)
+end
+
+local function paintToLogString(paint)
+  if type(paint) ~= 'table' then return 'nil' end
+  local base = paint.baseColor or {}
+  local summary = string.format(
+    'rgba=(%.3f, %.3f, %.3f, %.3f) m=%.3f r=%.3f cc=%.3f ccr=%.3f',
+    tonumber(base[1]) or 0,
+    tonumber(base[2]) or 0,
+    tonumber(base[3]) or 0,
+    tonumber(base[4]) or 0,
+    tonumber(paint.metallic) or 0,
+    tonumber(paint.roughness) or 0,
+    tonumber(paint.clearcoat) or 0,
+    tonumber(paint.clearcoatRoughness) or 0
+  )
+  return summary
+end
+
+local function paintsToLogSummary(paints)
+  if type(paints) ~= 'table' or tableIsEmpty(paints) then return '[]' end
+  local segments = {}
+  for i = 1, #paints do
+    segments[#segments + 1] = paintToLogString(paints[i])
+  end
+  return '[' .. table.concat(segments, ' | ') .. ']'
+end
+
+local function identifiersToLogString(identifiers)
+  if type(identifiers) ~= 'table' or tableIsEmpty(identifiers) then return '[]' end
+  local parts = {}
+  for i = 1, #identifiers do
+    parts[#parts + 1] = tostring(identifiers[i])
+  end
+  return '[' .. table.concat(parts, ', ') .. ']'
+end
+
+local function paintsToLuaLiteral(paints)
+  if type(paints) ~= 'table' or tableIsEmpty(paints) then
+    return '{ {baseColor={1.000000,1.000000,1.000000,1.000000},metallic=0.000000,roughness=0.500000,clearcoat=0.000000,clearcoatRoughness=0.000000} }'
+  end
+  local segments = {}
+  for i = 1, #paints do
+    local paint = paints[i] or {}
+    local base = paint.baseColor or {}
+    segments[#segments + 1] = string.format(
+      '{baseColor={%s,%s,%s,%s},metallic=%s,roughness=%s,clearcoat=%s,clearcoatRoughness=%s}',
+      formatNumberLiteral(base[1] or 0),
+      formatNumberLiteral(base[2] or 0),
+      formatNumberLiteral(base[3] or 0),
+      formatNumberLiteral(base[4] or 1),
+      formatNumberLiteral(paint.metallic or 0),
+      formatNumberLiteral(paint.roughness or 0),
+      formatNumberLiteral(paint.clearcoat or 0),
+      formatNumberLiteral(paint.clearcoatRoughness or 0)
+    )
+  end
+  return '{' .. table.concat(segments, ',') .. '}'
+end
+
+local function identifiersToLuaLiteral(identifiers)
+  if type(identifiers) ~= 'table' or tableIsEmpty(identifiers) then return '{}' end
+  local segments = {}
+  for i = 1, #identifiers do
+    local identifier = identifiers[i]
     if identifier and identifier ~= '' then
-      local serializedIdentifier = serialize(identifier)
-      if serializedIdentifier and not queued[serializedIdentifier] then
-        queued[serializedIdentifier] = true
-        vehObj:queueLuaCommand(string.format('partCondition.setPartPaints(%s, %s, 0)', serializedIdentifier, serializedPaints))
+      segments[#segments + 1] = string.format('%q', identifier)
+    end
+  end
+  if tableIsEmpty(segments) then return '{}' end
+  return '{' .. table.concat(segments, ',') .. '}'
+end
+
+local function reorderIdentifiersWithPrimary(list, primary)
+  if not primary or primary == '' then return list end
+  local ordered = {primary}
+  local seen = {[primary] = true}
+  if type(list) == 'table' then
+    for _, identifier in ipairs(list) do
+      if identifier and identifier ~= '' and not seen[identifier] then
+        seen[identifier] = true
+        table.insert(ordered, identifier)
       end
     end
   end
+  return ordered
+end
+
+local function queuePartPaintCommands(vehObj, vehId, partPath, partName, slotPath, identifiers, paints)
+  if not vehObj or not paints then return end
+  if tableIsEmpty(identifiers) then
+    log('W', logTag, string.format('No identifier candidates available for part %s (name=%s, slot=%s); skipping paint command.', tostring(partPath), tostring(partName), tostring(slotPath)))
+    return
+  end
+
+  local command = string.format(
+    [[
+local identifiers = %s
+local paints = %s
+local partPathLiteral = %s
+local partNameLiteral = %s
+local slotPathLiteral = %s
+local resultIdentifier = nil
+local lastError = nil
+local applied = false
+if partCondition and partCondition.setPartPaints then
+  for _, identifier in ipairs(identifiers) do
+    local ok, err = pcall(partCondition.setPartPaints, identifier, paints, 0)
+    if ok then
+      applied = true
+      resultIdentifier = identifier
+      break
+    else
+      resultIdentifier = identifier
+      lastError = tostring(err)
+      log('W', 'vehiclePartsPainting', string.format('Failed to set part paint for %%s: %%s', tostring(identifier), lastError))
+    end
+  end
+else
+  lastError = 'partCondition.setPartPaints unavailable'
+  log('E', 'vehiclePartsPainting', lastError)
+end
+if obj and obj.queueGameEngineLua then
+  local vehId = obj:getID()
+  local identifierLiteral = resultIdentifier and string.format('%q', resultIdentifier) or 'nil'
+  local errorLiteral = lastError and string.format('%q', lastError) or 'nil'
+  local cmd = 'extensions.hook("onVehiclePartsPaintingResult", ' .. tostring(vehId) .. ', ' .. partPathLiteral .. ', ' .. partNameLiteral .. ', ' .. slotPathLiteral .. ', ' .. tostring(applied) .. ', ' .. identifierLiteral .. ', ' .. errorLiteral .. ')'
+  obj:queueGameEngineLua(cmd)
+end
+]],
+    identifiersToLuaLiteral(identifiers),
+    paintsToLuaLiteral(paints),
+    toLuaStringLiteral(partPath),
+    toLuaStringLiteral(partName),
+    toLuaStringLiteral(slotPath)
+  )
+
+  log('I', logTag, string.format(
+    'Queueing paint command for vehicle %s part=%s (name=%s slot=%s); identifiers=%s paints=%s',
+    tostring(vehId),
+    tostring(partPath),
+    tostring(partName),
+    tostring(slotPath),
+    identifiersToLogString(identifiers),
+    paintsToLogSummary(paints)
+  ))
+
+  vehObj:queueLuaCommand(command)
 end
 
 local function collectPartIdentifierCandidates(partPath, partName, slotPath)
@@ -107,6 +251,40 @@ end
 
 local function resolvePartIdentifiers(partPath, partName, slotPath, activePartIds)
   local candidates = collectPartIdentifierCandidates(partPath, partName, slotPath)
+  local candidateSet = {}
+  for _, identifier in ipairs(candidates) do
+    if identifier and identifier ~= '' then
+      candidateSet[identifier] = true
+    end
+  end
+
+  if activePartIds and not tableIsEmpty(activePartIds) then
+    for partId in pairs(activePartIds) do
+      if type(partId) == 'string' and partId ~= '' then
+        local matches = false
+        if partPath and partPath ~= '' then
+          if partId == partPath or string.find(partId, partPath, 1, true) or string.find(partPath, partId, 1, true) then
+            matches = true
+          end
+        end
+        if not matches and partName and partName ~= '' then
+          if partId == partName or string.find(partId, partName, 1, true) or string.find(partName, partId, 1, true) then
+            matches = true
+          end
+        end
+        if not matches and slotPath and slotPath ~= '' then
+          if partId == slotPath or string.find(partId, slotPath, 1, true) or string.find(slotPath, partId, 1, true) then
+            matches = true
+          end
+        end
+        if matches and not candidateSet[partId] then
+          candidateSet[partId] = true
+          table.insert(candidates, partId)
+        end
+      end
+    end
+  end
+
   if tableIsEmpty(candidates) then
     if partPath and partPath ~= '' then
       return {partPath}
@@ -491,7 +669,8 @@ local function applyStoredPaints(vehId)
         end
       end
 
-      queuePartPaintCommands(vehObj, identifiers, entry.paints)
+      local slotForCommand = descriptor and descriptor.slotPath or descriptorSlotPath
+      queuePartPaintCommands(vehObj, vehId, partPath, resolvedName, slotForCommand, identifiers, entry.paints)
 
       local identifierCopy = {}
       for i = 1, #identifiers do
@@ -559,7 +738,28 @@ local function setPartPaint(partPath, paints, partName, slotPath)
     end
   end
 
-  queuePartPaintCommands(vehObj, identifiers, sanitizedPaints)
+  local slotForCommand = descriptor and descriptor.slotPath or descriptorSlotPath
+  local previousEntry = storedPartPaintsByVeh[vehId] and storedPartPaintsByVeh[vehId][partPath] or nil
+  local previousPaints = previousEntry and previousEntry.paints or nil
+  local previousSource = 'storedCustom'
+  if not previousPaints then
+    previousPaints = getVehicleBasePaints(vehData, vehObj)
+    previousSource = 'vehicleBase'
+  end
+
+  log('I', logTag, string.format(
+    'Applying custom paint to vehicle %s part=%s (name=%s slot=%s); previous[%s]=%s new=%s identifiers=%s',
+    tostring(vehId),
+    tostring(partPath),
+    tostring(resolvedName),
+    tostring(slotForCommand),
+    previousSource,
+    paintsToLogSummary(previousPaints),
+    paintsToLogSummary(sanitizedPaints),
+    identifiersToLogString(identifiers)
+  ))
+
+  queuePartPaintCommands(vehObj, vehId, partPath, resolvedName, slotForCommand, identifiers, sanitizedPaints)
 
   storedPartPaintsByVeh[vehId] = storedPartPaintsByVeh[vehId] or {}
   local identifierCopy = {}
@@ -569,7 +769,7 @@ local function setPartPaint(partPath, paints, partName, slotPath)
   storedPartPaintsByVeh[vehId][partPath] = {
     paints = copyPaints(sanitizedPaints),
     partName = resolvedName,
-    slotPath = descriptor and descriptor.slotPath or descriptorSlotPath,
+    slotPath = slotForCommand,
     identifiers = identifierCopy
   }
   setConfigPaintsEntry(vehData, partPath, sanitizedPaints)
@@ -613,7 +813,7 @@ local function resetPartPaint(partPath)
     descriptorSlotPath = descriptorSlotPath or existingDescriptor.slotPath
   end
 
-  local identifiers = resolvePartIdentifiersForVehicle(vehId, partPath, resolvedName, descriptorSlotPath)
+  local identifiers, descriptor = resolvePartIdentifiersForVehicle(vehId, partPath, resolvedName, descriptorSlotPath)
   if tableIsEmpty(identifiers) then
     identifiers = {}
     if partPath and partPath ~= '' then
@@ -624,7 +824,21 @@ local function resetPartPaint(partPath)
     end
   end
 
-  queuePartPaintCommands(vehObj, identifiers, basePaints)
+  local slotForCommand = descriptor and descriptor.slotPath or descriptorSlotPath
+  local previousCustom = storedState and storedState[partPath] and storedState[partPath].paints or nil
+
+  log('I', logTag, string.format(
+    'Resetting paint on vehicle %s part=%s (name=%s slot=%s); previousCustom=%s base=%s identifiers=%s',
+    tostring(vehId),
+    tostring(partPath),
+    tostring(resolvedName),
+    tostring(slotForCommand),
+    paintsToLogSummary(previousCustom),
+    paintsToLogSummary(basePaints),
+    identifiersToLogString(identifiers)
+  ))
+
+  queuePartPaintCommands(vehObj, vehId, partPath, resolvedName, slotForCommand, identifiers, basePaints)
 
   if storedPartPaintsByVeh[vehId] then
     storedPartPaintsByVeh[vehId][partPath] = nil
@@ -635,6 +849,112 @@ local function resetPartPaint(partPath)
   setConfigPaintsEntry(vehData, partPath, nil)
 
   sendState(vehId)
+end
+
+local function onVehiclePartsPaintingResult(vehId, partPath, partName, slotPath, success, identifier, errorMessage)
+  if not vehId or vehId == -1 then return end
+  local wasSuccessful = success and success ~= 'false'
+  local identifierText = identifier and tostring(identifier) or 'nil'
+  local slotText = slotPath and tostring(slotPath) or 'nil'
+  if wasSuccessful then
+    log('I', logTag, string.format(
+      'Vehicle %s paint application succeeded for part=%s (name=%s slot=%s) using identifier=%s',
+      tostring(vehId),
+      tostring(partPath),
+      tostring(partName),
+      slotText,
+      identifierText
+    ))
+  else
+    log('W', logTag, string.format(
+      'Vehicle %s paint application failed for part=%s (name=%s slot=%s); lastIdentifier=%s error=%s',
+      tostring(vehId),
+      tostring(partPath),
+      tostring(partName),
+      slotText,
+      identifierText,
+      tostring(errorMessage)
+    ))
+  end
+
+  local state = storedPartPaintsByVeh[vehId]
+  local resolvedPartPath = partPath
+  local stateEntry = nil
+  if state then
+    if resolvedPartPath and state[resolvedPartPath] then
+      stateEntry = state[resolvedPartPath]
+    elseif partName then
+      for key, entry in pairs(state) do
+        if entry.partName == partName then
+          stateEntry = entry
+          resolvedPartPath = resolvedPartPath or key
+          break
+        end
+      end
+    end
+  end
+
+  if stateEntry then
+    if slotPath and slotPath ~= '' then
+      stateEntry.slotPath = slotPath
+    end
+    if partName and partName ~= '' then
+      stateEntry.partName = partName
+    end
+    if identifier and identifier ~= '' then
+      if wasSuccessful then
+        stateEntry.identifiers = reorderIdentifiersWithPrimary(stateEntry.identifiers, identifier)
+      else
+        stateEntry.identifiers = stateEntry.identifiers or {}
+        local seen = {}
+        for _, value in ipairs(stateEntry.identifiers) do
+          seen[value] = true
+        end
+        if not seen[identifier] then
+          table.insert(stateEntry.identifiers, identifier)
+        end
+      end
+    end
+  end
+
+  local descriptors = partDescriptorsByVeh[vehId]
+  local descriptorEntry = nil
+  if descriptors then
+    if resolvedPartPath and descriptors[resolvedPartPath] then
+      descriptorEntry = descriptors[resolvedPartPath]
+    elseif partName then
+      for key, entry in pairs(descriptors) do
+        if entry.partName == partName then
+          descriptorEntry = entry
+          resolvedPartPath = resolvedPartPath or key
+          break
+        end
+      end
+    end
+  end
+
+  if descriptorEntry then
+    if slotPath and slotPath ~= '' then
+      descriptorEntry.slotPath = slotPath
+    end
+    if partName and partName ~= '' then
+      descriptorEntry.partName = partName
+    end
+    if identifier and identifier ~= '' then
+      if wasSuccessful then
+        descriptorEntry.identifiers = reorderIdentifiersWithPrimary(descriptorEntry.identifiers, identifier)
+      else
+        descriptorEntry.identifiers = descriptorEntry.identifiers or {}
+        local seen = {}
+        for _, value in ipairs(descriptorEntry.identifiers) do
+          seen[value] = true
+        end
+        if not seen[identifier] then
+          table.insert(descriptorEntry.identifiers, identifier)
+        end
+      end
+    end
+  end
 end
 
 local function showAllParts(targetVehId)
@@ -776,6 +1096,7 @@ M.resetPartPaint = resetPartPaint
 M.highlightPart = highlightPart
 M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
+M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
