@@ -755,7 +755,7 @@
                   autocomplete="off">
           <button type="button"
                   ng-click="saveCurrentConfiguration()"
-                  ng-disabled="state.isSavingConfig || state.showReplaceConfirmation">Save Configuration</button>
+                  ng-disabled="true">Save Configuration</button>
         </div>
         <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
         <div class="saved-configs" ng-if="hasSavedConfigs()">
@@ -770,7 +770,7 @@
             <div class="saved-actions">
               <button type="button"
                       ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
-                      ng-disabled="state.isSpawningConfig">Spawn</button>
+                      ng-disabled="true">Spawn</button>
             </div>
           </div>
         </div>
