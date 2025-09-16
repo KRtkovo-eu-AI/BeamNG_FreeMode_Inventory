@@ -45,7 +45,8 @@ angular.module('beamng.apps')
         highlightSuspended: false,
         filterText: '',
         filteredParts: [],
-        expandedNodes: {}
+        expandedNodes: {},
+        minimized: false
       };
 
       $scope.state = state;
@@ -226,9 +227,41 @@ angular.module('beamng.apps')
         return false;
       }
 
-      function getPartDepth(part) {
-        if (!part || typeof part.depth !== 'number') { return 0; }
-        return part.depth;
+      function normalizeSlotPath(slotPath) {
+        if (slotPath === undefined || slotPath === null) { return ''; }
+        let normalized = String(slotPath);
+        normalized = normalized.replace(/\\/g, '/');
+        normalized = normalized.trim();
+        if (!normalized) { return ''; }
+        normalized = normalized.replace(/\/+/g, '/');
+        normalized = normalized.replace(/^\/+/g, '');
+        normalized = normalized.replace(/\/+$/g, '');
+        return normalized;
+      }
+
+      function getParentSlotKey(normalizedSlotPath) {
+        if (!normalizedSlotPath) { return null; }
+        const index = normalizedSlotPath.lastIndexOf('/');
+        if (index === -1) { return ''; }
+        return normalizedSlotPath.substring(0, index);
+      }
+
+      function compareTreeNodes(a, b) {
+        const orderA = typeof a._order === 'number' ? a._order : Number.POSITIVE_INFINITY;
+        const orderB = typeof b._order === 'number' ? b._order : Number.POSITIVE_INFINITY;
+        if (orderA !== orderB) { return orderA - orderB; }
+
+        const slotA = a.part && a.part.slotName ? String(a.part.slotName).toLowerCase() : '';
+        const slotB = b.part && b.part.slotName ? String(b.part.slotName).toLowerCase() : '';
+        if (slotA && slotB && slotA !== slotB) { return slotA < slotB ? -1 : 1; }
+
+        const nameA = a.part && a.part.displayName ? String(a.part.displayName).toLowerCase() : '';
+        const nameB = b.part && b.part.displayName ? String(b.part.displayName).toLowerCase() : '';
+        if (nameA !== nameB) { return nameA < nameB ? -1 : 1; }
+
+        const pathA = a.part && a.part.partPath ? String(a.part.partPath) : '';
+        const pathB = b.part && b.part.partPath ? String(b.part.partPath) : '';
+        return pathA < pathB ? -1 : (pathA > pathB ? 1 : 0);
       }
 
       function cloneTreeNodes(nodes) {
@@ -246,27 +279,72 @@ angular.module('beamng.apps')
       }
 
       function buildPartsTree(parts) {
-        const tree = [];
-        const stack = [];
-        if (!Array.isArray(parts)) { return tree; }
+        if (!Array.isArray(parts)) { return []; }
+
+        const nodesBySlotPath = Object.create(null);
+        const roots = [];
+
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
-          const node = { part: part, children: [] };
-          const depth = getPartDepth(part);
-          while (stack.length && getPartDepth(stack[stack.length - 1].part) >= depth) {
-            stack.pop();
-          }
-          if (part && part.partPath && state.expandedNodes[part.partPath] === undefined) {
+          if (!part || typeof part !== 'object') { continue; }
+          const normalizedSlotPath = normalizeSlotPath(part.slotPath);
+          const node = {
+            part: part,
+            children: [],
+            _normalizedSlotPath: normalizedSlotPath,
+            _order: i
+          };
+
+          if (part.partPath && state.expandedNodes[part.partPath] === undefined) {
             state.expandedNodes[part.partPath] = true;
           }
-          if (!stack.length) {
-            tree.push(node);
-          } else {
-            stack[stack.length - 1].children.push(node);
-          }
-          stack.push(node);
+
+          nodesBySlotPath[normalizedSlotPath] = node;
         }
-        return tree;
+
+        const slotKeys = Object.keys(nodesBySlotPath);
+        for (let i = 0; i < slotKeys.length; i++) {
+          const slotKey = slotKeys[i];
+          const node = nodesBySlotPath[slotKey];
+          const parentKey = getParentSlotKey(node._normalizedSlotPath);
+          if (parentKey === null) {
+            roots.push(node);
+            continue;
+          }
+          const parent = nodesBySlotPath[parentKey];
+          if (parent) {
+            parent.children.push(node);
+          } else {
+            roots.push(node);
+          }
+        }
+
+        function sortNodes(list) {
+          list.sort(compareTreeNodes);
+          for (let i = 0; i < list.length; i++) {
+            const childNode = list[i];
+            if (childNode.children && childNode.children.length) {
+              sortNodes(childNode.children);
+            }
+          }
+        }
+
+        sortNodes(roots);
+
+        function cleanupMetadata(list) {
+          for (let i = 0; i < list.length; i++) {
+            const entry = list[i];
+            delete entry._normalizedSlotPath;
+            delete entry._order;
+            if (entry.children && entry.children.length) {
+              cleanupMetadata(entry.children);
+            }
+          }
+        }
+
+        cleanupMetadata(roots);
+
+        return roots;
       }
 
       function filterTreeNodes(nodes, filter) {
@@ -401,6 +479,14 @@ angular.module('beamng.apps')
 
       $scope.clearFilter = function () {
         state.filterText = '';
+      };
+
+      $scope.minimizeApp = function () {
+        state.minimized = true;
+      };
+
+      $scope.restoreApp = function () {
+        state.minimized = false;
       };
 
       $scope.refresh = function () {

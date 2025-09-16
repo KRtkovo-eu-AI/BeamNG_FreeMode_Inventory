@@ -1,4 +1,4 @@
-<div class="vehicle-parts-painting">
+<div class="vehicle-parts-painting" ng-class="{'is-minimized': state.minimized}">
   <style>
     .vehicle-parts-painting {
       width: 100%;
@@ -14,8 +14,20 @@
       border-radius: 6px;
       font-family: inherit;
     }
+    .vehicle-parts-painting.is-minimized {
+      height: auto;
+      min-height: 0;
+      flex: 0 0 auto;
+      padding: 10px 12px;
+    }
     .vehicle-parts-painting button {
       cursor: pointer;
+    }
+    .vehicle-parts-painting .app-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .vehicle-parts-painting .app-header {
       display: flex;
@@ -30,6 +42,41 @@
     }
     .vehicle-parts-painting .app-header .header-actions button {
       margin-left: 6px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .vehicle-parts-painting .app-header .header-actions button:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .minimized-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+    }
+    .vehicle-parts-painting .minimized-bar .title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .vehicle-parts-painting .minimized-bar button {
+      background: rgba(0, 170, 255, 0.85);
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      padding: 6px 12px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting.is-minimized .app-content {
+      display: none;
+    }
+    .vehicle-parts-painting.is-minimized .minimized-bar {
+      display: flex;
     }
     .vehicle-parts-painting .no-vehicle,
     .vehicle-parts-painting .placeholder {
@@ -342,16 +389,22 @@
       }
     }
   </style>
-  <div class="app-header">
-    <h2>Vehicle Parts Painting</h2>
-    <div class="header-actions">
-      <button type="button" ng-click="refresh()">Refresh</button>
+  <div class="minimized-bar" ng-if="state.minimized">
+    <span class="title">Vehicle Parts Painting</span>
+    <button type="button" ng-click="restoreApp()">Restore</button>
+  </div>
+  <div class="app-content" ng-if="!state.minimized">
+    <div class="app-header">
+      <h2>Vehicle Parts Painting</h2>
+      <div class="header-actions">
+        <button type="button" ng-click="refresh()">Refresh</button>
+        <button type="button" ng-click="minimizeApp()">Minimize</button>
+      </div>
     </div>
-  </div>
-  <div class="no-vehicle" ng-if="!state.vehicleId">
-    <p>No active player vehicle detected.</p>
-  </div>
-  <div class="app-body" ng-if="state.vehicleId">
+    <div class="no-vehicle" ng-if="!state.vehicleId">
+      <p>No active player vehicle detected.</p>
+    </div>
+    <div class="app-body" ng-if="state.vehicleId">
     <div class="parts-panel">
       <div class="panel-header">
         <span>Parts</span>
@@ -486,4 +539,5 @@
       <p>Select a part to edit its paint.</p>
     </div>
   </div>
+</div>
 </div>
