@@ -20,6 +20,18 @@ local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local colorPresetPreferencesPath = false
 local editorPreferencesCandidates = nil
+local lastKnownPlayerVehicleId = nil
+
+local function isLikelyPlayerVehicleId(vehId)
+  if not vehId or vehId == -1 then
+    return false
+  end
+  if lastKnownPlayerVehicleId and vehId == lastKnownPlayerVehicleId then
+    return true
+  end
+  local currentVeh = be:getPlayerVehicleID(0)
+  return currentVeh and currentVeh ~= -1 and vehId == currentVeh
+end
 
 local function clampFraction01(value)
   return clamp(tonumber(value) or 0, 0, 1)
@@ -2330,6 +2342,7 @@ local function onVehicleSpawned(vehId)
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
+    lastKnownPlayerVehicleId = vehId
   end
   showAllParts(vehId)
   local vehObj = getObjectByID(vehId)
@@ -2341,6 +2354,7 @@ local function onVehicleResetted(vehId)
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
+    lastKnownPlayerVehicleId = vehId
   end
   showAllParts(vehId)
   local vehObj = getObjectByID(vehId)
@@ -2355,6 +2369,9 @@ local function onVehicleDestroyed(vehId)
   activePartIdSetByVeh[vehId] = nil
   ensuredPartConditionsByVeh[vehId] = nil
   savedConfigCacheByVeh[vehId] = nil
+  if vehId == lastKnownPlayerVehicleId then
+    lastKnownPlayerVehicleId = nil
+  end
   if vehId == be:getPlayerVehicleID(0) then
     sendState(-1)
     sendSavedConfigs(-1)
@@ -2362,10 +2379,25 @@ local function onVehicleDestroyed(vehId)
 end
 
 local function onVehicleSwitched(oldId, newId, player)
-  if not player then return end
+  local involvesPlayer = player
+  if not involvesPlayer then
+    involvesPlayer = isLikelyPlayerVehicleId(oldId) or isLikelyPlayerVehicleId(newId)
+  end
+  if not involvesPlayer then
+    if oldId and validPartPathsByVeh[oldId] then
+      involvesPlayer = true
+    elseif newId and validPartPathsByVeh[newId] then
+      involvesPlayer = true
+    end
+  end
+  if not involvesPlayer then
+    return
+  end
+
   if oldId and oldId ~= -1 then
     showAllParts(oldId)
   end
+
   if newId and newId ~= -1 then
     applyStoredPaints(newId)
     sendState(newId)
@@ -2373,9 +2405,11 @@ local function onVehicleSwitched(oldId, newId, player)
     local vehObj = getObjectByID(newId)
     local vehData = vehManager.getVehicleData(newId)
     sendSavedConfigs(newId, vehData, vehObj)
+    lastKnownPlayerVehicleId = newId
   else
     sendState(-1)
     sendSavedConfigs(-1)
+    lastKnownPlayerVehicleId = nil
   end
 end
 
@@ -2389,6 +2423,7 @@ local function onExtensionLoaded()
   userColorPresets = nil
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
+    lastKnownPlayerVehicleId = currentVeh
     applyStoredPaints(currentVeh)
     sendState(currentVeh)
     showAllParts(currentVeh)
@@ -2396,6 +2431,7 @@ local function onExtensionLoaded()
     local vehData = vehManager.getVehicleData(currentVeh)
     sendSavedConfigs(currentVeh, vehData, vehObj)
   else
+    lastKnownPlayerVehicleId = nil
     sendState(-1)
     sendSavedConfigs(-1)
   end
@@ -2409,6 +2445,7 @@ local function onExtensionUnloaded()
   ensuredPartConditionsByVeh = {}
   savedConfigCacheByVeh = {}
   userColorPresets = nil
+  lastKnownPlayerVehicleId = nil
   clearHighlight()
 end
 
