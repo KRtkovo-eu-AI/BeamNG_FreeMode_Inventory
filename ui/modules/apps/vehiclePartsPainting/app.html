@@ -721,7 +721,9 @@
       <script type="text/ng-template" id="vehiclePartsPaintingTreeNode.html">
         <div class="part-node"
               ng-class="{selected: node.part.partPath === state.selectedPartPath}"
-              ng-click="selectPart(node.part)">
+              ng-click="selectPart(node.part)"
+              ng-mouseenter="onPartMouseEnter(node.part)"
+              ng-mouseleave="onPartMouseLeave(node.part)">
           <button type="button"
                   class="toggle"
                   ng-if="node.children && node.children.length"
