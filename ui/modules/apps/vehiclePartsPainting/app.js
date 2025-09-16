@@ -37,12 +37,15 @@ angular.module('beamng.apps')
       const state = {
         vehicleId: null,
         parts: [],
+        partsTree: [],
+        filteredTree: [],
         basePaints: [],
         selectedPartPath: null,
         selectedPart: null,
         highlightSuspended: false,
         filterText: '',
-        filteredParts: []
+        filteredParts: [],
+        expandedNodes: {}
       };
 
       $scope.state = state;
@@ -223,6 +226,86 @@ angular.module('beamng.apps')
         return false;
       }
 
+      function getPartDepth(part) {
+        if (!part || typeof part.depth !== 'number') { return 0; }
+        return part.depth;
+      }
+
+      function cloneTreeNodes(nodes) {
+        if (!Array.isArray(nodes)) { return []; }
+        const result = [];
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          result.push({
+            part: node.part,
+            children: cloneTreeNodes(Array.isArray(node.children) ? node.children : [])
+          });
+        }
+        return result;
+      }
+
+      function buildPartsTree(parts) {
+        const tree = [];
+        const stack = [];
+        if (!Array.isArray(parts)) { return tree; }
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          const node = { part: part, children: [] };
+          const depth = getPartDepth(part);
+          while (stack.length && getPartDepth(stack[stack.length - 1].part) >= depth) {
+            stack.pop();
+          }
+          if (part && part.partPath && state.expandedNodes[part.partPath] === undefined) {
+            state.expandedNodes[part.partPath] = true;
+          }
+          if (!stack.length) {
+            tree.push(node);
+          } else {
+            stack[stack.length - 1].children.push(node);
+          }
+          stack.push(node);
+        }
+        return tree;
+      }
+
+      function filterTreeNodes(nodes, filter) {
+        if (!Array.isArray(nodes)) { return []; }
+        const result = [];
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          const matchesSelf = matchesFilter(node.part, filter);
+          let children = [];
+          if (matchesSelf) {
+            children = cloneTreeNodes(Array.isArray(node.children) ? node.children : []);
+          } else {
+            children = filterTreeNodes(Array.isArray(node.children) ? node.children : [], filter);
+          }
+          if (matchesSelf || children.length) {
+            result.push({
+              part: node.part,
+              children: children
+            });
+          }
+        }
+        return result;
+      }
+
+      function expandFilteredNodes(nodes) {
+        if (!Array.isArray(nodes)) { return; }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          if (node.part.partPath) {
+            state.expandedNodes[node.part.partPath] = true;
+          }
+          if (node.children && node.children.length) {
+            expandFilteredNodes(node.children);
+          }
+        }
+      }
+
       function computeFilteredParts(options) {
         options = options || {};
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
@@ -235,6 +318,14 @@ angular.module('beamng.apps')
           });
         }
         state.filteredParts = filtered;
+
+        if (!normalized) {
+          state.filteredTree = state.partsTree;
+        } else {
+          const tree = filterTreeNodes(state.partsTree, normalized);
+          state.filteredTree = tree;
+          expandFilteredNodes(tree);
+        }
 
         if (!filtered.length) {
           setSelectedPart(null, { skipHighlight: false });
@@ -287,6 +378,31 @@ angular.module('beamng.apps')
         setSelectedPart(part, { forceHighlight: true });
       };
 
+      $scope.toggleNode = function (part, $event) {
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        if (!part || !part.partPath) { return; }
+        const path = part.partPath;
+        const current = state.expandedNodes[path];
+        if (current === undefined) {
+          state.expandedNodes[path] = false;
+        } else {
+          state.expandedNodes[path] = !current;
+        }
+      };
+
+      $scope.isNodeExpanded = function (part) {
+        if (!part || !part.partPath) { return true; }
+        const value = state.expandedNodes[part.partPath];
+        if (value === undefined) { return true; }
+        return !!value;
+      };
+
+      $scope.clearFilter = function () {
+        state.filterText = '';
+      };
+
       $scope.refresh = function () {
         bngApi.engineLua('freeroam_vehiclePartsPainting.requestState()');
       };
@@ -328,8 +444,11 @@ angular.module('beamng.apps')
           if (!state.vehicleId) {
             state.basePaints = [];
             state.parts = [];
+            state.partsTree = [];
+            state.filteredTree = [];
             state.filteredParts = [];
             state.highlightSuspended = false;
+            state.expandedNodes = {};
             setSelectedPart(null, { skipHighlight: true });
             return;
           }
@@ -337,10 +456,12 @@ angular.module('beamng.apps')
           if (state.vehicleId !== previousVehicleId) {
             state.highlightSuspended = false;
             state.filterText = '';
+            state.expandedNodes = {};
           }
 
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
           state.parts = Array.isArray(data.parts) ? data.parts : [];
+          state.partsTree = buildPartsTree(state.parts);
 
           computeFilteredParts({
             skipHighlightIfSame: true,
