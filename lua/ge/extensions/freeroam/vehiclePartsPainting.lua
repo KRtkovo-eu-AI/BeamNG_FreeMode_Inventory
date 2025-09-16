@@ -16,6 +16,649 @@ local validPartPathsByVeh = {}
 local partDescriptorsByVeh = {}
 local activePartIdSetByVeh = {}
 local ensuredPartConditionsByVeh = {}
+local savedConfigCacheByVeh = {}
+
+local function safePcall(fn, ...)
+  if type(fn) ~= 'function' then
+    return false, 'function_unavailable'
+  end
+  local ok, resultOrErr = pcall(fn, ...)
+  if not ok then
+    return false, tostring(resultOrErr)
+  end
+  return true, resultOrErr
+end
+
+local function deepCopy(value)
+  if type(value) ~= 'table' then
+    return value
+  end
+  local copy = {}
+  for k, v in pairs(value) do
+    copy[k] = deepCopy(v)
+  end
+  return copy
+end
+
+local function sanitizeFileName(name)
+  if not name or name == '' then
+    return nil
+  end
+  local sanitized = name
+  sanitized = sanitized:gsub('[<>:"/\\|%?%*]', '_')
+  sanitized = sanitized:gsub('%s+', ' ')
+  sanitized = sanitized:gsub('^%s+', '')
+  sanitized = sanitized:gsub('%s+$', '')
+  if sanitized == '' then
+    return nil
+  end
+  return sanitized
+end
+
+local function sanitizeConfigDisplayName(name)
+  if not name or name == '' then
+    return nil
+  end
+  local trimmed = tostring(name):gsub('^%s+', ''):gsub('%s+$', '')
+  if trimmed == '' then
+    return nil
+  end
+  return trimmed
+end
+
+local function getVehicleModelIdentifier(vehData, vehObj, vehId)
+  if vehData then
+    if vehData.jbeam and vehData.jbeam ~= '' then
+      return vehData.jbeam
+    end
+    if vehData.config and vehData.config.name then
+      local candidate = tostring(vehData.config.name)
+      if candidate ~= '' then
+        return candidate
+      end
+    end
+    if vehData.ioCtx and vehData.ioCtx.jbeam and vehData.ioCtx.jbeam ~= '' then
+      return vehData.ioCtx.jbeam
+    end
+  end
+  if vehId and extensions.core_vehicles and type(extensions.core_vehicles.getVehicleDetails) == 'function' then
+    local okDetails, details = safePcall(extensions.core_vehicles.getVehicleDetails, vehId)
+    if okDetails and details then
+      if details.current and details.current.key and details.current.key ~= '' then
+        return details.current.key
+      end
+      if details.model and details.model.key and details.model.key ~= '' then
+        return details.model.key
+      end
+    end
+  end
+  if vehObj then
+    local ok, value = pcall(function ()
+      if vehObj.jbeam and vehObj:jbeam() then
+        return vehObj:jbeam()
+      end
+      if vehObj.getJBeamFilename then
+        return vehObj:getJBeamFilename()
+      end
+      if vehObj.getJBeamFile then
+        return vehObj:getJBeamFile()
+      end
+      return nil
+    end)
+    if ok and value and value ~= '' then
+      return value
+    end
+  end
+  return nil
+end
+
+local function normalizeModelFolder(rawModel)
+  if not rawModel or rawModel == '' then
+    return nil
+  end
+  local folder = tostring(rawModel)
+  folder = folder:gsub('%.pc$', '')
+  folder = folder:gsub('%.jbeam$', '')
+  folder = folder:gsub('%.zip$', '')
+  folder = folder:gsub('^vehicles/', '')
+  folder = folder:gsub('/.*$', '')
+  folder = folder:gsub('%s+', '')
+  if folder == '' then
+    return nil
+  end
+  return folder
+end
+
+local function ensureDirectory(path)
+  if not path or path == '' then return end
+  if not FS or not FS.directoryExists or not FS.createDirectory then return end
+
+  local normalized = path:gsub('\\', '/')
+  local okExists, exists = safePcall(FS.directoryExists, FS, normalized)
+  if okExists and exists then
+    return
+  end
+
+  safePcall(FS.createDirectory, FS, normalized)
+end
+
+local function getUserVehiclesDir()
+  if not FS or not FS.getUserPath then
+    return nil
+  end
+  local ok, path = safePcall(FS.getUserPath, FS)
+  if not ok or not path or path == '' then
+    return nil
+  end
+  path = tostring(path):gsub('\\', '/')
+  if not path:find('/$', 1, true) then
+    path = path .. '/'
+  end
+  local vehiclesDir = path .. 'vehicles/'
+  ensureDirectory(vehiclesDir)
+  return vehiclesDir
+end
+
+local function gatherSavedConfigsFromDisk(modelFolder)
+  if not modelFolder or modelFolder == '' then
+    return {}
+  end
+  local userVehiclesDir = getUserVehiclesDir()
+  local targetDir = nil
+  if userVehiclesDir then
+    targetDir = (userVehiclesDir .. modelFolder .. '/'):gsub('\\', '/')
+    ensureDirectory(targetDir)
+  end
+  if not FS or not FS.findFiles then
+    return {}
+  end
+
+  local searchRoots = {}
+  local visitedRoots = {}
+  if targetDir and targetDir ~= '' then
+    table.insert(searchRoots, targetDir)
+  end
+  table.insert(searchRoots, string.format('vehicles/%s/', modelFolder))
+
+  local list = {}
+  local seenNames = {}
+
+  for _, root in ipairs(searchRoots) do
+    if root and root ~= '' and not visitedRoots[root] then
+      visitedRoots[root] = true
+      local okFind, files = safePcall(FS.findFiles, FS, root, '*.pc', 0, false, true)
+      if okFind and type(files) == 'table' then
+        for _, filePath in ipairs(files) do
+          if type(filePath) == 'string' and filePath ~= '' then
+            local normalizedPath = filePath:gsub('\\', '/')
+            local fileName = normalizedPath:match('([^/]+)%.pc$')
+            if not fileName or fileName == '' then
+              fileName = filePath:match('([^/\\]+)%.pc$')
+            end
+            if fileName and fileName ~= '' then
+              local key = string.lower(fileName)
+              if not seenNames[key] then
+                seenNames[key] = true
+                local relativePath = string.format('vehicles/%s/%s.pc', modelFolder, fileName)
+                local isAbsolute = normalizedPath:match('^%a:/') or normalizedPath:sub(1, 1) == '/'
+                local absolutePath = normalizedPath
+                if targetDir and not isAbsolute then
+                  absolutePath = targetDir .. fileName .. '.pc'
+                end
+
+                local entry = {
+                  fileName = fileName,
+                  modelFolder = modelFolder,
+                  relativePath = relativePath,
+                  absolutePath = absolutePath
+                }
+
+                local previewRelative = string.format('vehicles/%s/%s.png', modelFolder, fileName)
+                local previewExists = false
+                local okPng, hasPng = safePcall(FS.fileExists, FS, previewRelative)
+                if okPng and hasPng then
+                  previewExists = true
+                elseif targetDir then
+                  okPng, hasPng = safePcall(FS.fileExists, FS, targetDir .. fileName .. '.png')
+                  previewExists = okPng and hasPng
+                end
+                if previewExists then
+                  entry.previewImage = previewRelative
+                end
+
+                local displayName = nil
+                local okRead, configData = safePcall(jsonReadFile, relativePath)
+                if not okRead or not configData then
+                  if targetDir then
+                    okRead, configData = safePcall(jsonReadFile, targetDir .. fileName .. '.pc')
+                  end
+                end
+                if okRead and type(configData) == 'table' then
+                  displayName = sanitizeConfigDisplayName(configData.name)
+                  if not displayName then
+                    displayName = sanitizeConfigDisplayName(configData.title)
+                  end
+                  if not displayName and type(configData.config) == 'table' then
+                    displayName = sanitizeConfigDisplayName(configData.config.name or configData.config.title)
+                  end
+                  if not displayName then
+                    displayName = sanitizeConfigDisplayName(configData.displayName)
+                  end
+                  entry.configType = configData.configType
+                  entry.displayName = displayName
+                end
+
+                if not entry.displayName or entry.displayName == '' then
+                  entry.displayName = fileName
+                end
+
+                list[#list + 1] = entry
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  table.sort(list, function(a, b)
+    local nameA = string.lower(a.displayName or a.fileName or '')
+    local nameB = string.lower(b.displayName or b.fileName or '')
+    if nameA == nameB then
+      return (a.fileName or '') < (b.fileName or '')
+    end
+    return nameA < nameB
+  end)
+
+  return list
+end
+
+local function getSavedConfigs(vehId, vehData, vehObj)
+  local modelId = normalizeModelFolder(getVehicleModelIdentifier(vehData, vehObj, vehId))
+  if not modelId then
+    return {}
+  end
+
+  local configs = gatherSavedConfigsFromDisk(modelId)
+  savedConfigCacheByVeh[vehId] = {
+    model = modelId,
+    list = configs
+  }
+  return configs
+end
+
+local function sendSavedConfigs(vehId, vehData, vehObj)
+  if not vehId or vehId == -1 then
+    guihooks.trigger('VehiclePartsPaintingSavedConfigs', { vehicleId = -1, configs = {} })
+    return
+  end
+  vehData = vehData or vehManager.getVehicleData(vehId)
+  vehObj = vehObj or getObjectByID(vehId)
+  local configs = getSavedConfigs(vehId, vehData, vehObj)
+  local payload = {
+    vehicleId = vehId,
+    configs = configs
+  }
+  guihooks.trigger('VehiclePartsPaintingSavedConfigs', payload)
+end
+
+local function computeConfigPreviewCamera(vehObj, fov, nearPlane, aspectRatio)
+  if not vehObj then
+    return nil
+  end
+
+  local screenshotExtension = extensions.util_screenshotCreator
+  if screenshotExtension and type(screenshotExtension.frameVehicle) == 'function' then
+    local okFrame, camPos = safePcall(screenshotExtension.frameVehicle, vehObj, fov, nearPlane, aspectRatio)
+    if okFrame and camPos then
+      return camPos
+    end
+    if not okFrame then
+      log('W', logTag, string.format('util_screenshotCreator.frameVehicle failed: %s', tostring(camPos)))
+    end
+  end
+
+  local okBounds, bounds = pcall(function()
+    return vehObj:getSpawnWorldOOBB()
+  end)
+  if not okBounds or not bounds then
+    return nil
+  end
+
+  local center = bounds:getCenter()
+  local axisRight = bounds:getAxis(0)
+  local axisForward = bounds:getAxis(1)
+  local axisUp = bounds:getAxis(2)
+  local half = bounds:getHalfExtents()
+  local longestHorizontal = math.max(half.x, half.y)
+  local forwardOffset = axisForward * -(half.y + longestHorizontal * 1.6)
+  local upwardOffset = axisUp * (half.z + longestHorizontal * 0.9)
+  local sideOffset = axisRight * (half.x * 0.25)
+  return center + forwardOffset + upwardOffset + sideOffset
+end
+
+local function ensureConfigPreview(vehId, vehObj, modelFolder, sanitizedName, targetDir)
+  if not vehObj or not modelFolder or modelFolder == '' or not sanitizedName or sanitizedName == '' or not targetDir or targetDir == '' then
+    return
+  end
+  if not render_renderViews or type(render_renderViews.takeScreenshot) ~= 'function' then
+    log('W', logTag, 'Unable to capture config preview: render_renderViews.takeScreenshot unavailable')
+    return
+  end
+
+  local resolution = vec3(500, 281, 0)
+  local fov, nearPlane = 50, 0.1
+  local aspectRatio = resolution.x / math.max(resolution.y, 1)
+  local camPos = computeConfigPreviewCamera(vehObj, fov, nearPlane, aspectRatio)
+  if not camPos then
+    log('W', logTag, string.format('Unable to compute preview camera for user config %s', tostring(sanitizedName)))
+    return
+  end
+
+  local okBounds, bounds = pcall(function()
+    return vehObj:getSpawnWorldOOBB()
+  end)
+  if not okBounds or not bounds then
+    log('W', logTag, 'Unable to compute vehicle bounds for preview capture')
+    return
+  end
+
+  local center = bounds:getCenter()
+  local lookDir = center - camPos
+  local length = lookDir:length()
+  if length < 1e-3 then
+    lookDir = vec3(0, 1, 0)
+  else
+    lookDir:normalize()
+  end
+  local rotOk, rot = pcall(function()
+    return quatFromDir(lookDir, vec3(0, 0, 1))
+  end)
+  if not rotOk or not rot then
+    log('W', logTag, string.format('Unable to determine preview rotation for user config %s', tostring(sanitizedName)))
+    return
+  end
+
+  local absoluteFilename = (targetDir .. sanitizedName .. '.png'):gsub('\\', '/')
+  local relativeFilename = string.format('vehicles/%s/%s.png', modelFolder, sanitizedName)
+  local viewSuffix = sanitizedName:gsub('%s+', '_')
+  local viewName = string.format('vehiclePartsPaintingPreview_%s_%s', tostring(vehId or (vehObj.getID and vehObj:getID()) or ''), viewSuffix)
+  local options = {
+    pos = camPos,
+    rot = rot,
+    filename = absoluteFilename,
+    renderViewName = viewName,
+    resolution = resolution,
+    fov = fov,
+    nearPlane = nearPlane,
+    screenshotDelay = 0.15
+  }
+
+  local function onPreviewSaved()
+    log('I', logTag, string.format('Saved user config preview %s', relativeFilename))
+    local id = vehId or (vehObj.getID and vehObj:getID())
+    if id and id ~= -1 then
+      sendSavedConfigs(id)
+    end
+  end
+
+  local okShot, errShot = safePcall(render_renderViews.takeScreenshot, options, onPreviewSaved)
+  if not okShot then
+    log('E', logTag, string.format('Failed to capture preview for %s: %s', tostring(sanitizedName), tostring(errShot)))
+  end
+end
+
+local function attemptCoreVehicleSave(vehId, relativePath, options, sanitizedFileName)
+  local coreVehicles = extensions.core_vehicles
+  if not coreVehicles or type(coreVehicles.saveVehicleConfig) ~= 'function' then
+    return false, 'core_vehicles.saveVehicleConfig unavailable'
+  end
+  local attempts = {
+    {vehId, relativePath, nil, nil, nil, options},
+    {vehId, relativePath, nil, nil, nil},
+    {vehId, relativePath, nil, options},
+    {vehId, relativePath, options},
+    {vehId, relativePath},
+    {relativePath, options},
+    {relativePath}
+  }
+  if sanitizedFileName and sanitizedFileName ~= relativePath then
+    local altAttempts = {
+      {vehId, sanitizedFileName, nil, nil, nil, options},
+      {vehId, sanitizedFileName, nil, nil, nil},
+      {vehId, sanitizedFileName, nil, options},
+      {vehId, sanitizedFileName, options},
+      {vehId, sanitizedFileName},
+      {sanitizedFileName, options},
+      {sanitizedFileName}
+    }
+    for _, args in ipairs(altAttempts) do
+      attempts[#attempts + 1] = args
+    end
+  end
+  local lastError = nil
+  for _, args in ipairs(attempts) do
+    local ok, resultOrErr = safePcall(coreVehicles.saveVehicleConfig, table.unpack(args))
+    if ok then
+      local result = resultOrErr
+      if result == false then
+        lastError = 'saveVehicleConfig returned false'
+      else
+        return true, result
+      end
+    else
+      lastError = resultOrErr
+    end
+  end
+  return false, lastError or 'saveVehicleConfig attempts failed'
+end
+
+local function attemptCoreVehicleSpawn(vehId, relativePath, options)
+  local coreVehicles = extensions.core_vehicles
+  if not coreVehicles then
+    return false, 'core_vehicles extension unavailable'
+  end
+  local function tryReplace(...)
+    if type(coreVehicles.replaceVehicle) ~= 'function' then
+      return false, 'replaceVehicle unavailable'
+    end
+    return safePcall(coreVehicles.replaceVehicle, ...)
+  end
+
+  local attempts = {
+    {vehId, nil, relativePath, nil, options},
+    {vehId, nil, relativePath},
+    {vehId, relativePath},
+    {vehId, nil, nil, nil, options},
+    {relativePath, options},
+    {relativePath}
+  }
+  local lastError = nil
+  for _, args in ipairs(attempts) do
+    local ok, resultOrErr = tryReplace(table.unpack(args))
+    if ok then
+      return true, resultOrErr
+    end
+    lastError = resultOrErr
+  end
+
+  if type(coreVehicles.spawnNewVehicle) == 'function' then
+    local spawnAttempts = {
+      {relativePath, nil, nil, options},
+      {relativePath, nil, nil},
+      {relativePath}
+    }
+    for _, args in ipairs(spawnAttempts) do
+      local ok, resultOrErr = safePcall(coreVehicles.spawnNewVehicle, table.unpack(args))
+      if ok then
+        return true, resultOrErr
+      end
+      lastError = resultOrErr
+    end
+  end
+
+  return false, lastError or 'Unable to spawn config'
+end
+
+local function saveCurrentUserConfig(configName)
+  configName = sanitizeConfigDisplayName(configName)
+  if not configName then
+    log('W', logTag, 'saveCurrentUserConfig called with empty name')
+    return
+  end
+  local vehObj = getPlayerVehicle(0)
+  if not vehObj then
+    log('W', logTag, 'saveCurrentUserConfig aborted: no active vehicle')
+    return
+  end
+  local vehId = vehObj:getID()
+  local vehData = vehManager.getVehicleData(vehId)
+  if not vehData then
+    log('W', logTag, 'saveCurrentUserConfig aborted: no vehicle data')
+    return
+  end
+  local modelFolder = normalizeModelFolder(getVehicleModelIdentifier(vehData, vehObj, vehId))
+  if not modelFolder then
+    log('W', logTag, 'saveCurrentUserConfig aborted: unable to determine model folder')
+    return
+  end
+  local sanitizedName = sanitizeFileName(configName)
+  if not sanitizedName then
+    log('W', logTag, 'saveCurrentUserConfig aborted: invalid sanitized name')
+    return
+  end
+  local relativePath = string.format('vehicles/%s/%s.pc', modelFolder, sanitizedName)
+  local userVehiclesDir = getUserVehiclesDir()
+  local targetDir = nil
+  local targetPath = nil
+  if userVehiclesDir then
+    targetDir = userVehiclesDir .. modelFolder .. '/'
+    ensureDirectory(targetDir)
+    targetPath = targetDir .. sanitizedName .. '.pc'
+  else
+    log('W', logTag, 'Unable to resolve user vehicles directory; skipping saved config verification')
+  end
+  local options = {
+    displayName = configName,
+    capturePreview = true,
+    isUserConfig = true,
+    includeCustomPartPaints = true,
+    allowOverwrite = true
+  }
+  local ok, err = attemptCoreVehicleSave(vehId, relativePath, options, sanitizedName)
+  local needsFallback = false
+  local fallbackReason = err
+  local finalSaveSuccessful = false
+  if ok then
+    if targetPath and FS and FS.fileExists then
+      local existsOk, exists = safePcall(FS.fileExists, FS, targetPath)
+      if not existsOk then
+        needsFallback = true
+        fallbackReason = string.format('file existence check failed: %s', tostring(exists))
+      elseif not exists then
+        needsFallback = true
+        fallbackReason = 'config file missing after core save'
+      end
+    end
+  else
+    needsFallback = true
+  end
+
+  if needsFallback then
+    if fallbackReason then
+      log('W', logTag, string.format('core_vehicles.saveVehicleConfig fallback reason: %s', tostring(fallbackReason)))
+    end
+
+    local configCopy = deepCopy(vehData.config or {}) or {}
+    configCopy.name = configName
+    configCopy.title = configCopy.title or configName
+    configCopy.configType = configCopy.configType or 'User'
+    configCopy.customPartPaints = deepCopy(vehData.config and vehData.config.customPartPaints or storedPartPaintsByVeh[vehId])
+
+    local writeTargets = {}
+    local seenTarget = {}
+    if targetPath and targetPath ~= '' then
+      writeTargets[#writeTargets + 1] = targetPath
+      seenTarget[targetPath] = true
+    end
+    if relativePath and relativePath ~= '' and not seenTarget[relativePath] then
+      writeTargets[#writeTargets + 1] = relativePath
+      seenTarget[relativePath] = true
+    end
+
+    local wroteFallback = false
+    local writeError = nil
+    for _, candidate in ipairs(writeTargets) do
+      if options.allowOverwrite and candidate == targetPath and FS and FS.fileExists and FS.removeFile then
+        local okExists, exists = safePcall(FS.fileExists, FS, candidate)
+        if okExists and exists then
+          safePcall(FS.removeFile, FS, candidate)
+        end
+      end
+
+      local okWrite, resultOrErr = safePcall(jsonWriteFile, candidate, configCopy, true)
+      if okWrite and resultOrErr then
+        log('I', logTag, string.format('Saved fallback vehicle config to %s', tostring(candidate)))
+        wroteFallback = true
+        finalSaveSuccessful = true
+        break
+      end
+
+      if not okWrite then
+        writeError = resultOrErr
+      else
+        writeError = 'jsonWriteFile returned false'
+      end
+      log('W', logTag, string.format('jsonWriteFile failed for %s: %s', tostring(candidate), tostring(writeError)))
+    end
+
+    if not wroteFallback then
+      if writeError then
+        log('E', logTag, string.format('Unable to write fallback vehicle config %s: %s', tostring(relativePath), tostring(writeError)))
+      else
+        log('E', logTag, string.format('Unable to write fallback vehicle config %s: no valid target path', tostring(relativePath)))
+      end
+    end
+  else
+    log('I', logTag, string.format('Saved user vehicle config %s to %s', tostring(configName), tostring(relativePath)))
+    finalSaveSuccessful = true
+  end
+  if finalSaveSuccessful then
+    if targetDir then
+      ensureConfigPreview(vehId, vehObj, modelFolder, sanitizedName, targetDir)
+    else
+      log('W', logTag, 'Skipping preview capture: target directory unavailable')
+    end
+  else
+    log('W', logTag, string.format('Skipping preview capture: save failed for %s', tostring(relativePath)))
+  end
+  sendSavedConfigs(vehId, vehData, vehObj)
+end
+
+local function spawnUserConfig(configPath)
+  if not configPath or configPath == '' then
+    return
+  end
+  local vehObj = getPlayerVehicle(0)
+  if not vehObj then
+    log('W', logTag, 'spawnUserConfig aborted: no active vehicle')
+    return
+  end
+  local vehId = vehObj:getID()
+  local options = {
+    configFile = configPath,
+    isUserConfig = true,
+    keepAbs = true,
+    keepEsc = true,
+    paintMode = 'keep'
+  }
+  local ok, err = attemptCoreVehicleSpawn(vehId, configPath, options)
+  if not ok then
+    log('E', logTag, string.format('Failed to spawn user config %s: %s', tostring(configPath), tostring(err)))
+    return
+  end
+  log('I', logTag, string.format('Spawned vehicle using config %s', tostring(configPath)))
+end
 
 local function ensureVehiclePartConditionInitialized(vehObj, vehId)
   if not vehObj or not vehObj.queueLuaCommand then return end
@@ -697,6 +1340,7 @@ local function sendState(targetVehId)
   }
 
   guihooks.trigger('VehiclePartsPaintingState', data)
+  sendSavedConfigs(vehId, vehData, vehObj)
 end
 
 local function applyStoredPaints(vehId)
@@ -1139,11 +1783,33 @@ local function requestState()
   sendState()
 end
 
+local function requestSavedConfigs()
+  local vehId = be:getPlayerVehicleID(0)
+  if not vehId or vehId == -1 then
+    sendSavedConfigs(-1)
+    return
+  end
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+  sendSavedConfigs(vehId, vehData, vehObj)
+end
+
+local function saveCurrentConfiguration(name)
+  saveCurrentUserConfig(name)
+end
+
+local function spawnSavedConfiguration(configPath)
+  spawnUserConfig(configPath)
+end
+
 local function onVehicleSpawned(vehId)
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
   end
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+  sendSavedConfigs(vehId, vehData, vehObj)
 end
 
 local function onVehicleResetted(vehId)
@@ -1151,6 +1817,9 @@ local function onVehicleResetted(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
   end
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+  sendSavedConfigs(vehId, vehData, vehObj)
 end
 
 local function onVehicleDestroyed(vehId)
@@ -1159,8 +1828,10 @@ local function onVehicleDestroyed(vehId)
   partDescriptorsByVeh[vehId] = nil
   activePartIdSetByVeh[vehId] = nil
   ensuredPartConditionsByVeh[vehId] = nil
+  savedConfigCacheByVeh[vehId] = nil
   if vehId == be:getPlayerVehicleID(0) then
     sendState(-1)
+    sendSavedConfigs(-1)
   end
 end
 
@@ -1169,8 +1840,12 @@ local function onVehicleSwitched(oldId, newId, player)
   if newId and newId ~= -1 then
     applyStoredPaints(newId)
     sendState(newId)
+    local vehObj = getObjectByID(newId)
+    local vehData = vehManager.getVehicleData(newId)
+    sendSavedConfigs(newId, vehData, vehObj)
   else
     sendState(-1)
+    sendSavedConfigs(-1)
   end
 end
 
@@ -1180,12 +1855,17 @@ local function onExtensionLoaded()
   partDescriptorsByVeh = {}
   activePartIdSetByVeh = {}
   ensuredPartConditionsByVeh = {}
+  savedConfigCacheByVeh = {}
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     applyStoredPaints(currentVeh)
     sendState(currentVeh)
+    local vehObj = getObjectByID(currentVeh)
+    local vehData = vehManager.getVehicleData(currentVeh)
+    sendSavedConfigs(currentVeh, vehData, vehObj)
   else
     sendState(-1)
+    sendSavedConfigs(-1)
   end
 end
 
@@ -1195,10 +1875,12 @@ local function onExtensionUnloaded()
   partDescriptorsByVeh = {}
   activePartIdSetByVeh = {}
   ensuredPartConditionsByVeh = {}
+  savedConfigCacheByVeh = {}
   clearHighlight()
 end
 
 M.requestState = requestState
+M.requestSavedConfigs = requestSavedConfigs
 M.applyPartPaintJson = applyPartPaintJson
 M.setPartPaint = setPartPaint
 M.resetPartPaint = resetPartPaint
@@ -1206,6 +1888,8 @@ M.highlightPart = highlightPart
 M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
 M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
+M.saveCurrentConfiguration = saveCurrentConfiguration
+M.spawnSavedConfiguration = spawnSavedConfiguration
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted

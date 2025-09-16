@@ -12,7 +12,7 @@
     "height": "auto",
     "min-width": "420px",
     "min-height": "320px",
-    "max-height": "650px"
+    "max-height": "950px"
   },
   "types": [
     "ui.apps.categories.vehicle"
