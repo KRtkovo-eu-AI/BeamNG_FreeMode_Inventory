@@ -142,17 +142,16 @@ local function queuePartPaintCommands(vehObj, vehId, partPath, partName, slotPat
     return
   end
 
-  local command = string.format(
-    [[
-local identifiers = %s
-local paints = %s
-local partPathValue = %s
-local partNameValue = %s
-local slotPathValue = %s
-local resultIdentifier = nil
-local lastError = nil
-local applied = false
-if partCondition and partCondition.setPartPaints then
+  local commandChunks = {
+    'local identifiers = ', identifiersToLuaLiteral(identifiers), '\n',
+    'local paints = ', paintsToLuaLiteral(paints), '\n',
+    'local partPathValue = ', toLuaStringLiteral(partPath), '\n',
+    'local partNameValue = ', toLuaStringLiteral(partName), '\n',
+    'local slotPathValue = ', toLuaStringLiteral(slotPath), '\n',
+    'local resultIdentifier = nil\n',
+    'local lastError = nil\n',
+    'local applied = false\n',
+    [=[if partCondition and partCondition.setPartPaints then
   for _, identifier in ipairs(identifiers) do
     local ok, err = pcall(partCondition.setPartPaints, identifier, paints, 0)
     if ok then
@@ -162,7 +161,7 @@ if partCondition and partCondition.setPartPaints then
     else
       resultIdentifier = identifier
       lastError = tostring(err)
-      log('W', 'vehiclePartsPainting', string.format('Failed to set part paint for %%s: %%s', tostring(identifier), lastError))
+      log('W', 'vehiclePartsPainting', string.format('Failed to set part paint for %s: %s', tostring(identifier), lastError))
     end
   end
 else
@@ -171,33 +170,28 @@ else
 end
 if obj and obj.queueGameEngineLua then
   local vehId = obj:getID()
-  local identifierLiteral = resultIdentifier and string.format('%%q', resultIdentifier) or 'nil'
-  local errorLiteral = lastError and string.format('%%q', lastError) or 'nil'
+  local identifierLiteral = resultIdentifier and string.format('%q', resultIdentifier) or 'nil'
+  local errorLiteral = lastError and string.format('%q', lastError) or 'nil'
   local function toLiteral(value)
     if value == nil then
       return 'nil'
     end
-    return string.format('%%q', value)
+    return string.format('%q', value)
   end
-  local cmd = string.format(
-    'extensions.hook("onVehiclePartsPaintingResult", %s, %s, %s, %s, %s, %s, %s)',
+  local cmd = string.format('extensions.hook("onVehiclePartsPaintingResult", %s, %s, %s, %s, %s, %s, %s)',
     tostring(vehId),
     toLiteral(partPathValue),
     toLiteral(partNameValue),
     toLiteral(slotPathValue),
     tostring(applied),
     identifierLiteral,
-    errorLiteral
-  )
+    errorLiteral)
   obj:queueGameEngineLua(cmd)
 end
-]],
-    identifiersToLuaLiteral(identifiers),
-    paintsToLuaLiteral(paints),
-    toLuaStringLiteral(partPath),
-    toLuaStringLiteral(partName),
-    toLuaStringLiteral(slotPath)
-  )
+]=]
+  }
+
+  local command = table.concat(commandChunks)
 
   log('I', logTag, string.format(
     'Queueing paint command for vehicle %s part=%s (name=%s slot=%s); identifiers=%s paints=%s',
