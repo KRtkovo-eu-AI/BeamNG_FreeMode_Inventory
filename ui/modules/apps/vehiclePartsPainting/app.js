@@ -80,7 +80,8 @@ angular.module('beamng.apps')
         },
         liveryEditorConfirmation: {
           visible: false
-        }
+        },
+        liveryEditorSupported: null
       };
 
       $scope.state = state;
@@ -119,6 +120,8 @@ angular.module('beamng.apps')
       let partsTreeDirty = false;
       let customPaintStateByPath = Object.create(null);
       let pendingLiveryEditorLaunch = null;
+      let liverySupportRequestToken = 0;
+      let liverySupportActiveRequestId = null;
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -589,6 +592,43 @@ angular.module('beamng.apps')
         if (state.liveryEditorConfirmation) {
           state.liveryEditorConfirmation.visible = true;
         }
+      }
+
+      function setLiveryEditorSupported(value) {
+        if (value === null || value === undefined) {
+          state.liveryEditorSupported = null;
+          return;
+        }
+        state.liveryEditorSupported = !!value;
+      }
+
+      function invalidateLiveryEditorSupport() {
+        liverySupportRequestToken++;
+        liverySupportActiveRequestId = null;
+        setLiveryEditorSupported(null);
+      }
+
+      function refreshLiveryEditorSupport() {
+        if (!state.vehicleId) {
+          invalidateLiveryEditorSupport();
+          return;
+        }
+
+        if (liverySupportActiveRequestId !== null) {
+          return;
+        }
+
+        const requestId = ++liverySupportRequestToken;
+        liverySupportActiveRequestId = requestId;
+        setLiveryEditorSupported(null);
+        requestDynamicDecalSupport(function (supported) {
+          if (liverySupportActiveRequestId !== requestId) { return; }
+          $scope.$evalAsync(function () {
+            if (liverySupportActiveRequestId !== requestId) { return; }
+            liverySupportActiveRequestId = null;
+            setLiveryEditorSupported(!!supported);
+          });
+        });
       }
 
       function interpretLuaBoolean(value) {
@@ -2111,6 +2151,11 @@ end)()`;
           return;
         }
 
+        if (state.liveryEditorSupported === false) {
+          sendUiMessage(LIVERY_EDITOR_UNSUPPORTED_MESSAGE);
+          return;
+        }
+
         const bngVue = globalWindow && globalWindow.bngVue;
         const gotoGameState = bngVue && bngVue.gotoGameState;
 
@@ -2122,20 +2167,26 @@ end)()`;
           return;
         }
 
+        const vehicleIdAtRequest = state.vehicleId;
         requestDynamicDecalSupport(function (supported) {
-          if (!supported) {
-            sendUiMessage(LIVERY_EDITOR_UNSUPPORTED_MESSAGE);
-            return;
-          }
-
-          showLiveryEditorConfirmation(function () {
-            try {
-              gotoGameState.call(bngVue, 'livery-manager');
-            } catch (err) {
-              if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
-                globalWindow.console.error('VehiclePartsPainting: Failed to open livery editor.', err);
-              }
+          if (vehicleIdAtRequest !== state.vehicleId) { return; }
+          $scope.$evalAsync(function () {
+            const isSupported = !!supported;
+            setLiveryEditorSupported(isSupported);
+            if (!isSupported) {
+              sendUiMessage(LIVERY_EDITOR_UNSUPPORTED_MESSAGE);
+              return;
             }
+
+            showLiveryEditorConfirmation(function () {
+              try {
+                gotoGameState.call(bngVue, 'livery-manager');
+              } catch (err) {
+                if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+                  globalWindow.console.error('VehiclePartsPainting: Failed to open livery editor.', err);
+                }
+              }
+            });
           });
         });
       };
@@ -2356,12 +2407,14 @@ end)()`;
         $scope.$evalAsync(function () {
           const previousVehicleId = state.vehicleId;
           state.vehicleId = data.vehicleId || null;
+          const vehicleChanged = state.vehicleId !== previousVehicleId;
 
           if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
             updateColorPresets(data.colorPresets, { preserveExistingOnEmpty: true });
           }
 
           if (!state.vehicleId) {
+            invalidateLiveryEditorSupport();
             clearPendingReplacement();
             clearCustomPaintState();
             state.basePaints = [];
@@ -2389,7 +2442,11 @@ end)()`;
             return;
           }
 
-          if (state.vehicleId !== previousVehicleId) {
+          if (vehicleChanged || state.liveryEditorSupported === null) {
+            refreshLiveryEditorSupport();
+          }
+
+          if (vehicleChanged) {
             clearPendingReplacement();
             clearCustomPaintState();
             state.filterText = '';
@@ -2408,7 +2465,7 @@ end)()`;
             requestSavedConfigs();
           }
 
-          if (state.vehicleId === previousVehicleId) {
+          if (!vehicleChanged) {
             clearCustomPaintState();
           }
 

@@ -714,6 +714,18 @@ function resetPaint(scope, partPath) {
   const gotoCalls = controller.gotoGameStateCalls;
   const engineLuaCallbacks = controller.engineLuaCallbacks;
 
+  assert(engineLuaCallbacks.length >= 1, 'Initial vehicle state should probe livery editor support');
+  let initialProbeObserved = false;
+  while (engineLuaCallbacks.length) {
+    const probe = engineLuaCallbacks.shift();
+    assert(probe && typeof probe.callback === 'function', 'Initial livery probe should expose a callback');
+    assert(probe.command && probe.command.indexOf('core_vehicle_partmgmt.hasAvailablePart') !== -1, 'Initial livery probe should query dynamic decal availability');
+    probe.callback(true);
+    initialProbeObserved = true;
+  }
+  assert(initialProbeObserved, 'Initial vehicle setup should enqueue at least one livery editor probe');
+  assert.strictEqual(state.liveryEditorSupported, true, 'Supported vehicles should mark livery editor availability after initial probe');
+
   scope.state.vehicleId = scope.state.vehicleId || 4242;
 
   scope.openLiveryEditor();
@@ -725,6 +737,7 @@ function resetPaint(scope, partPath) {
 
   liveryProbe.callback(true);
   assert(state.liveryEditorConfirmation.visible, 'Supported vehicles should prompt for livery editor confirmation');
+  assert.strictEqual(state.liveryEditorSupported, true, 'Successful livery probe should keep availability flag true');
   assert.strictEqual(gotoCalls.length, 0, 'Livery editor navigation should wait for confirmation dialog response');
   scope.confirmLiveryEditorLaunch();
   assert.strictEqual(state.liveryEditorConfirmation.visible, false, 'Confirmation dialog should close after confirming');
@@ -747,10 +760,19 @@ function resetPaint(scope, partPath) {
   assert(unsupportedProbe && typeof unsupportedProbe.callback === 'function', 'Second livery probe should expose a callback');
   unsupportedProbe.callback(false);
   assert.strictEqual(state.liveryEditorConfirmation.visible, false, 'Unsupported vehicles should not leave the confirmation dialog open');
+  assert.strictEqual(state.liveryEditorSupported, false, 'Unsupported livery probe should mark availability as false');
   const liveryMessageCommand = bngApiCalls[bngApiCalls.length - 1];
   assert(liveryMessageCommand && liveryMessageCommand.indexOf('ui_message') !== -1, 'Unsupported vehicles should trigger a UI message');
   assert(liveryMessageCommand.toLowerCase().indexOf('not available') !== -1, 'Unsupported vehicles should explain why the livery editor is unavailable');
   assert.strictEqual(gotoCalls.length, 0, 'Unsupported vehicles should not navigate to the livery editor');
+
+  const callbacksAfterUnsupported = engineLuaCallbacks.length;
+  const messageCountBeforeDisabledLaunch = bngApiCalls.length;
+  scope.openLiveryEditor();
+  assert.strictEqual(engineLuaCallbacks.length, callbacksAfterUnsupported, 'Disabled livery editor action should not queue additional probes');
+  assert.strictEqual(bngApiCalls.length, messageCountBeforeDisabledLaunch + 1, 'Disabled livery editor action should surface a UI message');
+  const disabledLaunchMessage = bngApiCalls[bngApiCalls.length - 1];
+  assert(disabledLaunchMessage && disabledLaunchMessage.indexOf('ui_message') !== -1, 'Disabled livery editor action should use ui_message feedback');
 
   console.log('All vehicle parts painting tests passed.');
 })();

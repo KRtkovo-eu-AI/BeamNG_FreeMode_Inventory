@@ -1490,7 +1490,12 @@
       <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.0.3, made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">Refresh</button>
-        <button type="button" ng-click="openLiveryEditor()">Open Vehicle Livery Editor</button>
+        <button type="button"
+                ng-if="state.vehicleId && state.liveryEditorSupported !== null"
+                ng-click="state.liveryEditorSupported && openLiveryEditor()"
+                ng-disabled="!state.liveryEditorSupported">
+          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle Livery Editor is not available for this vehicle' }}
+        </button>
         <button type="button" ng-click="minimizeApp()">Minimize</button>
       </div>
     </div>
