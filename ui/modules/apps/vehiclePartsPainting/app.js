@@ -306,6 +306,62 @@ angular.module('beamng.apps')
         };
       }
 
+      function decodeSettingsPresetArray(rawValue) {
+        if (Array.isArray(rawValue)) { return rawValue; }
+        if (typeof rawValue === 'string') {
+          const trimmed = rawValue.trim();
+          if (!trimmed) { return []; }
+          try {
+            const parsed = JSON.parse(trimmed);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch (err) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.warn === 'function') {
+              globalWindow.console.warn('VehiclePartsPainting: Failed to parse userPaintPresets JSON', err);
+            }
+          }
+        }
+        return [];
+      }
+
+      function cloneSanitizedPresets(presets) {
+        const sanitizedList = [];
+        if (!Array.isArray(presets)) { return sanitizedList; }
+        for (let i = 0; i < presets.length; i++) {
+          const sanitized = sanitizePresetEntry(presets[i]);
+          if (sanitized) {
+            sanitizedList.push(sanitized);
+          }
+        }
+        return sanitizedList;
+      }
+
+      function serializeColorPresetsForStorage(presets) {
+        const storage = [];
+        if (!Array.isArray(presets)) { return storage; }
+        for (let i = 0; i < presets.length; i++) {
+          const sanitized = sanitizePresetEntry(presets[i]);
+          if (!sanitized || !sanitized.paint || !Array.isArray(sanitized.paint.baseColor)) { continue; }
+          const base = sanitized.paint.baseColor;
+          const entry = {
+            baseColor: [
+              clamp01(base[0]),
+              clamp01(base[1]),
+              clamp01(base[2]),
+              clamp01(base[3] != null ? base[3] : 1)
+            ],
+            metallic: clamp01(sanitized.paint.metallic),
+            roughness: clamp01(sanitized.paint.roughness),
+            clearcoat: clamp01(sanitized.paint.clearcoat),
+            clearcoatRoughness: clamp01(sanitized.paint.clearcoatRoughness)
+          };
+          if (sanitized.name) {
+            entry.name = sanitized.name;
+          }
+          storage.push(entry);
+        }
+        return storage;
+      }
+
       function closeRemovePresetDialog() {
         cancelPresetHoldTimer();
         presetHoldTriggered = false;
@@ -341,6 +397,9 @@ angular.module('beamng.apps')
       }
 
       function updateColorPresets(rawPresets) {
+        if (typeof rawPresets === 'string') {
+          rawPresets = decodeSettingsPresetArray(rawPresets);
+        }
         if (!Array.isArray(rawPresets)) {
           state.colorPresets = [];
           if (state.removePresetDialog.visible) {
@@ -352,6 +411,7 @@ angular.module('beamng.apps')
         for (let i = 0; i < rawPresets.length; i++) {
           const preset = sanitizePresetEntry(rawPresets[i]);
           if (preset) {
+            preset.storageIndex = presets.length + 1;
             presets.push(preset);
           }
         }
@@ -420,6 +480,13 @@ angular.module('beamng.apps')
       function toLuaString(str) {
         if (str === undefined || str === null) { return 'nil'; }
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+      }
+
+      function applyUserPaintPresets(presets) {
+        const storage = serializeColorPresetsForStorage(presets);
+        const encoded = JSON.stringify(storage);
+        const command = 'settings.setState({ userPaintPresets = ' + toLuaString(encoded) + ' })';
+        bngApi.engineLua(command);
       }
 
       function getPaintByContext(context, index) {
@@ -1511,8 +1578,26 @@ angular.module('beamng.apps')
           }
         }
         payload.name = chosenName;
-        const command = 'freeroam_vehiclePartsPainting.addColorPreset(' + toLuaString(JSON.stringify(payload)) + ')';
-        bngApi.engineLua(command);
+        const sanitizedExisting = cloneSanitizedPresets(state.colorPresets);
+        const sanitizedNew = sanitizePresetEntry(payload);
+        if (!sanitizedNew) { return; }
+        const targetName = sanitizedNew.name ? sanitizedNew.name.toLowerCase() : null;
+        let replaced = false;
+        if (targetName) {
+          for (let i = 0; i < sanitizedExisting.length; i++) {
+            const existingName = sanitizedExisting[i].name;
+            if (existingName && existingName.toLowerCase() === targetName) {
+              sanitizedExisting[i] = sanitizedNew;
+              replaced = true;
+              break;
+            }
+          }
+        }
+        if (!replaced) {
+          sanitizedExisting.push(sanitizedNew);
+        }
+        applyUserPaintPresets(sanitizedExisting);
+        updateColorPresets(sanitizedExisting);
         closeRemovePresetDialog();
       };
 
@@ -1569,7 +1654,20 @@ angular.module('beamng.apps')
           closeRemovePresetDialog();
           return;
         }
-        bngApi.engineLua('freeroam_vehiclePartsPainting.removeColorPreset(' + parsedIndex + ')');
+        const currentPresets = Array.isArray(state.colorPresets) ? state.colorPresets : [];
+        const targetIndex = currentPresets.findIndex(function (entry) { return entry && entry.storageIndex === parsedIndex; });
+        if (targetIndex === -1) {
+          closeRemovePresetDialog();
+          return;
+        }
+        const sanitizedExisting = cloneSanitizedPresets(currentPresets);
+        if (targetIndex < 0 || targetIndex >= sanitizedExisting.length) {
+          closeRemovePresetDialog();
+          return;
+        }
+        sanitizedExisting.splice(targetIndex, 1);
+        applyUserPaintPresets(sanitizedExisting);
+        updateColorPresets(sanitizedExisting);
         closeRemovePresetDialog();
       };
 
@@ -2018,12 +2116,13 @@ angular.module('beamng.apps')
         });
       });
 
-      $scope.$on('VehiclePartsPaintingColorPresets', function (event, data) {
+      $scope.$on('SettingsChanged', function (event, data) {
         data = data || {};
+        const values = data.values || {};
+        if (!values || !Object.prototype.hasOwnProperty.call(values, 'userPaintPresets')) { return; }
+        const presets = decodeSettingsPresetArray(values.userPaintPresets);
         $scope.$evalAsync(function () {
-          if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
-            updateColorPresets(data.colorPresets);
-          }
+          updateColorPresets(presets);
         });
       });
 
@@ -2043,7 +2142,7 @@ angular.module('beamng.apps')
       bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
       $scope.refresh();
       requestSavedConfigs();
-      bngApi.engineLua('freeroam_vehiclePartsPainting.requestColorPresets()');
+      bngApi.engineLua('settings.notifyUI()');
       refreshCustomBadgeVisibility();
       customBadgeRefreshPromise = $interval(function () {
         refreshCustomBadgeVisibility();
