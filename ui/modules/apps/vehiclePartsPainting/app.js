@@ -439,7 +439,9 @@ angular.module('beamng.apps')
         return null;
       }
 
-      function updateColorPresets(rawPresets) {
+      function updateColorPresets(rawPresets, options) {
+        options = options || {};
+        const preserveExistingOnEmpty = options && options.preserveExistingOnEmpty === true;
         if (rawPresets === undefined) { return; }
         if (rawPresets === null) {
           // Some state refresh payloads omit preset data by sending null. Keep the
@@ -474,6 +476,12 @@ angular.module('beamng.apps')
           if (preset) {
             preset.storageIndex = presets.length + 1;
             presets.push(preset);
+          }
+        }
+        if (!presets.length && preserveExistingOnEmpty) {
+          const hasExisting = Array.isArray(state.colorPresets) && state.colorPresets.length > 0;
+          if (hasExisting) {
+            return;
           }
         }
         state.colorPresets = presets;
@@ -2078,7 +2086,7 @@ angular.module('beamng.apps')
           state.vehicleId = data.vehicleId || null;
 
           if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
-            updateColorPresets(data.colorPresets);
+            updateColorPresets(data.colorPresets, { preserveExistingOnEmpty: true });
           }
 
           if (!state.vehicleId) {

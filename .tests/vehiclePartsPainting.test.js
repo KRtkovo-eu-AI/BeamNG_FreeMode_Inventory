@@ -544,6 +544,17 @@ function resetPaint(scope, partPath) {
   assert.strictEqual(palettePreset.name, 'Lua style swatch', 'Lua-style payload should preserve preset names');
   assert(Math.abs(palettePreset.paint.metallic - 0.1) < 1e-6, 'Lua-style payload should preserve numeric fields');
 
+  const placeholderPaletteAfterBaseApply = cloneStateForEvent(scope);
+  placeholderPaletteAfterBaseApply.colorPresets = [];
+  emitState(scope, placeholderPaletteAfterBaseApply);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when base paint updates omit presets via empty array placeholder');
+
+  applyCustomPaint(scope, 'vehicle/root', { r: 64 });
+  const placeholderPaletteAfterPartApply = cloneStateForEvent(scope);
+  placeholderPaletteAfterPartApply.colorPresets = [];
+  emitState(scope, placeholderPaletteAfterPartApply);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when part repaint updates omit presets via empty array placeholder');
+
   scope.onPresetPressStart({}, palettePreset);
   controller.timeout.flush();
   assert(state.removePresetDialog.visible === true, 'Holding a preset should display removal dialog');
@@ -553,6 +564,7 @@ function resetPaint(scope, partPath) {
   scope.confirmRemovePreset();
   assert.strictEqual(state.removePresetDialog.visible, false, 'Removal dialog should close after confirmation');
   assert.strictEqual(bngApiCalls.length, commandCountBeforeRemove + 1, 'Removing a preset should queue a backend command');
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 0, 'Color presets should clear locally after removing the last preset');
   const removeCommand = bngApiCalls[bngApiCalls.length - 1];
   const remainingPresets = parseSettingsSetStateCommand(removeCommand);
   assert(Array.isArray(remainingPresets) && remainingPresets.length === 0, 'Removing a preset should clear stored presets');
