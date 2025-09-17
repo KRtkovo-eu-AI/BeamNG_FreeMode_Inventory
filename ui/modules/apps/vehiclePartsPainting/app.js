@@ -70,6 +70,7 @@ angular.module('beamng.apps')
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
+      let partsTreeDirty = false;
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -460,6 +461,20 @@ angular.module('beamng.apps')
         return tree;
       }
 
+      function markPartsTreeDirty() {
+        partsTreeDirty = true;
+      }
+
+      function rebuildCurrentPartsTree() {
+        state.partsTree = rebuildPartsTreeWithIndex(state.parts);
+        partsTreeDirty = false;
+      }
+
+      function ensurePartsTreeCurrent() {
+        if (!partsTreeDirty) { return; }
+        rebuildCurrentPartsTree();
+      }
+
       function syncTreeNodesWithPart(part) {
         if (!part || !part.partPath) { return; }
         const nodes = treeNodesByPath[part.partPath];
@@ -500,6 +515,8 @@ angular.module('beamng.apps')
             updateEditedPaints(part);
           }
         }
+
+        markPartsTreeDirty();
       }
 
       function hasPaintEntries(paints) {
@@ -878,6 +895,7 @@ angular.module('beamng.apps')
       }
 
       function computeFilteredParts() {
+        ensurePartsTreeCurrent();
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
         const normalized = rawFilter.trim().toLowerCase();
         const parts = Array.isArray(state.parts) ? state.parts.slice() : [];
@@ -1058,10 +1076,12 @@ angular.module('beamng.apps')
       };
 
       $scope.expandAllNodes = function () {
+        ensurePartsTreeCurrent();
         setExpansionForNodes(state.partsTree, true);
       };
 
       $scope.collapseAllNodes = function () {
+        ensurePartsTreeCurrent();
         setExpansionForNodes(state.partsTree, false);
       };
 
@@ -1251,6 +1271,7 @@ angular.module('beamng.apps')
             state.parts = [];
             resetPartLookup();
             state.partsTree = [];
+            partsTreeDirty = false;
             resetTreeNodeLookup();
             state.filteredTree = [];
             state.filteredParts = [];
@@ -1289,7 +1310,7 @@ angular.module('beamng.apps')
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
           state.parts = Array.isArray(data.parts) ? data.parts : [];
           rebuildPartLookup();
-          state.partsTree = rebuildPartsTreeWithIndex(state.parts);
+          rebuildCurrentPartsTree();
           refreshCustomBadgeVisibility();
 
           computeFilteredParts();
