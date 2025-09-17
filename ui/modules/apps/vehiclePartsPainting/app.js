@@ -52,6 +52,7 @@ angular.module('beamng.apps')
         expandedNodes: {},
         minimized: false,
         basePaintCollapsed: false,
+        partPaintCollapsed: false,
         configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
@@ -1263,6 +1264,7 @@ angular.module('beamng.apps')
 
         state.selectedPartPath = newPath;
         state.selectedPart = part || null;
+        state.partPaintCollapsed = false;
 
         if (!part) {
           state.hasUserSelectedPart = false;
@@ -1910,6 +1912,10 @@ angular.module('beamng.apps')
 
       $scope.toggleBasePaintCollapsed = function () {
         state.basePaintCollapsed = !state.basePaintCollapsed;
+      };
+
+      $scope.togglePartPaintCollapsed = function () {
+        state.partPaintCollapsed = !state.partPaintCollapsed;
       };
 
       $scope.toggleConfigToolsCollapsed = function () {

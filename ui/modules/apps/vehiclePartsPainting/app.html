@@ -16,10 +16,16 @@
       position: relative;
     }
     .vehicle-parts-painting.is-minimized {
-      height: auto;
-      min-height: 0;
+      width: 48px;
+      height: 48px;
+      min-width: 48px;
+      min-height: 48px;
+      max-width: 48px;
+      max-height: 48px;
+      padding: 4px;
       flex: 0 0 auto;
-      padding: 10px 12px;
+      align-items: center;
+      justify-content: center;
     }
     .vehicle-parts-painting button {
       cursor: pointer;
@@ -239,26 +245,36 @@
     }
     .vehicle-parts-painting .minimized-bar {
       display: none;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
       width: 100%;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
     }
-    .vehicle-parts-painting .minimized-bar .title {
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-    }
-    .vehicle-parts-painting .minimized-bar button {
+    .vehicle-parts-painting .minimized-bar .restore-button {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      color: #ffffff;
+      border: none;
       border-radius: 4px;
-      padding: 2px 12px;
+      padding: 0;
+      cursor: pointer;
+      transition: background 0.15s ease;
     }
-    .vehicle-parts-painting .minimized-bar button:hover {
-      border: 1px solid #ffffff;
-      color: #ffffff;
+    .vehicle-parts-painting .minimized-bar .restore-button:hover,
+    .vehicle-parts-painting .minimized-bar .restore-button:focus {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .vehicle-parts-painting .minimized-bar .restore-button:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.65);
+    }
+    .vehicle-parts-painting .minimized-bar .restore-button img {
+      width: 28px;
+      height: 28px;
+      display: block;
     }
     .vehicle-parts-painting.is-minimized .app-content {
       display: none;
@@ -609,29 +625,35 @@
       flex-direction: column;
       gap: 12px;
     }
-    .vehicle-parts-painting .base-paint-panel {
+    .vehicle-parts-painting .base-paint-panel,
+    .vehicle-parts-painting .part-paint-panel {
       padding: 0;
       gap: 0;
     }
-    .vehicle-parts-painting .base-paint-panel.is-collapsed {
+    .vehicle-parts-painting .base-paint-panel.is-collapsed,
+    .vehicle-parts-painting .part-paint-panel.is-collapsed {
       flex: 0 0 auto;
     }
-    .vehicle-parts-painting .base-paint-panel .base-paint-header {
+    .vehicle-parts-painting .base-paint-panel .base-paint-header,
+    .vehicle-parts-painting .part-paint-panel .part-panel-header {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
       padding: 12px 12px 6px 12px;
     }
-    .vehicle-parts-painting .base-paint-panel .header-actions {
+    .vehicle-parts-painting .base-paint-panel .header-actions,
+    .vehicle-parts-painting .part-paint-panel .header-actions {
       display: flex;
       align-items: flex-start;
       gap: 8px;
     }
-    .vehicle-parts-painting .base-paint-panel .part-summary {
+    .vehicle-parts-painting .base-paint-panel .part-summary,
+    .vehicle-parts-painting .part-paint-panel .part-summary {
       flex: 1;
     }
-    .vehicle-parts-painting .base-paint-panel .collapse-toggle {
+    .vehicle-parts-painting .base-paint-panel .collapse-toggle,
+    .vehicle-parts-painting .part-paint-panel .collapse-toggle {
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.3);
       color: inherit;
@@ -639,7 +661,8 @@
       border-radius: 4px;
       font-size: 12px;
     }
-    .vehicle-parts-painting .base-paint-panel .collapse-toggle:hover {
+    .vehicle-parts-painting .base-paint-panel .collapse-toggle:hover,
+    .vehicle-parts-painting .part-paint-panel .collapse-toggle:hover {
       border-color: rgba(255, 255, 255, 0.6);
     }
     .vehicle-parts-painting .base-paint-panel .base-paint-body {
@@ -649,6 +672,15 @@
       padding: 0 12px 12px 12px;
     }
     .vehicle-parts-painting .base-paint-panel.is-collapsed .base-paint-body {
+      display: none;
+    }
+    .vehicle-parts-painting .part-paint-panel .part-paint-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 0 12px 12px 12px;
+    }
+    .vehicle-parts-painting .part-paint-panel.is-collapsed .part-paint-body {
       display: none;
     }
     .vehicle-parts-painting .part-summary h3 {
@@ -1294,8 +1326,12 @@
     </div>
   </div>
   <div class="minimized-bar" ng-if="state.minimized">
-    <span class="title">Vehicle Parts Painting</span>
-    <button type="button" ng-click="restoreApp()">Restore</button>
+    <button type="button"
+            class="restore-button"
+            ng-click="restoreApp()"
+            aria-label="Restore Vehicle Parts Painting">
+      <img src="/ui/modules/apps/vehiclePartsPainting/icon.svg" alt="">
+    </button>
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
@@ -1458,38 +1494,53 @@
           </div>
         </div>
 
-        <div class="editor-panel" ng-if="state.selectedPart">
-          <div class="part-summary">
-            <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
-            <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
-            <div class="meta" ng-if="state.selectedPart.slotName">Slot: {{state.selectedPart.slotName}}</div>
+        <div class="editor-panel part-paint-panel"
+             ng-if="state.selectedPart"
+             ng-class="{'is-collapsed': state.partPaintCollapsed}">
+          <div class="part-panel-header">
+            <div class="part-summary">
+              <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
+              <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
+              <div class="meta" ng-if="state.selectedPart.slotName">Slot: {{state.selectedPart.slotName}}</div>
+            </div>
+            <div class="header-actions">
+              <button type="button"
+                      class="collapse-toggle"
+                      ng-click="togglePartPaintCollapsed()"
+                      ng-attr-aria-expanded="{{!state.partPaintCollapsed}}"
+                      aria-controls="vehiclePartPaintBody">
+                {{state.partPaintCollapsed ? 'Expand' : 'Collapse'}}
+              </button>
+            </div>
           </div>
-          <div class="paint-editors">
-            <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
-              <div class="card-header">
-                <h4>Paint {{$index + 1}}</h4>
-                <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
-              </div>
-              <div class="field color-field">
-                <label>Color</label>
-                <div class="color-trigger-row">
-                  <button type="button"
-                          class="color-preview-button"
-                          ng-style="getColorPreviewStyle(paint)"
-                          ng-class="{'is-active': isColorEditorActive('part', $index)}"
-                          ng-click="activateColorEditor('part', $index)"
-                          ng-attr-aria-label="{{getColorButtonLabel('part', $index)}}"></button>
-                  <div class="color-trigger-details">
-                    <span class="color-hex">{{getColorHex(paint)}}</span>
-                    <span class="color-trigger-hint" ng-if="isColorEditorActive('part', $index)">Editing in picker</span>
+          <div class="part-paint-body" id="vehiclePartPaintBody">
+            <div class="paint-editors">
+              <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
+                <div class="card-header">
+                  <h4>Paint {{$index + 1}}</h4>
+                  <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
+                </div>
+                <div class="field color-field">
+                  <label>Color</label>
+                  <div class="color-trigger-row">
+                    <button type="button"
+                            class="color-preview-button"
+                            ng-style="getColorPreviewStyle(paint)"
+                            ng-class="{'is-active': isColorEditorActive('part', $index)}"
+                            ng-click="activateColorEditor('part', $index)"
+                            ng-attr-aria-label="{{getColorButtonLabel('part', $index)}}"></button>
+                    <div class="color-trigger-details">
+                      <span class="color-hex">{{getColorHex(paint)}}</span>
+                      <span class="color-trigger-hint" ng-if="isColorEditorActive('part', $index)">Editing in picker</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="editor-actions">
-            <button type="button" class="primary" ng-click="applyPaint()" ng-disabled="!editedPaints.length">Apply paint to part</button>
-            <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
+            <div class="editor-actions">
+              <button type="button" class="primary" ng-click="applyPaint()" ng-disabled="!editedPaints.length">Apply paint to part</button>
+              <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
+            </div>
           </div>
         </div>
       </div>
