@@ -766,7 +766,7 @@ angular.module('beamng.apps')
           return normalized;
         }
 
-        return '/local/' + normalized.replace(/^\/+/, '');
+        return '/' + normalized.replace(/^\/+/, '');
       }
 
       function hasConfigPreview(config) {

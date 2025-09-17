@@ -92,6 +92,49 @@
       justify-content: flex-end;
       gap: 10px;
     }
+    .vehicle-parts-painting .config-confirm-dialog .config-target {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-preview {
+      flex: 0 0 auto;
+      width: 120px;
+      height: 72px;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.45);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-preview img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-name {
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-meta {
+      font-size: 12px;
+      opacity: 0.75;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions button,
     .vehicle-parts-painting .palette-dialog .dialog-actions button,
     .vehicle-parts-painting .color-picker-dialog .dialog-actions button {
@@ -1207,14 +1250,22 @@
   <div class="config-confirm-overlay" ng-if="state.deleteConfigDialog.visible">
     <div class="config-confirm-dialog">
       <h4>Delete saved configuration?</h4>
-      <p>
-        Are you sure you want to delete
-        "{{state.deleteConfigDialog.config ? getSavedConfigLabel(state.deleteConfigDialog.config) : ''}}"?
-      </p>
-      <p class="file-hint"
-         ng-if="state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath">
-        File: {{state.deleteConfigDialog.config.relativePath}}
-      </p>
+      <p>Are you sure you want to delete this configuration?</p>
+      <div class="config-target"
+           ng-if="state.deleteConfigDialog.config">
+        <div class="config-target-preview"
+             ng-if="hasSavedConfigPreview(state.deleteConfigDialog.config)">
+          <img ng-src="{{getSavedConfigPreviewSrc(state.deleteConfigDialog.config)}}"
+               ng-attr-alt="{{getSavedConfigLabel(state.deleteConfigDialog.config)}} preview">
+        </div>
+        <div class="config-target-details">
+          <div class="config-target-name">{{getSavedConfigLabel(state.deleteConfigDialog.config)}}</div>
+          <div class="config-target-meta"
+               ng-if="state.deleteConfigDialog.config.relativePath">
+            File: {{state.deleteConfigDialog.config.relativePath}}
+          </div>
+        </div>
+      </div>
       <div class="dialog-actions">
         <button type="button"
                 class="danger"
@@ -1506,11 +1557,11 @@
                   <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
                   <div class="saved-meta">{{config.relativePath}}</div>
                 </div>
-                <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
+                <div class="saved-actions">
                   <button type="button"
                           class="delete-button"
                           ng-click="promptDeleteSavedConfig(config); $event.stopPropagation();"
-                          ng-disabled="state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath">
+                          ng-disabled="!canDeleteSavedConfig(config) || (state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath)">
                     Delete
                   </button>
                 </div>

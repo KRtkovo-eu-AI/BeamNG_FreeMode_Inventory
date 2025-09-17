@@ -492,7 +492,8 @@ function resetPaint(scope, partPath) {
 
   assert(scope.hasSavedConfigPreview(userConfig), 'User configuration should report an available preview');
   const previewSrc = scope.getSavedConfigPreviewSrc(userConfig);
-  assert(typeof previewSrc === 'string' && previewSrc.includes('config_a'), 'Preview URL should reference the configuration file name');
+  assert.strictEqual(previewSrc, '/vehicles/example/config_a.png', 'Preview URL should resolve to the vehicle resource path');
+  assert(previewSrc.indexOf('/local/') === -1, 'Preview URL should not include the /local prefix');
   assert(!scope.hasSavedConfigPreview(stockConfig), 'Config without preview should return false from helper');
   assert(scope.canDeleteSavedConfig(userConfig), 'User configuration should be deletable');
   assert(!scope.canDeleteSavedConfig(stockConfig), 'Non-user configuration should not expose deletion');
@@ -503,6 +504,7 @@ function resetPaint(scope, partPath) {
   scope.promptDeleteSavedConfig(userConfig);
   assert.strictEqual(state.deleteConfigDialog.visible, true, 'Delete dialog should appear for deletable configurations');
   assert(state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === userConfig.relativePath, 'Delete dialog should target the selected configuration');
+  assert(scope.hasSavedConfigPreview(state.deleteConfigDialog.config), 'Delete dialog should surface the configuration preview');
   assert.strictEqual(state.deleteConfigDialog.isDeleting, false, 'Delete dialog should start idle');
 
   scope.cancelDeleteSavedConfig();
