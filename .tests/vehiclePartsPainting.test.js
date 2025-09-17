@@ -141,6 +141,63 @@ function createIntervalStub() {
   return interval;
 }
 
+function createTimeoutStub() {
+  const handles = [];
+  function timeout(callback, delay) {
+    const handle = { callback: callback, delay: delay, cancelled: false };
+    handles.push(handle);
+    return handle;
+  }
+  timeout.cancel = function cancel(handle) {
+    if (!handle) {
+      return;
+    }
+    handle.cancelled = true;
+    const index = handles.indexOf(handle);
+    if (index !== -1) {
+      handles.splice(index, 1);
+    }
+  };
+  timeout.flush = function flush() {
+    const snapshot = handles.slice();
+    handles.length = 0;
+    for (let i = 0; i < snapshot.length; i++) {
+      const handle = snapshot[i];
+      if (!handle.cancelled) {
+        handle.callback();
+      }
+    }
+  };
+  return timeout;
+}
+
+function decodeLuaStringLiteral(value) {
+  let result = '';
+  for (let i = 0; i < value.length; i++) {
+    const ch = value.charAt(i);
+    if (ch === '\\' && i + 1 < value.length) {
+      const next = value.charAt(i + 1);
+      if (next === '\\' || next === "'") {
+        result += next;
+        i++;
+        continue;
+      }
+    }
+    result += ch;
+  }
+  return result;
+}
+
+function parseLuaJsonArgument(command, prefix) {
+  assert(command.startsWith(prefix), 'Command should start with prefix ' + prefix);
+  assert(command.endsWith(')'), 'Command should end with a closing parenthesis');
+  const wrapped = command.substring(prefix.length, command.length - 1);
+  assert(wrapped.length >= 2 && wrapped.charAt(0) === "'" && wrapped.charAt(wrapped.length - 1) === "'", 'Payload should be wrapped in single quotes');
+  const inner = wrapped.substring(1, wrapped.length - 1);
+  const decoded = decodeLuaStringLiteral(inner);
+  return JSON.parse(decoded);
+}
+
 function structuredClonePaints(paints) {
   return paints.map((paint) => ({
     baseColor: paint.baseColor.slice(),
@@ -233,6 +290,7 @@ function instantiateController() {
 
   const scope = new ScopeStub();
   const interval = createIntervalStub();
+  const timeout = createTimeoutStub();
 
   const injected = controllerDeps.map((dep) => {
     if (dep === '$scope') {
@@ -240,6 +298,9 @@ function instantiateController() {
     }
     if (dep === '$interval') {
       return interval;
+    }
+    if (dep === '$timeout') {
+      return timeout;
     }
     throw new Error('Unknown controller dependency: ' + dep);
   });
@@ -254,6 +315,7 @@ function instantiateController() {
   return {
     scope: scope,
     interval: interval,
+    timeout: timeout,
     bngApiCalls: bngApiCalls,
     hooks: controllerHooks
   };
@@ -376,11 +438,67 @@ function resetPaint(scope, partPath) {
   assert(Math.abs(doorPaint.baseColor[2] - (64 / 255)) < 0.001, 'Door part should inherit updated base paint blue channel');
   assert(!scope.hasCustomBadge(doorNode.part), 'Door should remain without a custom badge after base paint change');
 
+  const commandCountBeforeAdd = bngApiCalls.length;
+  const promptCalls = [];
+  global.window.prompt = function (message, defaultValue) {
+    promptCalls.push({ message: message, defaultValue: defaultValue });
+    return null;
+  };
+  scope.addColorPreset(scope.basePaintEditors[0]);
+  assert.strictEqual(promptCalls.length, 1, 'Adding a color preset should present a prompt once');
+  assert.strictEqual(bngApiCalls.length, commandCountBeforeAdd + 1, 'Adding a color preset should queue a backend command even when the prompt is cancelled');
+  const addCommand = bngApiCalls[bngApiCalls.length - 1];
+  const payload = parseLuaJsonArgument(addCommand, 'freeroam_vehiclePartsPainting.addColorPreset(');
+  assert.strictEqual(payload.name, '#FF8040', 'Preset name should default to the color hex when prompt is cancelled');
+  assert(Array.isArray(payload.value) && payload.value.length === 4, 'Preset value should contain RGBA components');
+  assert.strictEqual(payload.value[0], 1, 'Red channel should be captured at full intensity');
+  assert(Math.abs(payload.value[1] - (128 / 255)) < 1e-6, 'Green channel should mirror the edited value');
+  assert(Math.abs(payload.value[2] - (64 / 255)) < 1e-6, 'Blue channel should mirror the edited value');
+  assert.strictEqual(payload.value[3], 1, 'Alpha channel should default to one');
+  assert(payload.paint && Array.isArray(payload.paint.baseColor), 'Preset payload should include paint settings');
+  assert.strictEqual(payload.paint.metallic, 0, 'Preset metallic value should mirror the source paint');
+  assert.strictEqual(payload.paint.roughness, 0, 'Preset roughness value should mirror the source paint');
+  assert.strictEqual(payload.paint.clearcoat, 0, 'Preset clearcoat value should mirror the source paint');
+  assert.strictEqual(payload.paint.clearcoatRoughness, 0, 'Preset clearcoat roughness should mirror the source paint');
+
+  delete global.window.prompt;
+
   assert(state.basePaintCollapsed === false, 'Base paint panel should default to expanded');
   scope.toggleBasePaintCollapsed();
   assert(state.basePaintCollapsed === true, 'Base paint panel should collapse when toggled');
   scope.toggleBasePaintCollapsed();
   assert(state.basePaintCollapsed === false, 'Base paint panel should expand when toggled again');
+
+  scope.$$emit('VehiclePartsPaintingColorPresets', {
+    colorPresets: [{
+      name: 'Sample purple',
+      value: [0.2, 0.1, 0.8, 1],
+      paint: {
+        baseColor: [0.2, 0.1, 0.8, 1],
+        metallic: 0.4,
+        roughness: 0.5,
+        clearcoat: 0.6,
+        clearcoatRoughness: 0.2
+      },
+      storageIndex: 1
+    }]
+  });
+  scope.$digest();
+
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should sync from event payload');
+  const palettePreset = state.colorPresets[0];
+  assert.strictEqual(palettePreset.storageIndex, 1, 'Preset should retain its storage index');
+
+  scope.onPresetPressStart({}, palettePreset);
+  controller.timeout.flush();
+  assert(state.removePresetDialog.visible === true, 'Holding a preset should display removal dialog');
+  assert(state.removePresetDialog.preset && state.removePresetDialog.preset.storageIndex === 1, 'Removal dialog should target the held preset');
+
+  const commandCountBeforeRemove = bngApiCalls.length;
+  scope.confirmRemovePreset();
+  assert.strictEqual(state.removePresetDialog.visible, false, 'Removal dialog should close after confirmation');
+  assert.strictEqual(bngApiCalls.length, commandCountBeforeRemove + 1, 'Removing a preset should queue a backend command');
+  assert.strictEqual(bngApiCalls[bngApiCalls.length - 1], 'freeroam_vehiclePartsPainting.removeColorPreset(1)', 'Removal command should include preset index');
 
   console.log('All vehicle parts painting tests passed.');
 })();
