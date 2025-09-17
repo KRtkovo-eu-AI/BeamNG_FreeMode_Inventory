@@ -32,7 +32,7 @@
     .run(['$injector', '$window', function ($injector, $window) {
       var api = resolveBngApi($injector, $window)
       if (!api) { return }
-      runLua(api, 'extensions.load("ui/topBar/vehiclePartsPainting")')
+      runLua(api, 'extensions.load("ui_topBar_vehiclePartsPainting")')
     }])
     .config(['$stateProvider', function ($stateProvider) {
       $stateProvider.state('menu.vehiclePartsPainting', {
@@ -44,7 +44,7 @@
         onEnter: ['$injector', '$window', function ($injector, $window) {
           var api = resolveBngApi($injector, $window)
           if (!api) { return }
-          runLua(api, 'extensions.load("ui/topBar/vehiclePartsPainting")')
+          runLua(api, 'extensions.load("ui_topBar_vehiclePartsPainting")')
           runLua(api, 'extensions.load("freeroam_vehiclePartsPainting")')
           runLua(api, 'freeroam_vehiclePartsPainting.open()')
           runLua(api, 'ui_topBar.setActiveItem("vehiclePartsPainting")')

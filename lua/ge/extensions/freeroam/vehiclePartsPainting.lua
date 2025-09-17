@@ -6,7 +6,8 @@ local M = {}
 
 local logTag = 'vehiclePartsPainting'
 
-local TOPBAR_HELPER_EXTENSION = 'ui/topBar/vehiclePartsPainting'
+local TOPBAR_HELPER_EXTENSION = 'ui_topBar_vehiclePartsPainting'
+local TOPBAR_HELPER_EXTENSION_ALIAS = 'ui/topBar/vehiclePartsPainting'
 
 local vehManager = extensions.core_vehicle_manager
 local jbeamIO = require('jbeam/io')
@@ -28,19 +29,40 @@ local function ensureTopBarHelperLoaded()
     return
   end
 
-  if type(manager.isExtensionLoaded) == 'function' then
-    local ok, isLoaded = pcall(manager.isExtensionLoaded, TOPBAR_HELPER_EXTENSION)
-    if ok and isLoaded then
+  local function isLoaded(name)
+    if type(name) ~= 'string' or name == '' then
+      return false
+    end
+    if type(manager.isExtensionLoaded) ~= 'function' then
+      return false
+    end
+    local ok, loaded = pcall(manager.isExtensionLoaded, name)
+    return ok and loaded
+  end
+
+  local function tryLoad(name)
+    if type(name) ~= 'string' or name == '' then
       return
+    end
+    if type(manager.load) ~= 'function' then
+      return
+    end
+    local ok, err = pcall(manager.load, name)
+    if not ok and err then
+      log('W', logTag, 'Failed to load '..name..': '..tostring(err))
     end
   end
 
-  if type(manager.load) == 'function' then
-    local ok, err = pcall(manager.load, TOPBAR_HELPER_EXTENSION)
-    if not ok and err then
-      log('W', logTag, 'Failed to load '..TOPBAR_HELPER_EXTENSION..': '..tostring(err))
-    end
+  if isLoaded(TOPBAR_HELPER_EXTENSION) or isLoaded(TOPBAR_HELPER_EXTENSION_ALIAS) then
+    return
   end
+
+  tryLoad(TOPBAR_HELPER_EXTENSION)
+  if isLoaded(TOPBAR_HELPER_EXTENSION) then
+    return
+  end
+
+  tryLoad(TOPBAR_HELPER_EXTENSION_ALIAS)
 end
 
 local sanitizeColorPresetEntry
