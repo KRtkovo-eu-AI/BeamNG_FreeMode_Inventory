@@ -51,6 +51,7 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
+        basePaintCollapsed: false,
         configToolsCollapsed: false,
         savedConfigs: [],
         selectedSavedConfig: null,
@@ -1204,6 +1205,10 @@ angular.module('beamng.apps')
 
       $scope.restoreApp = function () {
         state.minimized = false;
+      };
+
+      $scope.toggleBasePaintCollapsed = function () {
+        state.basePaintCollapsed = !state.basePaintCollapsed;
       };
 
       $scope.toggleConfigToolsCollapsed = function () {

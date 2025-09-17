@@ -376,5 +376,11 @@ function resetPaint(scope, partPath) {
   assert(Math.abs(doorPaint.baseColor[2] - (64 / 255)) < 0.001, 'Door part should inherit updated base paint blue channel');
   assert(!scope.hasCustomBadge(doorNode.part), 'Door should remain without a custom badge after base paint change');
 
+  assert(state.basePaintCollapsed === false, 'Base paint panel should default to expanded');
+  scope.toggleBasePaintCollapsed();
+  assert(state.basePaintCollapsed === true, 'Base paint panel should collapse when toggled');
+  scope.toggleBasePaintCollapsed();
+  assert(state.basePaintCollapsed === false, 'Base paint panel should expand when toggled again');
+
   console.log('All vehicle parts painting tests passed.');
 })();
