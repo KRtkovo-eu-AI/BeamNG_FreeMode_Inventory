@@ -1528,6 +1528,7 @@
         <input type="search"
                 placeholder="Search parts..."
                 ng-model="state.filterText"
+                ng-change="onFilterInputChanged()"
                 autocomplete="off">
         <button type="button"
                 class="clear-filter"

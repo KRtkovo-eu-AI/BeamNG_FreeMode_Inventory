@@ -388,6 +388,9 @@ function resetPaint(scope, partPath) {
 
 function setFilterText(scope, controller, value, options) {
   scope.state.filterText = value;
+  if (typeof scope.onFilterInputChanged === 'function') {
+    scope.onFilterInputChanged();
+  }
   scope.$digest();
   if (!options || options.flush !== false) {
     controller.timeout.flush();
@@ -457,6 +460,37 @@ function setFilterText(scope, controller, value, options) {
   setFilterText(scope, controller, 'door');
   let filteredDoor = findNode(state.filteredTree, 'vehicle/door');
   assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Filtering after cancelling debounce should still work');
+  let missingHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert.strictEqual(missingHood, null, 'Filtering for door should hide hood nodes');
+
+  setFilterText(scope, controller, 'do');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Partial filter updates should keep matching parts visible');
+  missingHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert.strictEqual(missingHood, null, 'Partial filter narrowing should continue to exclude unmatched parts');
+
+  setFilterText(scope, controller, '');
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && node.part && node.part.partPath === 'vehicle/hood', 'Clearing the filter via typing should restore hood to the tree');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Clearing the filter via typing should restore door to the tree');
+
+  setFilterText(scope, controller, 'hood');
+  let filteredHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert(filteredHood && filteredHood.part && filteredHood.part.partPath === 'vehicle/hood', 'Filtering for hood after clearing should work repeatedly');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert.strictEqual(filteredDoor, null, 'Filtering for hood should hide door parts');
+
+  setFilterText(scope, controller, 'hoo');
+  filteredHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert(filteredHood && filteredHood.part && filteredHood.part.partPath === 'vehicle/hood', 'Editing the filter text should keep matches up to date');
+
+  setFilterText(scope, controller, '');
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && node.part && node.part.partPath === 'vehicle/hood', 'Clearing the filter again should restore hood to the tree');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Clearing the filter again should restore door to the tree');
+
   scope.clearFilter();
   scope.$digest();
   controller.timeout.flush();

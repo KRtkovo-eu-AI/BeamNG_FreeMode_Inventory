@@ -1806,9 +1806,9 @@ end)()`;
         }, FILTER_DEBOUNCE_DELAY_MS);
       }
 
-      $scope.$watch(function () { return state.filterText; }, function () {
+      $scope.onFilterInputChanged = function () {
         scheduleFilteredPartsRecompute();
-      });
+      };
 
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
