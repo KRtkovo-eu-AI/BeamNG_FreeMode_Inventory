@@ -44,6 +44,7 @@
           :icon="item.icon"
           :icon-svg="item.iconSvg"
           :label="item.label"
+          :active="item.id === activeItem"
           @click="onItemClicked(item)"
         />
       </BngOverflowContainer>
@@ -69,10 +70,56 @@ const pauseButtonTarget = ref(null)
 const showTabBindings = ref(true)
 const showBackBinding = ref(true)
 
+const gotoAngularState = target => {
+  if (typeof target !== "string") return false
+  const trimmed = target.trim()
+  if (!trimmed) return false
+
+  let handled = false
+  const bngVue = globalThis?.bngVue
+  if (bngVue) {
+    if (typeof bngVue.gotoAngularState === "function") {
+      bngVue.gotoAngularState(trimmed)
+      handled = true
+    } else if (typeof bngVue.gotoState === "function") {
+      bngVue.gotoState(trimmed)
+      handled = true
+    }
+  }
+
+  const rootScope = globalThis?.globalAngularRootScope
+  const angularState = rootScope?.$state
+  if (angularState && typeof angularState.go === "function") {
+    angularState.go(trimmed)
+    handled = true
+  }
+
+  return handled
+}
+
+const handleItemNavigation = item => {
+  if (!item || typeof item !== "object") return
+
+  const candidates = [item.targetState, item.substate, item.state]
+  for (let i = 0; i < candidates.length; i++) {
+    if (gotoAngularState(candidates[i])) {
+      return
+    }
+  }
+}
+
 const onItemClicked = item => {
-  if (activeItem.value === item.id) return
-  activeItem.value = item.id
-  topBar.selectEntry(item.id)
+  if (!item || typeof item !== "object") return
+
+  if (item.id && activeItem.value !== item.id) {
+    activeItem.value = item.id
+  }
+
+  if (item.id) {
+    topBar.selectEntry(item.id)
+  }
+
+  handleItemNavigation(item)
 }
 
 const backStack = new Map()

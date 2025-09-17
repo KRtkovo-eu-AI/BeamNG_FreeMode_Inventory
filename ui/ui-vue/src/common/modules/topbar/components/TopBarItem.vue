@@ -8,18 +8,18 @@
     bng-no-nav="true"
     tabindex="-1"
     v-bng-sound-class="'bng_click_hover_generic'"
+    @click="emitClick"
   >
-    <BngIcon
-      v-if="!hasSvgIcon"
-      class="topbar-item-icon"
-      :type="icon"
+    <span
+      v-if="hasSvgIcon"
+      class="topbar-item-icon topbar-item-icon-svg"
+      aria-hidden="true"
+      v-html="iconSvgContent"
     />
     <BngIcon
       v-else
       class="topbar-item-icon"
-      :type="'_empty'"
-      :external-image="iconSvgDataUri"
-      :as-image="true"
+      :type="icon"
     />
     <TextScroller v-if="label && !iconOnly" class="topbar-item-text">{{ $t(label) }}</TextScroller>
   </div>
@@ -57,41 +57,28 @@ const props = defineProps({
   },
 })
 
+const emit = defineEmits(["click"])
+
 const item = ref(null)
 
-const encodeSvgToBase64 = value => {
-  if (typeof globalThis === "undefined" || typeof globalThis.btoa !== "function") return null
-
-  try {
-    const ascii = typeof globalThis.unescape === "function"
-      ? globalThis.unescape(encodeURIComponent(value))
-      : encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    return globalThis.btoa(ascii)
-  } catch (err) {
-    return null
-  }
-}
-
-const iconSvgDataUri = computed(() => {
+const iconSvgContent = computed(() => {
   if (typeof props.iconSvg !== "string") return null
-  const rawSvg = props.iconSvg.trim()
-  if (!rawSvg) return null
-
-  const normalized = rawSvg.replace(/\s+/g, " ")
-  const base64 = encodeSvgToBase64(normalized)
-  if (base64) {
-    return `data:image/svg+xml;base64,${base64}`
-  }
-
-  return `data:image/svg+xml,${encodeURIComponent(normalized)}`
+  const trimmed = props.iconSvg.trim()
+  if (!trimmed) return null
+  return trimmed
 })
 
-const hasSvgIcon = computed(() => !!iconSvgDataUri.value)
+const hasSvgIcon = computed(() => typeof iconSvgContent.value === "string" && iconSvgContent.value.length > 0)
+
+const emitClick = event => {
+  emit("click", event)
+}
 
 watch(
   () => props.active,
   value => {
     if (typeof value !== "boolean") return
+    if (!item.value) return
 
     if (value) {
       item.value.setAttribute("active", "true")
@@ -137,6 +124,20 @@ $attention-active-text-color: var(--bng-off-white);
 .topbar-item > .topbar-item-icon {
   flex: 0 1 auto;
   margin-right: calc-ui-rem(0.5);
+}
+
+.topbar-item > .topbar-item-icon-svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+
+  > svg {
+    width: calc-ui-rem(1.5);
+    height: calc-ui-rem(1.5);
+    fill: currentColor;
+    stroke: none;
+  }
 }
 
 .topbar-item > .topbar-item-text {
