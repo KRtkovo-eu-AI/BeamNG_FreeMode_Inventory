@@ -1438,6 +1438,7 @@ end
 end
 
 local sendState
+local applyStoredPaints
 
 local function setVehicleBasePaints(paints)
   local vehObj = getPlayerVehicle(0)
@@ -1644,7 +1645,7 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
   end
 end
 
-function sendState(targetVehId)
+sendState = function(targetVehId)
   local vehId = targetVehId or be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
     guihooks.trigger('VehiclePartsPaintingState', {vehicleId = false, parts = {}, basePaints = {}, colorPresets = copyColorPresets()})
@@ -1720,7 +1721,7 @@ function sendState(targetVehId)
   sendSavedConfigs(vehId, vehData, vehObj)
 end
 
-local function applyStoredPaints(vehId)
+applyStoredPaints = function(vehId)
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   if not vehObj or not vehData then return end
