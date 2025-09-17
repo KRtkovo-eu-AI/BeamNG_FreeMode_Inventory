@@ -30,11 +30,13 @@
       position: absolute;
       inset: 0;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       background: rgba(0, 0, 0, 0.78);
-      padding: 20px;
+      padding: 24px 16px;
       z-index: 5;
+      overflow: auto;
+      box-sizing: border-box;
     }
     .vehicle-parts-painting .config-confirm-dialog,
     .vehicle-parts-painting .palette-dialog,
@@ -43,9 +45,15 @@
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 6px;
       padding: 18px 20px;
-      max-width: 360px;
-      width: 100%;
+      max-width: 720px;
+      width: min(720px, 100%);
+      max-height: calc(100% - 48px);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-sizing: border-box;
+      margin: auto;
     }
     .vehicle-parts-painting .config-confirm-dialog h4,
     .vehicle-parts-painting .palette-dialog h4 {
@@ -106,12 +114,6 @@
     .vehicle-parts-painting .palette-dialog .dialog-actions .danger:hover {
       background: rgba(234, 80, 71, 1);
     }
-    .vehicle-parts-painting .color-picker-dialog {
-      max-width: 480px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
     .vehicle-parts-painting .color-picker-dialog .dialog-header {
       display: flex;
       align-items: center;
@@ -143,6 +145,22 @@
       background: rgba(255, 255, 255, 0.12);
     }
     .vehicle-parts-painting .color-picker-dialog .dialog-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .vehicle-parts-painting .color-picker-dialog .picker-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .vehicle-parts-painting .color-picker-dialog .picker-main,
+    .vehicle-parts-painting .color-picker-dialog .picker-controls {
+      flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -188,6 +206,7 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
     }
     .vehicle-parts-painting .app-header {
       display: flex;
@@ -260,6 +279,7 @@
       display: flex;
       gap: 12px;
       min-height: 0;
+      overflow: hidden;
     }
     .vehicle-parts-painting .editor-side {
       flex: 1;
@@ -267,6 +287,10 @@
       flex-direction: column;
       gap: 12px;
       min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 4px;
+      box-sizing: border-box;
     }
     .vehicle-parts-painting .parts-panel {
       flex: 0 0 260px;
@@ -277,6 +301,7 @@
       background: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
       overflow: hidden;
+      min-height: 0;
     }
     .vehicle-parts-painting .parts-panel .panel-header {
       display: block;
@@ -568,7 +593,7 @@
       opacity: 0.75;
     }
     .vehicle-parts-painting .editor-panel {
-      flex: 1;
+      flex: 0 0 auto;
       min-width: 0;
       min-height: 0;
       background: rgba(255, 255, 255, 0.05);
@@ -577,12 +602,10 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
-      overflow: hidden;
     }
     .vehicle-parts-painting .base-paint-panel {
       padding: 0;
       gap: 0;
-      overflow-y: auto;
     }
     .vehicle-parts-painting .base-paint-panel.is-collapsed {
       flex: 0 0 auto;
@@ -618,8 +641,6 @@
       flex-direction: column;
       gap: 12px;
       padding: 0 12px 12px 12px;
-      flex: 1;
-      min-height: 0;
     }
     .vehicle-parts-painting .base-paint-panel.is-collapsed .base-paint-body {
       display: none;
@@ -634,13 +655,11 @@
       word-break: break-all;
     }
     .vehicle-parts-painting .paint-editors {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 10px;
       align-content: start;
+      flex: 0 0 auto;
     }
     .vehicle-parts-painting .paint-card {
       background: rgba(0, 0, 0, 0.35);
@@ -719,9 +738,9 @@
       opacity: 0.85;
     }
     .vehicle-parts-painting .color-picker-dialog .finish-fields {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
     }
     .vehicle-parts-painting .color-picker-dialog .finish-field {
       display: flex;
@@ -754,12 +773,13 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      align-items: stretch;
     }
     .vehicle-parts-painting .hsv-rectangle {
       position: relative;
       width: 100%;
-      max-width: 260px;
-      height: 150px;
+      max-width: 100%;
+      height: 160px;
       border-radius: 6px;
       border: 1px solid rgba(255, 255, 255, 0.18);
       overflow: hidden;
@@ -1053,6 +1073,22 @@
       padding: 8px 14px;
       border-radius: 4px;
     }
+    @media (min-width: 640px) {
+      .vehicle-parts-painting .color-picker-dialog .picker-content {
+        flex-direction: row;
+        align-items: flex-start;
+      }
+      .vehicle-parts-painting .color-picker-dialog .picker-main {
+        flex: 0 0 320px;
+        max-width: 360px;
+      }
+      .vehicle-parts-painting .color-picker-dialog .picker-controls {
+        flex: 1;
+      }
+      .vehicle-parts-painting .color-picker-dialog .finish-fields {
+        grid-template-columns: repeat(2, minmax(140px, 1fr));
+      }
+    }
     @media (max-width: 760px) {
       .vehicle-parts-painting .app-body {
         flex-direction: column;
@@ -1116,120 +1152,126 @@
         <button type="button" class="dialog-close" ng-click="cancelColorPicker()" aria-label="Close color picker">×</button>
       </div>
       <div class="dialog-body" ng-if="colorPickerState.working">
-        <div class="color-preview-large" ng-style="getColorPreviewStyle(colorPickerState.working)"></div>
-        <div class="color-editor-hex">{{getColorHex(colorPickerState.working)}}</div>
-        <div class="hsv-picker">
-          <div class="hsv-rectangle"
-               ng-style="getHsvRectangleStyle()"
-               ng-mousedown="onHsvRectangleMouseDown($event)">
-            <div class="hsv-rectangle-overlay"></div>
-            <div class="hsv-pointer" ng-style="getHsvPointerStyle()"></div>
-          </div>
-          <div class="hue-slider">
-            <input type="range"
-                   min="0"
-                   max="360"
-                   step="1"
-                   ng-model="colorPickerState.hsv.h"
-                   ng-change="onHueSliderChange()">
-          </div>
-        </div>
-        <div class="html-color-input">
-          <label for="vehicleGlobalHtmlColor">HTML color code</label>
-          <input id="vehicleGlobalHtmlColor"
-                 type="text"
-                 ng-model="colorPickerState.working.htmlColor"
-                 ng-change="onHtmlColorInputChanged(colorPickerState.working)"
-                 ng-blur="onHtmlColorInputBlur(colorPickerState.working)"
-                 placeholder="#RRGGBB"
-                 maxlength="7"
-                 autocomplete="off"
-                 autocorrect="off"
-                 autocapitalize="none"
-                 spellcheck="false">
-        </div>
-        <div class="finish-fields">
-          <div class="finish-field">
-            <label>Metallic</label>
-            <div class="field-row">
-              <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
-              <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
-            </div>
-          </div>
-          <div class="finish-field">
-            <label>Roughness</label>
-            <div class="field-row">
-              <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
-              <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
-            </div>
-          </div>
-          <div class="finish-field">
-            <label>Clearcoat</label>
-            <div class="field-row">
-              <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
-              <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
-            </div>
-          </div>
-          <div class="finish-field">
-            <label>Clearcoat Roughness</label>
-            <div class="field-row">
-              <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
-              <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
-            </div>
-          </div>
-        </div>
-        <div class="color-channels">
-          <div class="color-channel">
-            <span>R</span>
-            <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.working.color.r" ng-change="onColorChannelChanged(colorPickerState.working)">
-            <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.working.color.r" ng-change="onColorChannelChanged(colorPickerState.working)">
-          </div>
-          <div class="color-channel">
-            <span>G</span>
-            <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.working.color.g" ng-change="onColorChannelChanged(colorPickerState.working)">
-            <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.working.color.g" ng-change="onColorChannelChanged(colorPickerState.working)">
-          </div>
-          <div class="color-channel">
-            <span>B</span>
-            <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.working.color.b" ng-change="onColorChannelChanged(colorPickerState.working)">
-            <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.working.color.b" ng-change="onColorChannelChanged(colorPickerState.working)">
-          </div>
-        </div>
-        <div class="user-palette"
-             ng-class="{'is-collapsed': isPaletteCollapsed(colorPickerState.context, colorPickerState.index)}">
-          <div class="user-palette-header">
-            <span>User palette</span>
-            <div class="user-palette-actions">
-              <button type="button"
-                      class="add-preset"
-                      ng-click="addColorPreset(colorPickerState.working)"
-                      title="Add current color to palette">+</button>
-              <button type="button"
-                      class="collapse-toggle"
-                      ng-click="togglePaletteCollapse(colorPickerState.context, colorPickerState.index)"
-                      ng-disabled="colorPickerState.context == null"
-                      ng-attr-aria-expanded="{{colorPickerState.context != null && !isPaletteCollapsed(colorPickerState.context, colorPickerState.index)}}"
-                      aria-controls="globalColorPalette">
-                {{colorPickerState.context != null && !isPaletteCollapsed(colorPickerState.context, colorPickerState.index) ? 'Collapse' : 'Expand'}}
-              </button>
-            </div>
-          </div>
-          <div class="user-palette-body" id="globalColorPalette">
-            <div class="color-presets" ng-if="state.colorPresets.length">
-              <div class="preset-list">
-                <button type="button"
-                        class="preset-swatch"
-                        ng-repeat="preset in state.colorPresets track by (preset.storageIndex || $index)"
-                        ng-style="getColorPresetStyle(preset)"
-                        ng-attr-title="{{getColorPresetTitle(preset)}}"
-                        ng-mousedown="onPresetPressStart($event, preset)"
-                        ng-mouseup="onPresetPressEnd($event, preset)"
-                        ng-mouseleave="onPresetPressCancel($event, preset)"
-                        ng-click="onPresetClick($event, colorPickerState.working, preset)"></button>
+        <div class="picker-content">
+          <div class="picker-main">
+            <div class="color-preview-large" ng-style="getColorPreviewStyle(colorPickerState.working)"></div>
+            <div class="color-editor-hex">{{getColorHex(colorPickerState.working)}}</div>
+            <div class="hsv-picker">
+              <div class="hsv-rectangle"
+                   ng-style="getHsvRectangleStyle()"
+                   ng-mousedown="onHsvRectangleMouseDown($event)">
+                <div class="hsv-rectangle-overlay"></div>
+                <div class="hsv-pointer" ng-style="getHsvPointerStyle()"></div>
               </div>
-              <div class="user-palette-hint">Hold a color swatch to delete it.</div>
+              <div class="hue-slider">
+                <input type="range"
+                       min="0"
+                       max="360"
+                       step="1"
+                       ng-model="colorPickerState.hsv.h"
+                       ng-change="onHueSliderChange()">
+              </div>
             </div>
-            <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
+            <div class="color-channels">
+              <div class="color-channel">
+                <span>R</span>
+                <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.working.color.r" ng-change="onColorChannelChanged(colorPickerState.working)">
+                <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.working.color.r" ng-change="onColorChannelChanged(colorPickerState.working)">
+              </div>
+              <div class="color-channel">
+                <span>G</span>
+                <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.working.color.g" ng-change="onColorChannelChanged(colorPickerState.working)">
+                <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.working.color.g" ng-change="onColorChannelChanged(colorPickerState.working)">
+              </div>
+              <div class="color-channel">
+                <span>B</span>
+                <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.working.color.b" ng-change="onColorChannelChanged(colorPickerState.working)">
+                <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.working.color.b" ng-change="onColorChannelChanged(colorPickerState.working)">
+              </div>
+            </div>
+          </div>
+          <div class="picker-controls">
+            <div class="html-color-input">
+              <label for="vehicleGlobalHtmlColor">HTML color code</label>
+              <input id="vehicleGlobalHtmlColor"
+                     type="text"
+                     ng-model="colorPickerState.working.htmlColor"
+                     ng-change="onHtmlColorInputChanged(colorPickerState.working)"
+                     ng-blur="onHtmlColorInputBlur(colorPickerState.working)"
+                     placeholder="#RRGGBB"
+                     maxlength="7"
+                     autocomplete="off"
+                     autocorrect="off"
+                     autocapitalize="none"
+                     spellcheck="false">
+            </div>
+            <div class="finish-fields">
+              <div class="finish-field">
+                <label>Metallic</label>
+                <div class="field-row">
+                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
+                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
+                </div>
+              </div>
+              <div class="finish-field">
+                <label>Roughness</label>
+                <div class="field-row">
+                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
+                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
+                </div>
+              </div>
+              <div class="finish-field">
+                <label>Clearcoat</label>
+                <div class="field-row">
+                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
+                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
+                </div>
+              </div>
+              <div class="finish-field">
+                <label>Clearcoat Roughness</label>
+                <div class="field-row">
+                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
+                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
+                </div>
+              </div>
+            </div>
+            <div class="user-palette"
+                 ng-class="{'is-collapsed': isPaletteCollapsed(colorPickerState.context, colorPickerState.index)}">
+              <div class="user-palette-header">
+                <span>User palette</span>
+                <div class="user-palette-actions">
+                  <button type="button"
+                          class="add-preset"
+                          ng-click="addColorPreset(colorPickerState.working)"
+                          title="Add current color to palette">+</button>
+                  <button type="button"
+                          class="collapse-toggle"
+                          ng-click="togglePaletteCollapse(colorPickerState.context, colorPickerState.index)"
+                          ng-disabled="colorPickerState.context == null"
+                          ng-attr-aria-expanded="{{colorPickerState.context != null && !isPaletteCollapsed(colorPickerState.context, colorPickerState.index)}}"
+                          aria-controls="globalColorPalette">
+                    {{colorPickerState.context != null && !isPaletteCollapsed(colorPickerState.context, colorPickerState.index) ? 'Collapse' : 'Expand'}}
+                  </button>
+                </div>
+              </div>
+              <div class="user-palette-body" id="globalColorPalette">
+                <div class="color-presets" ng-if="state.colorPresets.length">
+                  <div class="preset-list">
+                    <button type="button"
+                            class="preset-swatch"
+                            ng-repeat="preset in state.colorPresets track by (preset.storageIndex || $index)"
+                            ng-style="getColorPresetStyle(preset)"
+                            ng-attr-title="{{getColorPresetTitle(preset)}}"
+                            ng-mousedown="onPresetPressStart($event, preset)"
+                            ng-mouseup="onPresetPressEnd($event, preset)"
+                            ng-mouseleave="onPresetPressCancel($event, preset)"
+                            ng-click="onPresetClick($event, colorPickerState.working, preset)"></button>
+                  </div>
+                  <div class="user-palette-hint">Hold a color swatch to delete it.</div>
+                </div>
+                <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1261,7 +1303,7 @@
       <p>No active player vehicle detected.</p>
     </div>
     <div class="app-body" ng-if="state.vehicleId">
-    <div class="parts-panel">
+      <div class="parts-panel">
       <div class="panel-header">
         <div><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
@@ -1318,73 +1360,109 @@
               ng-include="'vehiclePartsPaintingTreeNode.html'"></li>
         </ul>
       </script>
-    </div>
-    <div class="editor-side">
-      <div class="config-tools" ng-class="{'is-collapsed': state.configToolsCollapsed}">
-        <div class="config-tools-header">
-          <h3>Saved Configurations</h3>
-          <button type="button"
-                  class="collapse-toggle"
-                  ng-click="toggleConfigToolsCollapsed()"
-                  ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
-                  aria-controls="vehiclePartsConfigToolsBody">
-            {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
-          </button>
-        </div>
-        <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
-          <div class="config-actions">
-            <input type="text"
-                    placeholder="Configuration name"
-                    ng-model="state.configNameInput"
-                    autocomplete="off" value="Save directly in Vehicle Configuration tab">
-            <button type="button"
-                    ng-click="saveCurrentConfiguration()"
-                    ng-disabled="false">Save Configuration</button>
-          </div>
-          <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
-          <div class="saved-configs" ng-if="hasSavedConfigs()">
-            <div class="saved-item"
-                  ng-repeat="config in getSavedConfigs() track by config.relativePath"
-                  ng-class="{selected: isSavedConfigSelected(config)}"
-                  ng-click="selectSavedConfig(config)">
-              <div class="saved-details">
-                <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
-                <div class="saved-meta">{{config.relativePath}}</div>
-              </div>
-              <!--<div class="saved-actions">
-                <button type="button"
-                        ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
-                        ng-disabled="true">Spawn</button>
-              </div>-->
-            </div>
-          </div>
-          <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>
-          <!--<div class="config-footer">
-            <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
-          </div>-->
-        </div>
       </div>
-      <div class="editor-panel base-paint-panel" ng-if="state.vehicleId" ng-class="{'is-collapsed': state.basePaintCollapsed}">
-        <div class="base-paint-header">
-          <div class="part-summary">
-            <h3>Vehicle base paint</h3>
-            <div class="meta">Used for the vehicle paint and parts without custom colors.</div>
-          </div>
-          <div class="header-actions">
+      <div class="editor-side">
+        <div class="config-tools" ng-class="{'is-collapsed': state.configToolsCollapsed}">
+          <div class="config-tools-header">
+            <h3>Saved Configurations</h3>
             <button type="button"
                     class="collapse-toggle"
-                    ng-click="toggleBasePaintCollapsed()"
-                    ng-attr-aria-expanded="{{!state.basePaintCollapsed}}"
-                    aria-controls="vehicleBasePaintBody">
-              {{state.basePaintCollapsed ? 'Expand' : 'Collapse'}}
+                    ng-click="toggleConfigToolsCollapsed()"
+                    ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
+                    aria-controls="vehiclePartsConfigToolsBody">
+              {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
             </button>
           </div>
+          <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
+            <div class="config-actions">
+              <input type="text"
+                      placeholder="Configuration name"
+                      ng-model="state.configNameInput"
+                      autocomplete="off" value="Save directly in Vehicle Configuration tab">
+              <button type="button"
+                      ng-click="saveCurrentConfiguration()"
+                      ng-disabled="false">Save Configuration</button>
+            </div>
+            <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
+            <div class="saved-configs" ng-if="hasSavedConfigs()">
+              <div class="saved-item"
+                    ng-repeat="config in getSavedConfigs() track by config.relativePath"
+                    ng-class="{selected: isSavedConfigSelected(config)}"
+                    ng-click="selectSavedConfig(config)">
+                <div class="saved-details">
+                  <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
+                  <div class="saved-meta">{{config.relativePath}}</div>
+                </div>
+                <!--<div class="saved-actions">
+                  <button type="button"
+                          ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
+                          ng-disabled="true">Spawn</button>
+                </div>-->
+              </div>
+            </div>
+            <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>
+            <!--<div class="config-footer">
+              <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
+            </div>-->
+          </div>
         </div>
-        <div class="base-paint-body" id="vehicleBasePaintBody">
+        <div class="editor-panel base-paint-panel" ng-if="state.vehicleId" ng-class="{'is-collapsed': state.basePaintCollapsed}">
+          <div class="base-paint-header">
+            <div class="part-summary">
+              <h3>Vehicle base paint</h3>
+              <div class="meta">Used for the vehicle paint and parts without custom colors.</div>
+            </div>
+            <div class="header-actions">
+              <button type="button"
+                      class="collapse-toggle"
+                      ng-click="toggleBasePaintCollapsed()"
+                      ng-attr-aria-expanded="{{!state.basePaintCollapsed}}"
+                      aria-controls="vehicleBasePaintBody">
+                {{state.basePaintCollapsed ? 'Expand' : 'Collapse'}}
+              </button>
+            </div>
+          </div>
+          <div class="base-paint-body" id="vehicleBasePaintBody">
+            <div class="paint-editors">
+              <div class="paint-card" ng-repeat="paint in basePaintEditors track by $index">
+                <div class="card-header">
+                  <h4>Paint {{$index + 1}}</h4>
+                </div>
+                <div class="field color-field">
+                  <label>Color</label>
+                  <div class="color-trigger-row">
+                    <button type="button"
+                            class="color-preview-button"
+                            ng-style="getColorPreviewStyle(paint)"
+                            ng-class="{'is-active': isColorEditorActive('base', $index)}"
+                            ng-click="activateColorEditor('base', $index)"
+                            ng-attr-aria-label="{{getColorButtonLabel('base', $index)}}"></button>
+                    <div class="color-trigger-details">
+                      <span class="color-hex">{{getColorHex(paint)}}</span>
+                      <span class="color-trigger-hint" ng-if="isColorEditorActive('base', $index)">Editing in picker</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="editor-actions">
+              <button type="button" class="primary" ng-click="applyBasePaints()" ng-disabled="!basePaintEditors.length || !hasBasePaintChanges()">Apply base paint</button>
+              <button type="button" class="secondary" ng-click="resetBasePaintEditors()" ng-disabled="!basePaintEditors.length || !hasBasePaintChanges()">Revert changes</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-panel" ng-if="state.selectedPart">
+          <div class="part-summary">
+            <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
+            <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
+            <div class="meta" ng-if="state.selectedPart.slotName">Slot: {{state.selectedPart.slotName}}</div>
+          </div>
           <div class="paint-editors">
-            <div class="paint-card" ng-repeat="paint in basePaintEditors track by $index">
+            <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
               <div class="card-header">
                 <h4>Paint {{$index + 1}}</h4>
+                <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
               </div>
               <div class="field color-field">
                 <label>Color</label>
@@ -1392,56 +1470,21 @@
                   <button type="button"
                           class="color-preview-button"
                           ng-style="getColorPreviewStyle(paint)"
-                          ng-class="{'is-active': isColorEditorActive('base', $index)}"
-                          ng-click="activateColorEditor('base', $index)"
-                          ng-attr-aria-label="{{getColorButtonLabel('base', $index)}}"></button>
+                          ng-class="{'is-active': isColorEditorActive('part', $index)}"
+                          ng-click="activateColorEditor('part', $index)"
+                          ng-attr-aria-label="{{getColorButtonLabel('part', $index)}}"></button>
                   <div class="color-trigger-details">
                     <span class="color-hex">{{getColorHex(paint)}}</span>
-                    <span class="color-trigger-hint" ng-if="isColorEditorActive('base', $index)">Editing in picker</span>
+                    <span class="color-trigger-hint" ng-if="isColorEditorActive('part', $index)">Editing in picker</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
           <div class="editor-actions">
-            <button type="button" class="primary" ng-click="applyBasePaints()" ng-disabled="!basePaintEditors.length || !hasBasePaintChanges()">Apply base paint</button>
-            <button type="button" class="secondary" ng-click="resetBasePaintEditors()" ng-disabled="!basePaintEditors.length || !hasBasePaintChanges()">Revert changes</button>
+            <button type="button" class="primary" ng-click="applyPaint()" ng-disabled="!editedPaints.length">Apply paint to part</button>
+            <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
           </div>
-        </div>
-      </div>
-
-      <div class="editor-panel" ng-if="state.selectedPart">
-        <div class="part-summary">
-          <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
-          <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
-          <div class="meta" ng-if="state.selectedPart.slotName">Slot: {{state.selectedPart.slotName}}</div>
-        </div>
-        <div class="paint-editors">
-          <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
-            <div class="card-header">
-              <h4>Paint {{$index + 1}}</h4>
-              <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
-            </div>
-            <div class="field color-field">
-              <label>Color</label>
-              <div class="color-trigger-row">
-                <button type="button"
-                        class="color-preview-button"
-                        ng-style="getColorPreviewStyle(paint)"
-                        ng-class="{'is-active': isColorEditorActive('part', $index)}"
-                        ng-click="activateColorEditor('part', $index)"
-                        ng-attr-aria-label="{{getColorButtonLabel('part', $index)}}"></button>
-                <div class="color-trigger-details">
-                  <span class="color-hex">{{getColorHex(paint)}}</span>
-                  <span class="color-trigger-hint" ng-if="isColorEditorActive('part', $index)">Editing in picker</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="editor-actions">
-          <button type="button" class="primary" ng-click="applyPaint()" ng-disabled="!editedPaints.length">Apply paint to part</button>
-          <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
         </div>
       </div>
       <div class="placeholder" ng-if="state.vehicleId && !state.selectedPart && state.filteredParts.length">
