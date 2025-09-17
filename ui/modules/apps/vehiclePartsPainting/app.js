@@ -77,6 +77,9 @@ angular.module('beamng.apps')
           visible: false,
           config: null,
           isDeleting: false
+        },
+        liveryEditorConfirmation: {
+          visible: false
         }
       };
 
@@ -106,6 +109,8 @@ angular.module('beamng.apps')
       const LIVERY_EDITOR_UNSUPPORTED_MESSAGE = 'Vehicle Livery Editor is not available for this vehicle.';
       const LIVERY_EDITOR_MESSAGE_CATEGORY = 'vehiclePartsPainting';
 
+      $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
+
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       let customBadgeRefreshPromise = null;
       let partLookup = Object.create(null);
@@ -113,6 +118,7 @@ angular.module('beamng.apps')
       let treeNodesByPath = Object.create(null);
       let partsTreeDirty = false;
       let customPaintStateByPath = Object.create(null);
+      let pendingLiveryEditorLaunch = null;
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -569,6 +575,20 @@ angular.module('beamng.apps')
         if (!text) { return; }
         const command = 'ui_message(' + toLuaString(text) + ', 5, ' + toLuaString(LIVERY_EDITOR_MESSAGE_CATEGORY) + ')';
         bngApi.engineLua(command);
+      }
+
+      function clearLiveryEditorConfirmation() {
+        if (state.liveryEditorConfirmation) {
+          state.liveryEditorConfirmation.visible = false;
+        }
+        pendingLiveryEditorLaunch = null;
+      }
+
+      function showLiveryEditorConfirmation(callback) {
+        pendingLiveryEditorLaunch = (typeof callback === 'function') ? callback : null;
+        if (state.liveryEditorConfirmation) {
+          state.liveryEditorConfirmation.visible = true;
+        }
       }
 
       function interpretLuaBoolean(value) {
@@ -2066,7 +2086,26 @@ end)()`;
         state.minimized = false;
       };
 
+      $scope.confirmLiveryEditorLaunch = function () {
+        const callback = pendingLiveryEditorLaunch;
+        clearLiveryEditorConfirmation();
+        if (typeof callback === 'function') {
+          try {
+            callback();
+          } catch (err) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+              globalWindow.console.error('VehiclePartsPainting: Livery editor launch callback failed.', err);
+            }
+          }
+        }
+      };
+
+      $scope.cancelLiveryEditorLaunch = function () {
+        clearLiveryEditorConfirmation();
+      };
+
       $scope.openLiveryEditor = function () {
+        clearLiveryEditorConfirmation();
         if (!state.vehicleId) {
           sendUiMessage(LIVERY_EDITOR_NO_VEHICLE_MESSAGE);
           return;
@@ -2089,27 +2128,15 @@ end)()`;
             return;
           }
 
-          let proceed = true;
-          if (globalWindow && typeof globalWindow.confirm === 'function') {
+          showLiveryEditorConfirmation(function () {
             try {
-              proceed = !!globalWindow.confirm(LIVERY_EDITOR_CONFIRMATION_TEXT);
+              gotoGameState.call(bngVue, 'livery-manager');
             } catch (err) {
-              proceed = false;
-              if (globalWindow.console && typeof globalWindow.console.warn === 'function') {
-                globalWindow.console.warn('VehiclePartsPainting: Livery editor confirmation failed.', err);
+              if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+                globalWindow.console.error('VehiclePartsPainting: Failed to open livery editor.', err);
               }
             }
-          }
-
-          if (!proceed) { return; }
-
-          try {
-            gotoGameState.call(bngVue, 'livery-manager');
-          } catch (err) {
-            if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
-              globalWindow.console.error('VehiclePartsPainting: Failed to open livery editor.', err);
-            }
-          }
+          });
         });
       };
 

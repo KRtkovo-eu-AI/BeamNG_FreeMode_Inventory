@@ -1251,6 +1251,16 @@
       }
     }
   </style>
+  <div class="config-confirm-overlay" ng-if="state.liveryEditorConfirmation.visible">
+    <div class="config-confirm-dialog">
+      <h4>Vehicle Livery Editor</h4>
+      <p>{{liveryEditorConfirmationText}}</p>
+      <div class="dialog-actions">
+        <button type="button" class="confirm" ng-click="confirmLiveryEditorLaunch()">Open Vehicle Livery Editor</button>
+        <button type="button" class="cancel" ng-click="cancelLiveryEditorLaunch()">Cancel</button>
+      </div>
+    </div>
+  </div>
   <div class="config-confirm-overlay" ng-if="state.showReplaceConfirmation">
     <div class="config-confirm-dialog">
       <h4>
