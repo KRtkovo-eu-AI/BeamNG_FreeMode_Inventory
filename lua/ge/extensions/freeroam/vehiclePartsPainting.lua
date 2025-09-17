@@ -59,6 +59,24 @@ local function deepCopy(value)
   return copy
 end
 
+local function getLoadedExtension(name)
+  if type(name) ~= 'string' or name == '' then
+    return nil
+  end
+
+  local globalEnv = _G
+  if type(globalEnv) ~= 'table' then
+    return nil
+  end
+
+  local manager = rawget(globalEnv, 'extensions')
+  if type(manager) ~= 'table' then
+    return nil
+  end
+
+  return rawget(manager, name)
+end
+
 local function sanitizeFileName(name)
   if not name or name == '' then
     return nil
@@ -100,14 +118,17 @@ local function getVehicleModelIdentifier(vehData, vehObj, vehId)
       return vehData.ioCtx.jbeam
     end
   end
-  if vehId and extensions.core_vehicles and type(extensions.core_vehicles.getVehicleDetails) == 'function' then
-    local okDetails, details = safePcall(extensions.core_vehicles.getVehicleDetails, vehId)
-    if okDetails and details then
-      if details.current and details.current.key and details.current.key ~= '' then
-        return details.current.key
-      end
-      if details.model and details.model.key and details.model.key ~= '' then
-        return details.model.key
+  if vehId then
+    local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+    if coreVehiclesExtension and type(coreVehiclesExtension.getVehicleDetails) == 'function' then
+      local okDetails, details = safePcall(coreVehiclesExtension.getVehicleDetails, vehId)
+      if okDetails and details then
+        if details.current and details.current.key and details.current.key ~= '' then
+          return details.current.key
+        end
+        if details.model and details.model.key and details.model.key ~= '' then
+          return details.model.key
+        end
       end
     end
   end
@@ -1352,13 +1373,25 @@ local function applyBasePaintsToVehicle(vehObj, paints)
     end
   end
 
-  if vehObj.queueLuaCommand and type(vehObj.queueLuaCommand) == 'function' then
+  local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+  local canUpdateColors = coreVehiclesExtension and type(coreVehiclesExtension.updateVehicleColors) == 'function'
+
+  if vehObj.queueLuaCommand and type(vehObj.queueLuaCommand) == 'function' and canUpdateColors then
     local updateColorsCommand = [[
-if extensions and extensions.core_vehicles and extensions.core_vehicles.updateVehicleColors then
-  extensions.core_vehicles.updateVehicleColors()
+local globalEnv = _G
+if type(globalEnv) == 'table' then
+  local manager = rawget(globalEnv, 'extensions')
+  if type(manager) == 'table' then
+    local coreVehicles = rawget(manager, 'core_vehicles')
+    if coreVehicles and type(coreVehicles.updateVehicleColors) == 'function' then
+      coreVehicles.updateVehicleColors()
+    end
+  end
 end
 ]]
     vehObj:queueLuaCommand(updateColorsCommand)
+  elseif canUpdateColors then
+    coreVehiclesExtension.updateVehicleColors()
   end
 end
 
