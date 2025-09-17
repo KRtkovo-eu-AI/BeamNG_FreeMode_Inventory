@@ -1,6 +1,6 @@
 {
   "name": "beamng_free_mode_inventory",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "scripts": {
     "test": "node .tests/vehiclePartsPainting.test.js"

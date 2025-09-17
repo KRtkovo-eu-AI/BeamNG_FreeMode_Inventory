@@ -92,6 +92,49 @@
       justify-content: flex-end;
       gap: 10px;
     }
+    .vehicle-parts-painting .config-confirm-dialog .config-target {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-preview {
+      flex: 0 0 auto;
+      width: 120px;
+      height: 72px;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.45);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-preview img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-name {
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-meta {
+      font-size: 12px;
+      opacity: 0.75;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions button,
     .vehicle-parts-painting .palette-dialog .dialog-actions button,
     .vehicle-parts-painting .color-picker-dialog .dialog-actions button {
@@ -101,12 +144,25 @@
       font-weight: 600;
       border: none;
     }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions button:disabled,
+    .vehicle-parts-painting .palette-dialog .dialog-actions button:disabled,
+    .vehicle-parts-painting .color-picker-dialog .dialog-actions button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .confirm {
       background: rgba(0, 170, 255, 0.9);
       color: #fff;
     }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .confirm:hover {
       background: rgba(0, 170, 255, 1);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions .danger {
+      background: rgba(234, 80, 71, 0.92);
+      color: #fff;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions .danger:hover {
+      background: rgba(234, 80, 71, 1);
     }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .cancel,
     .vehicle-parts-painting .palette-dialog .dialog-actions .cancel,
@@ -347,8 +403,17 @@
       border-radius: 3px;
     }
     .vehicle-parts-painting .parts-panel .panel-header .panel-actions button.orange {
+      width: 24px;
+      height: 24px;
+      padding: 2px;
+    }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:hover {
       border: 1px solid #ff6600;
       color: #ff6600;
+    }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button.orange svg {
+      width: 90%;
+      height: 90%;
     }
     .vehicle-parts-painting .filter-field {
       padding: 8px 10px;
@@ -532,11 +597,14 @@
       flex: 0 0 auto;
       padding: 6px 12px;
       border-radius: 4px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      background: rgba(0, 170, 255, 0.85);
+      border: none;
+      background: #ff6600;
       color: #fff;
       font-weight: 600;
       font-size: 12px;
+    }
+    .vehicle-parts-painting .config-tools .config-actions button:hover {
+      background: #ff7d26;
     }
     .vehicle-parts-painting .config-tools .config-actions button:disabled {
       opacity: 0.5;
@@ -556,7 +624,7 @@
     .vehicle-parts-painting .config-tools .saved-item {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 10px;
       padding: 6px 8px;
       border-radius: 4px;
@@ -570,11 +638,27 @@
     .vehicle-parts-painting .config-tools .saved-item.selected {
       background: rgba(0, 170, 255, 0.35);
     }
+    .vehicle-parts-painting .config-tools .saved-preview {
+      flex: 0 0 auto;
+      width: 60px;
+      height: 36px;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.45);
+    }
+    .vehicle-parts-painting .config-tools .saved-preview img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     .vehicle-parts-painting .config-tools .saved-details {
       display: flex;
       flex-direction: column;
       gap: 2px;
       min-width: 0;
+      flex: 1;
     }
     .vehicle-parts-painting .config-tools .saved-name {
       font-size: 13px;
@@ -590,13 +674,28 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .vehicle-parts-painting .config-tools .saved-actions button {
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.45);
-      color: inherit;
-      padding: 4px 8px;
+    .vehicle-parts-painting .config-tools .saved-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .vehicle-parts-painting .config-tools .saved-actions .delete-button {
+      background: rgba(234, 80, 71, 0.9);
+      border: none;
+      color: #fff;
+      padding: 4px 10px;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting .config-tools .saved-actions .delete-button:hover {
+      background: rgba(234, 80, 71, 1);
+    }
+    .vehicle-parts-painting .config-tools .saved-actions .delete-button:disabled {
+      opacity: 0.6;
+      cursor: default;
     }
     .vehicle-parts-painting .config-tools .config-footer {
       display: flex;
@@ -1104,12 +1203,24 @@
       color: #fff;
       border-radius: 4px;
     }
+    .vehicle-parts-painting .editor-actions .primary:hover {
+      background: #ff7d26;
+      border: none;
+      padding: 8px 14px;
+      font-weight: 600;
+      color: #fff;
+      border-radius: 4px;
+    }
     .vehicle-parts-painting .editor-actions .secondary {
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: #333333;
+      border: none;
       color: inherit;
       padding: 8px 14px;
       border-radius: 4px;
+    }
+    .vehicle-parts-painting .editor-actions .secondary:hover {
+      border: none;
+      background: #4c4c4c;
     }
     @media (min-width: 640px) {
       .vehicle-parts-painting .color-picker-dialog .picker-content {
@@ -1157,6 +1268,37 @@
       <div class="dialog-actions">
         <button type="button" class="confirm" ng-click="confirmReplaceSavedConfig()">Replace</button>
         <button type="button" class="cancel" ng-click="cancelReplaceSavedConfig()">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <div class="config-confirm-overlay" ng-if="state.deleteConfigDialog.visible">
+    <div class="config-confirm-dialog">
+      <h4>Delete saved configuration?</h4>
+      <p>Are you sure you want to delete this configuration?</p>
+      <div class="config-target"
+           ng-if="state.deleteConfigDialog.config">
+        <div class="config-target-preview"
+             ng-if="hasSavedConfigPreview(state.deleteConfigDialog.config)">
+          <img ng-src="{{getSavedConfigPreviewSrc(state.deleteConfigDialog.config)}}"
+               ng-attr-alt="{{getSavedConfigLabel(state.deleteConfigDialog.config)}} preview">
+        </div>
+        <div class="config-target-details">
+          <div class="config-target-name">{{getSavedConfigLabel(state.deleteConfigDialog.config)}}</div>
+          <div class="config-target-meta"
+               ng-if="state.deleteConfigDialog.config.relativePath">
+            File: {{state.deleteConfigDialog.config.relativePath}}
+          </div>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button"
+                class="danger"
+                ng-click="confirmDeleteSavedConfig()"
+                ng-disabled="state.deleteConfigDialog.isDeleting">Confirm Delete</button>
+        <button type="button"
+                class="cancel"
+                ng-click="cancelDeleteSavedConfig()"
+                ng-disabled="state.deleteConfigDialog.isDeleting">Cancel</button>
       </div>
     </div>
   </div>
@@ -1335,7 +1477,7 @@
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2>Vehicle Parts Painting</h2>
+      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.0.3, made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">Refresh</button>
         <button type="button" ng-click="minimizeApp()">Minimize</button>
@@ -1347,11 +1489,16 @@
     <div class="app-body" ng-if="state.vehicleId">
       <div class="parts-panel">
       <div class="panel-header">
-        <div><span>Vehicle Parts Selector</span></div>
+        <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
           <button type="button" ng-click="collapseAllNodes()">Collapse all</button>
           <button type="button" ng-click="expandAllNodes()">Expand all</button>
-          <button type="button" ng-click="showAllParts()" class="orange">Show whole vehicle</button>
+          <button type="button" ng-click="showAllParts()" class="orange">
+            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+              <path d="M0 0h24v24H0z" fill="none"/>
+              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#ff6600"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div class="filter-field">
@@ -1431,15 +1578,22 @@
                     ng-repeat="config in getSavedConfigs() track by config.relativePath"
                     ng-class="{selected: isSavedConfigSelected(config)}"
                     ng-click="selectSavedConfig(config)">
+                <div class="saved-preview" ng-if="hasSavedConfigPreview(config)">
+                  <img ng-src="{{getSavedConfigPreviewSrc(config)}}"
+                       ng-attr-alt="{{getSavedConfigLabel(config)}} preview">
+                </div>
                 <div class="saved-details">
                   <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
                   <div class="saved-meta">{{config.relativePath}}</div>
                 </div>
-                <!--<div class="saved-actions">
+                <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
                   <button type="button"
-                          ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
-                          ng-disabled="true">Spawn</button>
-                </div>-->
+                          class="delete-button"
+                          ng-click="promptDeleteSavedConfig(config); $event.stopPropagation();"
+                          ng-disabled="state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath">
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
             <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>

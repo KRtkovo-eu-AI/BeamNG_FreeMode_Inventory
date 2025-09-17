@@ -21,6 +21,7 @@ local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
 
 local sanitizeColorPresetEntry
+local previewImageExtensions = { '.png', '.jpg', '.jpeg', '.webp' }
 
 local function isLikelyPlayerVehicleId(vehId)
   if not vehId or vehId == -1 then
@@ -103,6 +104,19 @@ local function sanitizeConfigDisplayName(name)
   return trimmed
 end
 
+local function isSafePathSegment(segment)
+  if not segment or segment == '' then
+    return false
+  end
+  if segment:find('%.%.', 1, true) then
+    return false
+  end
+  if segment:find('[\\/]', 1) then
+    return false
+  end
+  return segment:match('^[%w%._%-]+$') ~= nil
+end
+
 local function getVehicleModelIdentifier(vehData, vehObj, vehId)
   if vehData then
     if vehData.jbeam and vehData.jbeam ~= '' then
@@ -180,6 +194,163 @@ local function ensureDirectory(path)
   end
 
   safePcall(FS.createDirectory, FS, normalized)
+end
+
+local function normalizePath(path)
+  if not path or path == '' then
+    return nil
+  end
+  return tostring(path):gsub('\\', '/')
+end
+
+local function ensureTrailingSlash(path)
+  if not path or path == '' then
+    return path
+  end
+  if path:sub(-1) ~= '/' then
+    return path .. '/'
+  end
+  return path
+end
+
+local function resolveUserVehiclesRoot()
+  if not FS or not FS.getUserPath then
+    return nil
+  end
+  local okUser, userPath = safePcall(FS.getUserPath, FS)
+  if not okUser or not userPath or userPath == '' then
+    return nil
+  end
+  local normalized = ensureTrailingSlash(normalizePath(userPath))
+  if not normalized then
+    return nil
+  end
+  return (normalized .. 'vehicles/'):lower()
+end
+
+local function getGamePath()
+  if not FS or not FS.getGamePath then
+    return nil
+  end
+  local okGame, gamePath = safePcall(FS.getGamePath, FS)
+  if not okGame or not gamePath or gamePath == '' then
+    return nil
+  end
+  return normalizePath(gamePath)
+end
+
+local function isPlayerConfigPath(vpath, userFilePath)
+  if type(vpath) ~= 'string' or vpath == '' then
+    return false
+  end
+
+  local normalizedVPath = normalizePath(vpath)
+  if not normalizedVPath or normalizedVPath == '' then
+    return false
+  end
+
+  local globalIsPlayer = rawget(_G, 'isPlayerVehConfig')
+  if type(globalIsPlayer) == 'function' then
+    local okGlobal, result = safePcall(globalIsPlayer, normalizedVPath)
+    if okGlobal then
+      if result == true then
+        return true
+      end
+      if result == false then
+        return false
+      end
+    end
+  end
+
+  if not normalizedVPath:lower():match('%.pc$') then
+    return false
+  end
+
+  if not shipping_build then
+    local gamePath = getGamePath()
+    local okUser, userPath = safePcall(FS.getUserPath, FS)
+    if okUser and userPath and userPath ~= '' then
+      local normalizedUser = normalizePath(userPath)
+      if normalizedUser and gamePath and normalizedUser == gamePath then
+        return false
+      end
+    end
+  end
+
+  local resolvedPath = nil
+  if FS and FS.getFileRealPath then
+    local okReal, realPath = safePcall(FS.getFileRealPath, FS, normalizedVPath)
+    if okReal and realPath and realPath ~= '' then
+      resolvedPath = normalizePath(realPath)
+    end
+  end
+
+  if not resolvedPath and userFilePath and userFilePath ~= '' then
+    resolvedPath = normalizePath(userFilePath)
+  end
+
+  if not resolvedPath or resolvedPath == '' then
+    return false
+  end
+
+  local userVehiclesRoot = resolveUserVehiclesRoot()
+  if not userVehiclesRoot or userVehiclesRoot == '' then
+    return false
+  end
+
+  local normalizedResolved = resolvedPath:lower()
+  if normalizedResolved:sub(1, #userVehiclesRoot) == userVehiclesRoot then
+    return true
+  end
+
+  return false
+end
+
+local function removeFileIfExists(path)
+  if not path or path == '' then
+    return false
+  end
+  if not FS then
+    return false
+  end
+
+  local normalized = tostring(path)
+  local okExists, exists = safePcall(FS.fileExists, FS, normalized)
+  if not okExists then
+    log('W', logTag, string.format('Failed to check file existence for %s: %s', tostring(path), tostring(exists)))
+    return false
+  end
+  if not exists then
+    return false
+  end
+
+  if type(FS.removeFile) == 'function' then
+    local okRemove, result = safePcall(FS.removeFile, FS, normalized)
+    if okRemove and result ~= false then
+      return true
+    end
+    if not okRemove then
+      log('W', logTag, string.format('FS.removeFile failed for %s: %s', tostring(path), tostring(result)))
+    end
+  end
+
+  if type(FS.deleteFile) == 'function' then
+    local okDelete, result = safePcall(FS.deleteFile, FS, normalized)
+    if okDelete and result ~= false then
+      return true
+    end
+    if not okDelete then
+      log('W', logTag, string.format('FS.deleteFile failed for %s: %s', tostring(path), tostring(result)))
+    end
+  end
+
+  local okOs, err = pcall(os.remove, normalized)
+  if okOs then
+    return true
+  end
+
+  log('W', logTag, string.format('Unable to remove file %s: %s', tostring(path), tostring(err)))
+  return false
 end
 
 local function joinPaths(base, relative)
@@ -704,6 +875,7 @@ local function gatherSavedConfigsFromDisk(modelFolder)
       visitedRoots[root] = true
       local okFind, files = safePcall(FS.findFiles, FS, root, '*.pc', 0, false, true)
       if okFind and type(files) == 'table' then
+        local isUserRoot = (targetDir ~= nil and root == targetDir)
         for _, filePath in ipairs(files) do
           if type(filePath) == 'string' and filePath ~= '' then
             local normalizedPath = filePath:gsub('\\', '/')
@@ -717,10 +889,29 @@ local function gatherSavedConfigsFromDisk(modelFolder)
                 seenNames[key] = true
                 local relativePath = string.format('vehicles/%s/%s.pc', modelFolder, fileName)
                 local isAbsolute = normalizedPath:match('^%a:/') or normalizedPath:sub(1, 1) == '/'
+                local userFilePath = nil
+                local userFileExists = false
+
+                if isUserRoot then
+                  userFileExists = true
+                  userFilePath = normalizedPath
+                elseif targetDir then
+                  local candidate = targetDir .. fileName .. '.pc'
+                  local okUser, hasUser = safePcall(FS.fileExists, FS, candidate)
+                  if okUser and hasUser then
+                    userFilePath = candidate
+                    userFileExists = true
+                  end
+                end
+
                 local absolutePath = normalizedPath
-                if targetDir and not isAbsolute then
+                if userFileExists and userFilePath then
+                  absolutePath = userFilePath
+                elseif targetDir and not isAbsolute then
                   absolutePath = targetDir .. fileName .. '.pc'
                 end
+
+                absolutePath = normalizePath(absolutePath)
 
                 local entry = {
                   fileName = fileName,
@@ -729,16 +920,44 @@ local function gatherSavedConfigsFromDisk(modelFolder)
                   absolutePath = absolutePath
                 }
 
-                local previewRelative = string.format('vehicles/%s/%s.png', modelFolder, fileName)
-                local previewExists = false
-                local okPng, hasPng = safePcall(FS.fileExists, FS, previewRelative)
-                if okPng and hasPng then
-                  previewExists = true
-                elseif targetDir then
-                  okPng, hasPng = safePcall(FS.fileExists, FS, targetDir .. fileName .. '.png')
-                  previewExists = okPng and hasPng
+                if userFilePath and userFilePath ~= '' then
+                  entry.userFilePath = normalizePath(userFilePath)
                 end
-                if previewExists then
+
+                local isPlayerConfig = isPlayerConfigPath(relativePath, entry.userFilePath)
+                if not isPlayerConfig and userFileExists then
+                  isPlayerConfig = true
+                end
+
+                if isPlayerConfig then
+                  entry.player = true
+                  entry.isUserConfig = true
+                  entry.allowDelete = true
+                  entry.isDeletable = true
+                else
+                  entry.player = false
+                  entry.isUserConfig = false
+                end
+
+                local previewRelative = nil
+                for _, extension in ipairs(previewImageExtensions) do
+                  local candidateRelative = string.format('vehicles/%s/%s%s', modelFolder, fileName, extension)
+                  local okPreview, hasPreview = safePcall(FS.fileExists, FS, candidateRelative)
+                  if okPreview and hasPreview then
+                    previewRelative = candidateRelative
+                    break
+                  end
+                  if targetDir then
+                    local candidateAbsolute = targetDir .. fileName .. extension
+                    okPreview, hasPreview = safePcall(FS.fileExists, FS, candidateAbsolute)
+                    if okPreview and hasPreview then
+                      previewRelative = candidateRelative
+                      break
+                    end
+                  end
+                end
+
+                if previewRelative then
                   entry.previewImage = previewRelative
                 end
 
@@ -903,6 +1122,87 @@ local function saveCurrentUserConfig(configName)
         end
       end
     end
+  end
+
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+  sendSavedConfigs(vehId, vehData, vehObj)
+end
+
+local function deleteSavedConfiguration(configPath)
+  if type(configPath) ~= 'string' or configPath == '' then
+    log('W', logTag, string.format('Cannot delete saved configuration: invalid path %s', tostring(configPath)))
+    return
+  end
+
+  local normalized = tostring(configPath):gsub('\\', '/'):gsub('^/+', '')
+  local modelFolder, baseName = normalized:match('^vehicles/([^/]+)/([^/]+)%.pc$')
+  if not modelFolder or not baseName then
+    log('W', logTag, string.format('Cannot delete saved configuration: unexpected path %s', tostring(configPath)))
+    return
+  end
+
+  if not isSafePathSegment(modelFolder) or not isSafePathSegment(baseName) then
+    log('W', logTag, string.format('Refusing to delete configuration with unsafe path %s', tostring(configPath)))
+    return
+  end
+
+  local userVehiclesDir = getUserVehiclesDir()
+  if not userVehiclesDir then
+    log('W', logTag, 'Unable to delete saved configuration: user vehicles directory unavailable')
+    return
+  end
+
+  local targetDir = (userVehiclesDir .. modelFolder .. '/'):gsub('\\', '/')
+  local relativeConfigPath = normalized
+  local configFilePath = targetDir .. baseName .. '.pc'
+  local removalTargets = { configFilePath, relativeConfigPath }
+  local seenTargets = {}
+  local removedConfig = false
+  for _, candidate in ipairs(removalTargets) do
+    if candidate and candidate ~= '' then
+      local key = candidate
+      if not seenTargets[key] then
+        seenTargets[key] = true
+        if removeFileIfExists(candidate) then
+          removedConfig = true
+        end
+      end
+    end
+  end
+
+  local removedPreview = false
+  local previewSeen = {}
+  for _, extension in ipairs(previewImageExtensions) do
+    local previewRelative = string.format('vehicles/%s/%s%s', modelFolder, baseName, extension)
+    local previewAbsolute = targetDir .. baseName .. extension
+    local previewTargets = { previewAbsolute, previewRelative }
+    for _, candidate in ipairs(previewTargets) do
+      if candidate and candidate ~= '' then
+        if not previewSeen[candidate] then
+          previewSeen[candidate] = true
+          if removeFileIfExists(candidate) then
+            removedPreview = true
+          end
+        end
+      end
+    end
+  end
+
+  if removedConfig then
+    log('I', logTag, string.format('Deleted saved configuration "%s"', tostring(configPath)))
+  else
+    log('I', logTag, string.format('No saved configuration file found to delete at %s', tostring(configFilePath)))
+  end
+
+  if removedPreview then
+    log('I', logTag, string.format('Removed preview image(s) for configuration "%s"', tostring(configPath)))
+  end
+
+  local vehId = be:getPlayerVehicleID(0)
+  if not vehId or vehId == -1 then
+    sendSavedConfigs(-1)
+    return
   end
 
   local vehObj = getObjectByID(vehId)
@@ -2359,6 +2659,7 @@ M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
 M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 M.saveCurrentConfiguration = saveCurrentConfiguration
+M.deleteSavedConfiguration = deleteSavedConfiguration
 M.spawnSavedConfiguration = spawnSavedConfiguration
 M.addColorPreset = addColorPreset
 M.removeColorPreset = removeColorPreset

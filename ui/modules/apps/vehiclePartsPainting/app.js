@@ -72,6 +72,11 @@ angular.module('beamng.apps')
         removePresetDialog: {
           visible: false,
           preset: null
+        },
+        deleteConfigDialog: {
+          visible: false,
+          config: null,
+          isDeleting: false
         }
       };
 
@@ -732,6 +737,111 @@ angular.module('beamng.apps')
         state.pendingConfigName = null;
         state.pendingSanitizedName = null;
         state.pendingExistingConfig = null;
+      }
+
+      function resetDeleteConfigDialog() {
+        state.deleteConfigDialog.visible = false;
+        state.deleteConfigDialog.config = null;
+        state.deleteConfigDialog.isDeleting = false;
+      }
+
+      function coerceBooleanFlag(value, truthyAliases, falsyAliases) {
+        if (value === true) { return true; }
+        if (value === false) { return false; }
+
+        if (typeof value === 'number') {
+          if (!isFinite(value)) { return null; }
+          if (value === 0) { return false; }
+          return true;
+        }
+
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (!normalized) { return null; }
+          if (truthyAliases && truthyAliases.indexOf(normalized) !== -1) { return true; }
+          if (falsyAliases && falsyAliases.indexOf(normalized) !== -1) { return false; }
+          if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'y' || normalized === 'on') {
+            return true;
+          }
+          if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'n' || normalized === 'off') {
+            return false;
+          }
+        }
+
+        return null;
+      }
+
+      function buildConfigPreviewSrc(path) {
+        if (typeof path !== 'string') { return null; }
+        let normalized = path.trim();
+        if (!normalized) { return null; }
+        normalized = normalized.replace(/\\/g, '/');
+
+        if (/^(?:[a-z]+:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+          return normalized;
+        }
+
+        if (bngApi && typeof bngApi.resourceUrl === 'function') {
+          try {
+            const resolved = bngApi.resourceUrl(normalized);
+            if (resolved) { return resolved; }
+          } catch (err) { /* ignore resolution errors */ }
+        }
+
+        if (normalized.charAt(0) === '/') {
+          return normalized;
+        }
+
+        return '/' + normalized.replace(/^\/+/, '');
+      }
+
+      function hasConfigPreview(config) {
+        if (!config || typeof config !== 'object') { return false; }
+        return typeof config.previewImage === 'string' && config.previewImage.trim() !== '';
+      }
+
+      function isConfigDeletable(config) {
+        if (!config || typeof config !== 'object') { return false; }
+
+        const allowDeleteFlag = coerceBooleanFlag(config.allowDelete);
+        const deletableFlag = coerceBooleanFlag(config.isDeletable);
+        if (allowDeleteFlag === false || deletableFlag === false) {
+          return false;
+        }
+
+        const playerFlag = coerceBooleanFlag(config.player, ['player', 'user', 'local']);
+        if (playerFlag === true) {
+          return true;
+        }
+        if (playerFlag === false) {
+          return false;
+        }
+
+        const userFlag = coerceBooleanFlag(config.isUserConfig, ['player', 'user', 'local']);
+        if (userFlag === true) {
+          return true;
+        }
+        if (userFlag === false) {
+          return false;
+        }
+
+        const legacyUserFlag = coerceBooleanFlag(config.userConfig, ['player', 'user', 'local']);
+        if (legacyUserFlag === true) {
+          return true;
+        }
+        if (legacyUserFlag === false) {
+          return false;
+        }
+
+        const userPropertyFlag = coerceBooleanFlag(config.user, ['player', 'user', 'local']);
+        if (userPropertyFlag === true) {
+          return true;
+        }
+        if (userPropertyFlag === false) {
+          return false;
+        }
+
+        return false;
       }
 
       function performSaveConfiguration(name) {
@@ -1962,6 +2072,19 @@ angular.module('beamng.apps')
         return getSavedConfigDisplayName(config);
       };
 
+      $scope.hasSavedConfigPreview = function (config) {
+        return hasConfigPreview(config);
+      };
+
+      $scope.getSavedConfigPreviewSrc = function (config) {
+        if (!hasConfigPreview(config)) { return null; }
+        return buildConfigPreviewSrc(config.previewImage);
+      };
+
+      $scope.canDeleteSavedConfig = function (config) {
+        return isConfigDeletable(config);
+      };
+
       $scope.isSavedConfigSelected = function (config) {
         if (!config || !state.selectedSavedConfig) { return false; }
         return state.selectedSavedConfig.relativePath === config.relativePath;
@@ -1978,6 +2101,29 @@ angular.module('beamng.apps')
         const displayName = getSavedConfigDisplayName(config);
         state.configNameInput = displayName || '';
         state.saveErrorMessage = null;
+      };
+
+      $scope.promptDeleteSavedConfig = function (config) {
+        if (!isConfigDeletable(config)) { return; }
+        state.deleteConfigDialog.config = config;
+        state.deleteConfigDialog.visible = true;
+        state.deleteConfigDialog.isDeleting = false;
+      };
+
+      $scope.cancelDeleteSavedConfig = function () {
+        resetDeleteConfigDialog();
+      };
+
+      $scope.confirmDeleteSavedConfig = function () {
+        if (state.deleteConfigDialog.isDeleting) { return; }
+        const target = state.deleteConfigDialog.config;
+        if (!target || !target.relativePath || !isConfigDeletable(target)) {
+          resetDeleteConfigDialog();
+          return;
+        }
+        state.deleteConfigDialog.isDeleting = true;
+        const command = 'freeroam_vehiclePartsPainting.deleteSavedConfiguration(' + toLuaString(target.relativePath) + ')';
+        bngApi.engineLua(command);
       };
 
       $scope.saveCurrentConfiguration = function () {
@@ -2116,6 +2262,7 @@ angular.module('beamng.apps')
             state.saveErrorMessage = null;
             state.hasUserSelectedPart = false;
             state.hoveredPartPath = null;
+            resetDeleteConfigDialog();
             setSelectedPart(null);
             sendShowAllCommand();
             refreshCustomBadgeVisibility();
@@ -2135,6 +2282,7 @@ angular.module('beamng.apps')
             state.saveErrorMessage = null;
             state.hasUserSelectedPart = false;
             state.hoveredPartPath = null;
+            resetDeleteConfigDialog();
             setSelectedPart(null);
             sendShowAllCommand();
             requestSavedConfigs();
@@ -2171,6 +2319,21 @@ angular.module('beamng.apps')
 
           const previousSelection = state.selectedSavedConfig ? state.selectedSavedConfig.relativePath : null;
           state.savedConfigs = configs;
+
+          if (state.deleteConfigDialog.visible) {
+            const pending = state.deleteConfigDialog.config;
+            state.deleteConfigDialog.isDeleting = false;
+            if (pending && pending.relativePath) {
+              const updated = configs.find(function (entry) { return entry.relativePath === pending.relativePath; });
+              if (updated) {
+                state.deleteConfigDialog.config = updated;
+              } else {
+                resetDeleteConfigDialog();
+              }
+            } else {
+              resetDeleteConfigDialog();
+            }
+          }
 
           if (!configs.length) {
             state.selectedSavedConfig = null;
