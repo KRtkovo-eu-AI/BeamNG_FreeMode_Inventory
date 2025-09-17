@@ -19,6 +19,7 @@ local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
+local menuOpenCount = 0
 
 local sanitizeColorPresetEntry
 
@@ -2311,6 +2312,34 @@ local function onVehicleSwitched(oldId, newId, player)
   end
 end
 
+local function onMenuOpened()
+  menuOpenCount = menuOpenCount + 1
+  if menuOpenCount ~= 1 then
+    return
+  end
+
+  requestState()
+  requestSavedConfigs()
+
+  local vehId = be:getPlayerVehicleID(0)
+  if vehId and vehId ~= -1 then
+    applyStoredPaints(vehId)
+  end
+end
+
+local function onMenuClosed()
+  if menuOpenCount > 0 then
+    menuOpenCount = menuOpenCount - 1
+  end
+
+  if menuOpenCount > 0 then
+    return
+  end
+
+  clearHighlight()
+  showAllParts()
+end
+
 local function onExtensionLoaded()
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
@@ -2367,6 +2396,8 @@ M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleSwitched = onVehicleSwitched
+M.onMenuOpened = onMenuOpened
+M.onMenuClosed = onMenuClosed
 M.onExtensionLoaded = onExtensionLoaded
 M.onExtensionUnloaded = onExtensionUnloaded
 
