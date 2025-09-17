@@ -101,12 +101,25 @@
       font-weight: 600;
       border: none;
     }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions button:disabled,
+    .vehicle-parts-painting .palette-dialog .dialog-actions button:disabled,
+    .vehicle-parts-painting .color-picker-dialog .dialog-actions button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .confirm {
       background: rgba(0, 170, 255, 0.9);
       color: #fff;
     }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .confirm:hover {
       background: rgba(0, 170, 255, 1);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions .danger {
+      background: rgba(234, 80, 71, 0.92);
+      color: #fff;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions .danger:hover {
+      background: rgba(234, 80, 71, 1);
     }
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .cancel,
     .vehicle-parts-painting .palette-dialog .dialog-actions .cancel,
@@ -556,7 +569,7 @@
     .vehicle-parts-painting .config-tools .saved-item {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 10px;
       padding: 6px 8px;
       border-radius: 4px;
@@ -570,11 +583,27 @@
     .vehicle-parts-painting .config-tools .saved-item.selected {
       background: rgba(0, 170, 255, 0.35);
     }
+    .vehicle-parts-painting .config-tools .saved-preview {
+      flex: 0 0 auto;
+      width: 60px;
+      height: 36px;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.45);
+    }
+    .vehicle-parts-painting .config-tools .saved-preview img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     .vehicle-parts-painting .config-tools .saved-details {
       display: flex;
       flex-direction: column;
       gap: 2px;
       min-width: 0;
+      flex: 1;
     }
     .vehicle-parts-painting .config-tools .saved-name {
       font-size: 13px;
@@ -590,13 +619,28 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .vehicle-parts-painting .config-tools .saved-actions button {
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.45);
-      color: inherit;
-      padding: 4px 8px;
+    .vehicle-parts-painting .config-tools .saved-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .vehicle-parts-painting .config-tools .saved-actions .delete-button {
+      background: rgba(234, 80, 71, 0.9);
+      border: none;
+      color: #fff;
+      padding: 4px 10px;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting .config-tools .saved-actions .delete-button:hover {
+      background: rgba(234, 80, 71, 1);
+    }
+    .vehicle-parts-painting .config-tools .saved-actions .delete-button:disabled {
+      opacity: 0.6;
+      cursor: default;
     }
     .vehicle-parts-painting .config-tools .config-footer {
       display: flex;
@@ -1160,6 +1204,29 @@
       </div>
     </div>
   </div>
+  <div class="config-confirm-overlay" ng-if="state.deleteConfigDialog.visible">
+    <div class="config-confirm-dialog">
+      <h4>Delete saved configuration?</h4>
+      <p>
+        Are you sure you want to delete
+        "{{state.deleteConfigDialog.config ? getSavedConfigLabel(state.deleteConfigDialog.config) : ''}}"?
+      </p>
+      <p class="file-hint"
+         ng-if="state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath">
+        File: {{state.deleteConfigDialog.config.relativePath}}
+      </p>
+      <div class="dialog-actions">
+        <button type="button"
+                class="danger"
+                ng-click="confirmDeleteSavedConfig()"
+                ng-disabled="state.deleteConfigDialog.isDeleting">Delete</button>
+        <button type="button"
+                class="cancel"
+                ng-click="cancelDeleteSavedConfig()"
+                ng-disabled="state.deleteConfigDialog.isDeleting">Cancel</button>
+      </div>
+    </div>
+  </div>
   <div class="palette-dialog-overlay" ng-if="state.removePresetDialog.visible">
     <div class="palette-dialog">
       <h4>Delete color from palette?</h4>
@@ -1431,15 +1498,22 @@
                     ng-repeat="config in getSavedConfigs() track by config.relativePath"
                     ng-class="{selected: isSavedConfigSelected(config)}"
                     ng-click="selectSavedConfig(config)">
+                <div class="saved-preview" ng-if="hasSavedConfigPreview(config)">
+                  <img ng-src="{{getSavedConfigPreviewSrc(config)}}"
+                       ng-attr-alt="{{getSavedConfigLabel(config)}} preview">
+                </div>
                 <div class="saved-details">
                   <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
                   <div class="saved-meta">{{config.relativePath}}</div>
                 </div>
-                <!--<div class="saved-actions">
+                <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
                   <button type="button"
-                          ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
-                          ng-disabled="true">Spawn</button>
-                </div>-->
+                          class="delete-button"
+                          ng-click="promptDeleteSavedConfig(config); $event.stopPropagation();"
+                          ng-disabled="state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath">
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
             <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>

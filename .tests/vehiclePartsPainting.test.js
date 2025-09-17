@@ -460,6 +460,80 @@ function resetPaint(scope, partPath) {
   assert(Math.abs(doorPaint.baseColor[2] - (64 / 255)) < 0.001, 'Door part should inherit updated base paint blue channel');
   assert(!scope.hasCustomBadge(doorNode.part), 'Door should remain without a custom badge after base paint change');
 
+  scope.$$emit('VehiclePartsPaintingSavedConfigs', {
+    vehicleId: 4242,
+    configs: [
+      {
+        relativePath: 'vehicles/example/config_a.pc',
+        displayName: 'Config Alpha',
+        previewImage: 'vehicles/example/config_a.png',
+        isUserConfig: true
+      },
+      {
+        relativePath: 'vehicles/example/config_b.pc',
+        displayName: 'Config Beta',
+        previewImage: '',
+        isUserConfig: false
+      }
+    ]
+  });
+  scope.$digest();
+
+  assert(scope.hasSavedConfigs(), 'Saved configuration list should populate from event payload');
+  assert.strictEqual(state.savedConfigs.length, 2, 'Saved configuration list should contain two entries');
+  let userConfig = state.savedConfigs[0];
+  let stockConfig = state.savedConfigs[1];
+  if (!userConfig.isUserConfig) {
+    // Sorting may change order depending on locale; ensure user config reference is correct.
+    const swapped = userConfig;
+    userConfig = stockConfig;
+    stockConfig = swapped;
+  }
+
+  assert(scope.hasSavedConfigPreview(userConfig), 'User configuration should report an available preview');
+  const previewSrc = scope.getSavedConfigPreviewSrc(userConfig);
+  assert(typeof previewSrc === 'string' && previewSrc.includes('config_a'), 'Preview URL should reference the configuration file name');
+  assert(!scope.hasSavedConfigPreview(stockConfig), 'Config without preview should return false from helper');
+  assert(scope.canDeleteSavedConfig(userConfig), 'User configuration should be deletable');
+  assert(!scope.canDeleteSavedConfig(stockConfig), 'Non-user configuration should not expose deletion');
+
+  scope.promptDeleteSavedConfig(stockConfig);
+  assert.strictEqual(state.deleteConfigDialog.visible, false, 'Delete dialog should ignore non-deletable configurations');
+
+  scope.promptDeleteSavedConfig(userConfig);
+  assert.strictEqual(state.deleteConfigDialog.visible, true, 'Delete dialog should appear for deletable configurations');
+  assert(state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === userConfig.relativePath, 'Delete dialog should target the selected configuration');
+  assert.strictEqual(state.deleteConfigDialog.isDeleting, false, 'Delete dialog should start idle');
+
+  scope.cancelDeleteSavedConfig();
+  assert.strictEqual(state.deleteConfigDialog.visible, false, 'Delete dialog should close when cancelled');
+
+  scope.promptDeleteSavedConfig(userConfig);
+  const deleteCommandCountBefore = bngApiCalls.length;
+  scope.confirmDeleteSavedConfig();
+  assert(state.deleteConfigDialog.isDeleting, 'Delete dialog should mark deletion in progress');
+  assert.strictEqual(bngApiCalls.length, deleteCommandCountBefore + 1, 'Confirming delete should queue a backend command');
+  const deleteCommand = bngApiCalls[bngApiCalls.length - 1];
+  assert.strictEqual(deleteCommand, "freeroam_vehiclePartsPainting.deleteSavedConfiguration('vehicles/example/config_a.pc')", 'Delete command should include sanitized path');
+
+  scope.$$emit('VehiclePartsPaintingSavedConfigs', {
+    vehicleId: 4242,
+    configs: [
+      {
+        relativePath: 'vehicles/example/config_b.pc',
+        displayName: 'Config Beta',
+        previewImage: '',
+        isUserConfig: false
+      }
+    ]
+  });
+  scope.$digest();
+
+  assert.strictEqual(state.savedConfigs.length, 1, 'Saved configuration list should update after backend refresh');
+  assert.strictEqual(state.deleteConfigDialog.visible, false, 'Delete dialog should close once configuration disappears');
+  assert.strictEqual(state.deleteConfigDialog.config, null, 'Delete dialog should clear target after refresh');
+  assert.strictEqual(state.deleteConfigDialog.isDeleting, false, 'Delete dialog should reset deleting state after refresh');
+
   const commandCountBeforeAdd = bngApiCalls.length;
   const promptCalls = [];
   global.window.prompt = function (message, defaultValue) {
