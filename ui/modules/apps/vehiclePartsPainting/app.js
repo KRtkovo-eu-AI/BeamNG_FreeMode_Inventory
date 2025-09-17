@@ -51,7 +51,7 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
-        configToolsCollapsed: true,
+        configToolsCollapsed: false,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',

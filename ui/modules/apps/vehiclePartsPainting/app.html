@@ -771,7 +771,7 @@
       </script>
     </div>
     <div class="editor-side">
-      <div class="config-tools" ng-class="{'is-collapsed': state.configToolsCollapsed}">
+      <!--<div class="config-tools" ng-class="{'is-collapsed': state.configToolsCollapsed}">
         <div class="config-tools-header">
           <h3>Saved Configurations</h3>
           <button type="button"
@@ -780,8 +780,7 @@
                   ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
                   ng-disabled="true" disabled="disabled"
                   aria-controls="vehiclePartsConfigToolsBody">
-            <!--{{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}-->
-            {{state.configToolsCollapsed ? 'Not Implemented Yet' : 'Collapse'}}
+            {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
           </button>
         </div>
         <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
@@ -789,7 +788,7 @@
             <input type="text"
                     placeholder="Configuration name"
                     ng-model="state.configNameInput"
-                    autocomplete="off">
+                    autocomplete="off" value="Save directly in Vehicle Configuration tab">
             <button type="button"
                     ng-click="saveCurrentConfiguration()"
                     ng-disabled="true">Save Configuration</button>
@@ -816,7 +815,7 @@
             <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
           </div>
         </div>
-      </div>
+      </div>-->
       <div class="editor-panel" ng-if="state.selectedPart">
         <div class="part-summary">
           <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
