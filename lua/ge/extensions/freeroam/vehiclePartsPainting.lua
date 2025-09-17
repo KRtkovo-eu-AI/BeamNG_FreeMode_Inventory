@@ -6,6 +6,9 @@ local M = {}
 
 local logTag = 'vehiclePartsPainting'
 
+local TOPBAR_HELPER_EXTENSION = 'ui_topBar_vehiclePartsPainting'
+local TOPBAR_HELPER_EXTENSION_ALIAS = 'ui/topBar/vehiclePartsPainting'
+
 local vehManager = extensions.core_vehicle_manager
 local jbeamIO = require('jbeam/io')
 
@@ -21,6 +24,48 @@ local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
+
+local function ensureTopBarHelperLoaded()
+  local manager = rawget(_G, 'extensions')
+  if type(manager) ~= 'table' then
+    return
+  end
+
+  local function isLoaded(name)
+    if type(name) ~= 'string' or name == '' then
+      return false
+    end
+    if type(manager.isExtensionLoaded) ~= 'function' then
+      return false
+    end
+    local ok, loaded = pcall(manager.isExtensionLoaded, name)
+    return ok and loaded
+  end
+
+  local function tryLoad(name)
+    if type(name) ~= 'string' or name == '' then
+      return
+    end
+    if type(manager.load) ~= 'function' then
+      return
+    end
+    local ok, err = pcall(manager.load, name)
+    if not ok and err then
+      log('W', logTag, 'Failed to load '..name..': '..tostring(err))
+    end
+  end
+
+  if isLoaded(TOPBAR_HELPER_EXTENSION) or isLoaded(TOPBAR_HELPER_EXTENSION_ALIAS) then
+    return
+  end
+
+  tryLoad(TOPBAR_HELPER_EXTENSION)
+  if isLoaded(TOPBAR_HELPER_EXTENSION) then
+    return
+  end
+
+  tryLoad(TOPBAR_HELPER_EXTENSION_ALIAS)
+end
 
 local sanitizeColorPresetEntry
 local previewImageExtensions = { '.png', '.jpg', '.jpeg', '.webp' }
@@ -2956,6 +3001,7 @@ local function onVehicleSwitched(oldId, newId, player)
 end
 
 local function onExtensionLoaded()
+  ensureTopBarHelperLoaded()
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
   partDescriptorsByVeh = {}
@@ -2994,6 +3040,17 @@ local function onExtensionUnloaded()
   clearHighlight()
 end
 
+local function open()
+  ensureTopBarHelperLoaded()
+  requestState()
+  requestSavedConfigs()
+  showAllParts()
+end
+
+local function close()
+  clearHighlight()
+end
+
 M.requestState = requestState
 M.requestSavedConfigs = requestSavedConfigs
 M.applyPartPaintJson = applyPartPaintJson
@@ -3011,6 +3068,9 @@ M.deleteSavedConfiguration = deleteSavedConfiguration
 M.spawnSavedConfiguration = spawnSavedConfiguration
 M.addColorPreset = addColorPreset
 M.removeColorPreset = removeColorPreset
+
+M.open = open
+M.close = close
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
