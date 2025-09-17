@@ -37,6 +37,9 @@ angular.module('beamng.apps')
     restrict: 'EA',
     scope: true,
     controller: ['$scope', '$interval', '$timeout', function ($scope, $interval, $timeout) {
+      const FILTER_DEBOUNCE_DELAY_MS = 150;
+      let filterRecomputePromise = null;
+
       const state = {
         vehicleId: null,
         parts: [],
@@ -1111,7 +1114,7 @@ end)()`;
           changed = true;
         }
         if (changed) {
-          computeFilteredParts();
+          scheduleFilteredPartsRecompute({ immediate: true });
         }
       }
 
@@ -1376,7 +1379,7 @@ end)()`;
           }
         }
         if (changed || mapChanged) {
-          computeFilteredParts();
+          scheduleFilteredPartsRecompute({ immediate: true });
         }
       }
 
@@ -1782,8 +1785,29 @@ end)()`;
         }
       }
 
+      function cancelFilterRecompute() {
+        if (filterRecomputePromise) {
+          $timeout.cancel(filterRecomputePromise);
+          filterRecomputePromise = null;
+        }
+      }
+
+      function scheduleFilteredPartsRecompute(options) {
+        options = options || {};
+        const immediate = !!options.immediate;
+        cancelFilterRecompute();
+        if (immediate) {
+          computeFilteredParts();
+          return;
+        }
+        filterRecomputePromise = $timeout(function () {
+          filterRecomputePromise = null;
+          computeFilteredParts();
+        }, FILTER_DEBOUNCE_DELAY_MS);
+      }
+
       $scope.$watch(function () { return state.filterText; }, function () {
-        computeFilteredParts();
+        scheduleFilteredPartsRecompute();
       });
 
       $scope.onColorChannelChanged = function (paint) {
@@ -2125,6 +2149,7 @@ end)()`;
 
       $scope.clearFilter = function () {
         state.filterText = '';
+        scheduleFilteredPartsRecompute({ immediate: true });
       };
 
       $scope.minimizeApp = function () {
@@ -2359,7 +2384,7 @@ end)()`;
         const updatedLocally = updateLocalPartPaintState(state.selectedPartPath, paints, true);
         refreshCustomBadgeVisibility();
         if (updatedLocally) {
-          computeFilteredParts();
+          scheduleFilteredPartsRecompute({ immediate: true });
         }
         const payload = {
           partPath: state.selectedPartPath,
@@ -2388,7 +2413,7 @@ end)()`;
             applyPartReplacement(updatedPart, entry.index);
           }
         }
-        computeFilteredParts();
+        scheduleFilteredPartsRecompute({ immediate: true });
         bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
       };
 
@@ -2405,6 +2430,7 @@ end)()`;
           $interval.cancel(customBadgeRefreshPromise);
           customBadgeRefreshPromise = null;
         }
+        cancelFilterRecompute();
         resetPartLookup();
         resetTreeNodeLookup();
         clearCustomPaintState();
@@ -2486,7 +2512,7 @@ end)()`;
           rebuildCurrentPartsTree();
           refreshCustomBadgeVisibility();
 
-          computeFilteredParts();
+          scheduleFilteredPartsRecompute({ immediate: true });
           state.isSpawningConfig = false;
           state.isSavingConfig = false;
         });

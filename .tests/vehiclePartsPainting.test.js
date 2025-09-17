@@ -386,6 +386,14 @@ function resetPaint(scope, partPath) {
   scope.$digest();
 }
 
+function setFilterText(scope, controller, value, options) {
+  scope.state.filterText = value;
+  scope.$digest();
+  if (!options || options.flush !== false) {
+    controller.timeout.flush();
+  }
+}
+
 (function runTests() {
   const controller = instantiateController();
   const scope = controller.scope;
@@ -425,8 +433,7 @@ function resetPaint(scope, partPath) {
   let node = findNode(state.filteredTree, 'vehicle/root');
   assert(node && scope.hasCustomBadge(node.part), 'Part 1 should have custom paint after apply');
 
-  scope.state.filterText = 'hood';
-  scope.$digest();
+  setFilterText(scope, controller, 'hood');
 
   applyCustomPaint(scope, 'vehicle/hood', { b: 120 });
   node = findNode(state.filteredTree, 'vehicle/hood');
@@ -434,12 +441,25 @@ function resetPaint(scope, partPath) {
 
   scope.clearFilter();
   scope.$digest();
+  controller.timeout.flush();
   node = findNode(state.filteredTree, 'vehicle/root');
   assert(node && scope.hasCustomBadge(node.part), 'Part 1 should retain custom paint after updating another part');
   node = findNode(state.filteredTree, 'vehicle/hood');
   assert(node && scope.hasCustomBadge(node.part), 'Part 2 should show custom paint after apply');
   let doorNode = findNode(state.filteredTree, 'vehicle/door');
   assert(doorNode && !scope.hasCustomBadge(doorNode.part), 'Door should not have a custom paint badge by default');
+  setFilterText(scope, controller, 'door', { flush: false });
+  scope.clearFilter();
+  scope.$digest();
+  controller.timeout.flush();
+  assert.strictEqual(state.filterText, '', 'Clearing the filter should keep the text empty after cancelling pending debounce');
+  assert.strictEqual(state.filteredParts.length, parts.length, 'Clearing the filter before debounce flush should restore all parts');
+  setFilterText(scope, controller, 'door');
+  let filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Filtering after cancelling debounce should still work');
+  scope.clearFilter();
+  scope.$digest();
+  controller.timeout.flush();
   const customMap = hooks.getCustomPaintState();
   customMap['vehicle/door'] = true;
   scope.$digest();
