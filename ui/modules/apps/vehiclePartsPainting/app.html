@@ -624,6 +624,148 @@
       flex-direction: column;
       gap: 8px;
     }
+    .vehicle-parts-painting .color-editor-panel {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 4px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vehicle-parts-painting .color-editor-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .color-editor-header h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .vehicle-parts-painting .color-editor-target {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+    .vehicle-parts-painting .color-editor-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vehicle-parts-painting .color-editor-empty {
+      font-size: 12px;
+      opacity: 0.75;
+    }
+    .vehicle-parts-painting .color-preview-large {
+      width: 100%;
+      height: 48px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: transparent;
+    }
+    .vehicle-parts-painting .color-editor-hex,
+    .vehicle-parts-painting .color-hex {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .hsv-picker {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vehicle-parts-painting .hsv-rectangle {
+      position: relative;
+      width: 100%;
+      max-width: 260px;
+      height: 150px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      overflow: hidden;
+      cursor: crosshair;
+    }
+    .vehicle-parts-painting .hsv-rectangle-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+      pointer-events: none;
+    }
+    .vehicle-parts-painting .hsv-pointer {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+    .vehicle-parts-painting .hue-slider input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+    }
+    .vehicle-parts-painting .hue-slider input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      background: rgba(0, 0, 0, 0.35);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    }
+    .vehicle-parts-painting .hue-slider input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      background: rgba(0, 0, 0, 0.35);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    }
+    .vehicle-parts-painting .hue-slider input[type="range"]::-ms-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      background: rgba(0, 0, 0, 0.35);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    }
+    .vehicle-parts-painting .color-field .color-trigger-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .vehicle-parts-painting .color-preview-button {
+      width: 48px;
+      height: 28px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .color-preview-button:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .color-preview-button.is-active {
+      border-color: #00aaff;
+      box-shadow: 0 0 0 1px rgba(0, 170, 255, 0.55);
+    }
+    .vehicle-parts-painting .color-trigger-details {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .vehicle-parts-painting .color-trigger-hint {
+      font-size: 10px;
+      color: rgba(0, 170, 255, 0.85);
+    }
     .vehicle-parts-painting .paint-card .color-field .color-preview {
       width: 100%;
       height: 24px;
@@ -636,18 +778,21 @@
       opacity: 0.8;
       text-transform: uppercase;
     }
-    .vehicle-parts-painting .paint-card .color-field .html-color-input {
+    .vehicle-parts-painting .paint-card .color-field .html-color-input,
+    .vehicle-parts-painting .color-editor-panel .html-color-input {
       display: flex;
       flex-direction: column;
       gap: 4px;
     }
-    .vehicle-parts-painting .paint-card .color-field .html-color-input label {
+    .vehicle-parts-painting .paint-card .color-field .html-color-input label,
+    .vehicle-parts-painting .color-editor-panel .html-color-input label {
       font-size: 10px;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       opacity: 0.75;
     }
-    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"] {
+    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"],
+    .vehicle-parts-painting .color-editor-panel .html-color-input input[type="text"] {
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
       color: inherit;
@@ -656,10 +801,12 @@
       font-size: 12px;
       font-family: inherit;
     }
-    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"]::placeholder {
+    .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"]::placeholder,
+    .vehicle-parts-painting .color-editor-panel .html-color-input input[type="text"]::placeholder {
       color: rgba(255, 255, 255, 0.5);
     }
-    .vehicle-parts-painting .paint-card .user-palette {
+    .vehicle-parts-painting .paint-card .user-palette,
+    .vehicle-parts-painting .color-editor-panel .user-palette {
       margin-top: 12px;
       border-radius: 4px;
       border: 1px solid rgba(255, 255, 255, 0.12);
@@ -669,27 +816,32 @@
       flex-direction: column;
       gap: 10px;
     }
-    .vehicle-parts-painting .paint-card .user-palette.is-collapsed .user-palette-body {
+    .vehicle-parts-painting .paint-card .user-palette.is-collapsed .user-palette-body,
+    .vehicle-parts-painting .color-editor-panel .user-palette.is-collapsed .user-palette-body {
       display: none;
     }
-    .vehicle-parts-painting .paint-card .user-palette-header {
+    .vehicle-parts-painting .paint-card .user-palette-header,
+    .vehicle-parts-painting .color-editor-panel .user-palette-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
     }
-    .vehicle-parts-painting .paint-card .user-palette-header span {
+    .vehicle-parts-painting .paint-card .user-palette-header span,
+    .vehicle-parts-painting .color-editor-panel .user-palette-header span {
       font-size: 11px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       opacity: 0.8;
     }
-    .vehicle-parts-painting .paint-card .user-palette-actions {
+    .vehicle-parts-painting .paint-card .user-palette-actions,
+    .vehicle-parts-painting .color-editor-panel .user-palette-actions {
       display: flex;
       align-items: center;
       gap: 6px;
     }
-    .vehicle-parts-painting .paint-card .user-palette .collapse-toggle {
+    .vehicle-parts-painting .paint-card .user-palette .collapse-toggle,
+    .vehicle-parts-painting .color-editor-panel .user-palette .collapse-toggle {
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.3);
       color: #fff;
@@ -699,10 +851,12 @@
       letter-spacing: 0.05em;
       text-transform: uppercase;
     }
-    .vehicle-parts-painting .paint-card .user-palette .collapse-toggle:hover {
+    .vehicle-parts-painting .paint-card .user-palette .collapse-toggle:hover,
+    .vehicle-parts-painting .color-editor-panel .user-palette .collapse-toggle:hover {
       border-color: rgba(255, 255, 255, 0.6);
     }
-    .vehicle-parts-painting .paint-card .user-palette .add-preset {
+    .vehicle-parts-painting .paint-card .user-palette .add-preset,
+    .vehicle-parts-painting .color-editor-panel .user-palette .add-preset {
       width: 28px;
       height: 28px;
       border-radius: 4px;
@@ -716,25 +870,30 @@
       align-items: center;
       justify-content: center;
     }
-    .vehicle-parts-painting .paint-card .user-palette .add-preset:hover {
+    .vehicle-parts-painting .paint-card .user-palette .add-preset:hover,
+    .vehicle-parts-painting .color-editor-panel .user-palette .add-preset:hover {
       border-color: #ffffff;
     }
-    .vehicle-parts-painting .paint-card .user-palette-body {
+    .vehicle-parts-painting .paint-card .user-palette-body,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
-    .vehicle-parts-painting .paint-card .user-palette-body .color-presets {
+    .vehicle-parts-painting .paint-card .user-palette-body .color-presets,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body .color-presets {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .vehicle-parts-painting .paint-card .user-palette-body .color-presets .preset-list {
+    .vehicle-parts-painting .paint-card .user-palette-body .color-presets .preset-list,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body .color-presets .preset-list {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
     }
-    .vehicle-parts-painting .paint-card .user-palette-body .color-presets .preset-swatch {
+    .vehicle-parts-painting .paint-card .user-palette-body .color-presets .preset-swatch,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body .color-presets .preset-swatch {
       width: 26px;
       height: 26px;
       border-radius: 4px;
@@ -742,28 +901,34 @@
       padding: 0;
       background: transparent;
     }
-    .vehicle-parts-painting .paint-card .user-palette-body .color-presets .preset-swatch:hover {
+    .vehicle-parts-painting .paint-card .user-palette-body .color-presets .preset-swatch:hover,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body .color-presets .preset-swatch:hover {
       border-color: rgba(255, 255, 255, 0.75);
     }
-    .vehicle-parts-painting .paint-card .user-palette-body .user-palette-hint {
+    .vehicle-parts-painting .paint-card .user-palette-body .user-palette-hint,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body .user-palette-hint {
       font-size: 11px;
       opacity: 0.7;
     }
-    .vehicle-parts-painting .paint-card .user-palette-body .color-presets-empty {
+    .vehicle-parts-painting .paint-card .user-palette-body .color-presets-empty,
+    .vehicle-parts-painting .color-editor-panel .user-palette-body .color-presets-empty {
       font-size: 11px;
       opacity: 0.75;
     }
-    .vehicle-parts-painting .paint-card .color-field .color-channels {
+    .vehicle-parts-painting .paint-card .color-field .color-channels,
+    .vehicle-parts-painting .color-editor-panel .color-channels {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .vehicle-parts-painting .paint-card .color-field .color-channel {
+    .vehicle-parts-painting .paint-card .color-field .color-channel,
+    .vehicle-parts-painting .color-editor-panel .color-channel {
       display: flex;
       align-items: center;
       gap: 6px;
     }
-    .vehicle-parts-painting .paint-card .color-field .color-channel span {
+    .vehicle-parts-painting .paint-card .color-field .color-channel span,
+    .vehicle-parts-painting .color-editor-panel .color-channel span {
       width: 16px;
       text-align: center;
       font-size: 11px;
@@ -775,10 +940,12 @@
       align-items: center;
       gap: 6px;
     }
-    .vehicle-parts-painting .paint-card input[type="range"] {
+    .vehicle-parts-painting .paint-card input[type="range"],
+    .vehicle-parts-painting .color-editor-panel .color-channel input[type="range"] {
       flex: 1;
     }
-    .vehicle-parts-painting .paint-card input[type="number"] {
+    .vehicle-parts-painting .paint-card input[type="number"],
+    .vehicle-parts-painting .color-editor-panel .color-channel input[type="number"] {
       width: 62px;
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -977,6 +1144,104 @@
           </div>-->
         </div>
       </div>
+      <div class="color-editor-panel" ng-if="state.vehicleId">
+        <div class="color-editor-header">
+          <h3>Color Picker</h3>
+          <span class="color-editor-target" ng-if="colorPickerState.paint">{{getActiveColorTargetLabel()}}</span>
+          <span class="color-editor-target" ng-if="!colorPickerState.paint">Select a paint swatch</span>
+        </div>
+        <div class="color-editor-body" ng-if="colorPickerState.paint">
+          <div class="color-preview-large" ng-style="getColorPreviewStyle(colorPickerState.paint)"></div>
+          <div class="color-editor-hex">{{getColorHex(colorPickerState.paint)}}</div>
+          <div class="hsv-picker">
+            <div class="hsv-rectangle"
+                 ng-style="getHsvRectangleStyle()"
+                 ng-mousedown="onHsvRectangleMouseDown($event)">
+              <div class="hsv-rectangle-overlay"></div>
+              <div class="hsv-pointer" ng-style="getHsvPointerStyle()"></div>
+            </div>
+            <div class="hue-slider">
+              <input type="range"
+                     min="0"
+                     max="360"
+                     step="1"
+                     ng-model="colorPickerState.hsv.h"
+                     ng-change="onHueSliderChange()">
+            </div>
+          </div>
+          <div class="html-color-input">
+            <label for="vehicleGlobalHtmlColor">HTML color code</label>
+            <input id="vehicleGlobalHtmlColor"
+                   type="text"
+                   ng-model="colorPickerState.paint.htmlColor"
+                   ng-change="onHtmlColorInputChanged(colorPickerState.paint)"
+                   ng-blur="onHtmlColorInputBlur(colorPickerState.paint)"
+                   placeholder="#RRGGBB"
+                   maxlength="7"
+                   autocomplete="off"
+                   autocorrect="off"
+                   autocapitalize="none"
+                   spellcheck="false">
+          </div>
+          <div class="user-palette"
+               ng-class="{'is-collapsed': isPaletteCollapsed(colorPickerState.context, colorPickerState.index)}">
+            <div class="user-palette-header">
+              <span>User palette</span>
+              <div class="user-palette-actions">
+                <button type="button"
+                        class="add-preset"
+                        ng-click="addColorPreset(colorPickerState.paint)"
+                        title="Add current color to palette">+</button>
+                <button type="button"
+                        class="collapse-toggle"
+                        ng-click="togglePaletteCollapse(colorPickerState.context, colorPickerState.index)"
+                        ng-disabled="colorPickerState.context == null"
+                        ng-attr-aria-expanded="{{colorPickerState.context != null && !isPaletteCollapsed(colorPickerState.context, colorPickerState.index)}}"
+                        aria-controls="globalColorPalette">
+                  {{colorPickerState.context != null && !isPaletteCollapsed(colorPickerState.context, colorPickerState.index) ? 'Collapse' : 'Expand'}}
+                </button>
+              </div>
+            </div>
+            <div class="user-palette-body" id="globalColorPalette">
+              <div class="color-presets" ng-if="state.colorPresets.length">
+                <div class="preset-list">
+                  <button type="button"
+                          class="preset-swatch"
+                          ng-repeat="preset in state.colorPresets track by (preset.storageIndex || $index)"
+                          ng-style="getColorPresetStyle(preset)"
+                          ng-attr-title="{{getColorPresetTitle(preset)}}"
+                          ng-mousedown="onPresetPressStart($event, preset)"
+                          ng-mouseup="onPresetPressEnd($event, preset)"
+                          ng-mouseleave="onPresetPressCancel($event, preset)"
+                          ng-click="onPresetClick($event, colorPickerState.paint, preset)"></button>
+                </div>
+                <div class="user-palette-hint">Hold a color swatch to delete it.</div>
+              </div>
+              <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
+            </div>
+          </div>
+          <div class="color-channels">
+            <div class="color-channel">
+              <span>R</span>
+              <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.paint.color.r" ng-change="onColorChannelChanged(colorPickerState.paint)">
+              <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.paint.color.r" ng-change="onColorChannelChanged(colorPickerState.paint)">
+            </div>
+            <div class="color-channel">
+              <span>G</span>
+              <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.paint.color.g" ng-change="onColorChannelChanged(colorPickerState.paint)">
+              <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.paint.color.g" ng-change="onColorChannelChanged(colorPickerState.paint)">
+            </div>
+            <div class="color-channel">
+              <span>B</span>
+              <input type="range" min="0" max="255" step="1" ng-model="colorPickerState.paint.color.b" ng-change="onColorChannelChanged(colorPickerState.paint)">
+              <input type="number" min="0" max="255" step="1" ng-model="colorPickerState.paint.color.b" ng-change="onColorChannelChanged(colorPickerState.paint)">
+            </div>
+          </div>
+        </div>
+        <div class="color-editor-empty" ng-if="!colorPickerState.paint">
+          Select a paint swatch to edit its color.
+        </div>
+      </div>
       <div class="editor-panel base-paint-panel" ng-if="state.vehicleId" ng-class="{'is-collapsed': state.basePaintCollapsed}">
         <div class="base-paint-header">
           <div class="part-summary">
@@ -1001,72 +1266,16 @@
               </div>
               <div class="field color-field">
                 <label>Color</label>
-                <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
-                <div class="html-color-input">
-                  <label for="vehicleBasePaintHtmlColor{{$index}}">HTML color code</label>
-                  <input id="vehicleBasePaintHtmlColor{{$index}}"
-                          type="text"
-                          ng-model="paint.htmlColor"
-                          ng-change="onHtmlColorInputChanged(paint)"
-                          ng-blur="onHtmlColorInputBlur(paint)"
-                          placeholder="#RRGGBB"
-                          maxlength="7"
-                          autocomplete="off"
-                          autocorrect="off"
-                          autocapitalize="none"
-                          spellcheck="false">
-                </div>
-                <div class="user-palette"
-                     ng-class="{'is-collapsed': isPaletteCollapsed('base', $index)}">
-                  <div class="user-palette-header">
-                    <span>User palette</span>
-                    <div class="user-palette-actions">
-                      <button type="button"
-                              class="add-preset"
-                              ng-click="addColorPreset(paint)"
-                              title="Add current color to palette">+</button>
-                      <button type="button"
-                              class="collapse-toggle"
-                              ng-click="togglePaletteCollapse('base', $index)"
-                              ng-attr-aria-expanded="{{!isPaletteCollapsed('base', $index)}}"
-                              aria-controls="basePalette{{$index}}">
-                        {{isPaletteCollapsed('base', $index) ? 'Expand' : 'Collapse'}}
-                      </button>
-                    </div>
-                  </div>
-                  <div class="user-palette-body" id="basePalette{{$index}}">
-                    <div class="color-presets" ng-if="state.colorPresets.length">
-                      <div class="preset-list">
-                        <button type="button"
-                                class="preset-swatch"
-                                ng-repeat="preset in state.colorPresets track by (preset.storageIndex || $index)"
-                                ng-style="getColorPresetStyle(preset)"
-                                ng-attr-title="{{getColorPresetTitle(preset)}}"
-                                ng-mousedown="onPresetPressStart($event, preset)"
-                                ng-mouseup="onPresetPressEnd($event, preset)"
-                                ng-mouseleave="onPresetPressCancel($event, preset)"
-                                ng-click="onPresetClick($event, paint, preset)"></button>
-                      </div>
-                      <div class="user-palette-hint">Hold a color swatch to delete it.</div>
-                    </div>
-                    <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
-                  </div>
-                </div>
-                <div class="color-channels">
-                  <div class="color-channel">
-                    <span>R</span>
-                    <input type="range" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
-                    <input type="number" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
-                  </div>
-                  <div class="color-channel">
-                    <span>G</span>
-                    <input type="range" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
-                    <input type="number" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
-                  </div>
-                  <div class="color-channel">
-                    <span>B</span>
-                    <input type="range" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
-                    <input type="number" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
+                <div class="color-trigger-row">
+                  <button type="button"
+                          class="color-preview-button"
+                          ng-style="getColorPreviewStyle(paint)"
+                          ng-class="{'is-active': isColorEditorActive('base', $index)}"
+                          ng-click="activateColorEditor('base', $index)"
+                          ng-attr-aria-label="{{getColorButtonLabel('base', $index)}}"></button>
+                  <div class="color-trigger-details">
+                    <span class="color-hex">{{getColorHex(paint)}}</span>
+                    <span class="color-trigger-hint" ng-if="isColorEditorActive('base', $index)">Editing in picker</span>
                   </div>
                 </div>
               </div>
@@ -1121,73 +1330,16 @@
             </div>
             <div class="field color-field">
               <label>Color</label>
-              <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
-              <!--<div class="color-meta">{{getColorHex(paint)}}</div>-->
-              <div class="html-color-input">
-                <label for="vehiclePartsPaintingHtmlColor{{$index}}">HTML color code</label>
-                <input id="vehiclePartsPaintingHtmlColor{{$index}}"
-                        type="text"
-                        ng-model="paint.htmlColor"
-                        ng-change="onHtmlColorInputChanged(paint)"
-                        ng-blur="onHtmlColorInputBlur(paint)"
-                        placeholder="#RRGGBB"
-                        maxlength="7"
-                        autocomplete="off"
-                        autocorrect="off"
-                        autocapitalize="none"
-                        spellcheck="false">
-              </div>
-              <div class="user-palette"
-                   ng-class="{'is-collapsed': isPaletteCollapsed('part', $index)}">
-                <div class="user-palette-header">
-                  <span>User palette</span>
-                  <div class="user-palette-actions">
-                    <button type="button"
-                            class="add-preset"
-                            ng-click="addColorPreset(paint)"
-                            title="Add current color to palette">+</button>
-                    <button type="button"
-                            class="collapse-toggle"
-                            ng-click="togglePaletteCollapse('part', $index)"
-                            ng-attr-aria-expanded="{{!isPaletteCollapsed('part', $index)}}"
-                            aria-controls="partPalette{{$index}}">
-                      {{isPaletteCollapsed('part', $index) ? 'Expand' : 'Collapse'}}
-                    </button>
-                  </div>
-                </div>
-                <div class="user-palette-body" id="partPalette{{$index}}">
-                  <div class="color-presets" ng-if="state.colorPresets.length">
-                    <div class="preset-list">
-                      <button type="button"
-                              class="preset-swatch"
-                              ng-repeat="preset in state.colorPresets track by (preset.storageIndex || $index)"
-                              ng-style="getColorPresetStyle(preset)"
-                              ng-attr-title="{{getColorPresetTitle(preset)}}"
-                              ng-mousedown="onPresetPressStart($event, preset)"
-                              ng-mouseup="onPresetPressEnd($event, preset)"
-                              ng-mouseleave="onPresetPressCancel($event, preset)"
-                              ng-click="onPresetClick($event, paint, preset)"></button>
-                    </div>
-                    <div class="user-palette-hint">Hold a color swatch to delete it.</div>
-                  </div>
-                  <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
-                </div>
-              </div>
-              <div class="color-channels">
-                <div class="color-channel">
-                  <span>R</span>
-                  <input type="range" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
-                  <input type="number" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
-                </div>
-                <div class="color-channel">
-                  <span>G</span>
-                  <input type="range" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
-                  <input type="number" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
-                </div>
-                <div class="color-channel">
-                  <span>B</span>
-                  <input type="range" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
-                  <input type="number" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
+              <div class="color-trigger-row">
+                <button type="button"
+                        class="color-preview-button"
+                        ng-style="getColorPreviewStyle(paint)"
+                        ng-class="{'is-active': isColorEditorActive('part', $index)}"
+                        ng-click="activateColorEditor('part', $index)"
+                        ng-attr-aria-label="{{getColorButtonLabel('part', $index)}}"></button>
+                <div class="color-trigger-details">
+                  <span class="color-hex">{{getColorHex(paint)}}</span>
+                  <span class="color-trigger-hint" ng-if="isColorEditorActive('part', $index)">Editing in picker</span>
                 </div>
               </div>
             </div>
