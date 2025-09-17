@@ -777,6 +777,7 @@
                   class="collapse-toggle"
                   ng-click="toggleConfigToolsCollapsed()"
                   ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
+                  ng-disabled="true" disabled="disabled"
                   aria-controls="vehiclePartsConfigToolsBody">
             {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
           </button>
@@ -786,7 +787,6 @@
             <input type="text"
                     placeholder="Configuration name"
                     ng-model="state.configNameInput"
-                    ng-disabled="state.isSavingConfig || state.showReplaceConfirmation"
                     autocomplete="off">
             <button type="button"
                     ng-click="saveCurrentConfiguration()"
