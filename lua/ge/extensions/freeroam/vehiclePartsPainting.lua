@@ -1032,12 +1032,70 @@ local function sendSavedConfigs(vehId, vehData, vehObj)
 end
 
 local function saveCurrentUserConfig(configName)
-  log('W', logTag, string.format('Ignoring saveCurrentUserConfig request for %s (feature disabled)', tostring(configName)))
   local vehId = be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
     guihooks.trigger('VehiclePartsPaintingSavedConfigs', { vehicleId = -1, configs = {} })
     return
   end
+
+  local partmgmtExtension = getLoadedExtension('core_vehicle_partmgmt')
+  if not partmgmtExtension then
+    log('E', logTag, 'Unable to save vehicle configuration: core_vehicle_partmgmt extension unavailable')
+  else
+    local displayName = sanitizeConfigDisplayName(configName) or nil
+    local sanitizedBaseName = nil
+    if displayName and displayName ~= '' then
+      sanitizedBaseName = sanitizeFileName(displayName)
+    end
+    if (not sanitizedBaseName or sanitizedBaseName == '') and configName and configName ~= '' then
+      sanitizedBaseName = sanitizeFileName(configName)
+    end
+
+    if not sanitizedBaseName or sanitizedBaseName == '' then
+      log('W', logTag, string.format('Unable to save vehicle configuration: invalid name %s', tostring(configName)))
+    else
+      local saveEntryPoint = nil
+      local saveEntryPointName = nil
+      if type(partmgmtExtension.saveLocal) == 'function' then
+        saveEntryPoint = partmgmtExtension.saveLocal
+        saveEntryPointName = 'saveLocal'
+      elseif type(partmgmtExtension.save) == 'function' then
+        saveEntryPoint = partmgmtExtension.save
+        saveEntryPointName = 'save'
+      end
+
+      if not saveEntryPoint then
+        log('E', logTag, 'Unable to save vehicle configuration: no save entry point available on core_vehicle_partmgmt')
+      else
+        local fileName = sanitizedBaseName
+        if not string.lower(fileName):match('%.pc$') then
+          fileName = fileName .. '.pc'
+        end
+
+        local okSave, resultOrErr = safePcall(saveEntryPoint, fileName)
+        if okSave and resultOrErr ~= false then
+          if displayName and displayName ~= '' then
+            if displayName ~= sanitizedBaseName then
+              log('I', logTag, string.format('Saved vehicle configuration "%s" to "%s" via core_vehicle_partmgmt.%s', tostring(displayName), tostring(fileName), tostring(saveEntryPointName)))
+            else
+              log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(displayName), tostring(saveEntryPointName)))
+            end
+          else
+            log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(fileName), tostring(saveEntryPointName)))
+          end
+        else
+          local errorMessage
+          if not okSave then
+            errorMessage = tostring(resultOrErr)
+          else
+            errorMessage = 'save entry point returned false'
+          end
+          log('E', logTag, string.format('Failed to save vehicle configuration "%s": %s', tostring(displayName or configName), tostring(errorMessage or 'unknown_error')))
+        end
+      end
+    end
+  end
+
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   sendSavedConfigs(vehId, vehData, vehObj)

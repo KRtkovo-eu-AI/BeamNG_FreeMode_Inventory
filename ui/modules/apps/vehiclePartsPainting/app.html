@@ -728,11 +728,14 @@
   </style>
   <div class="config-confirm-overlay" ng-if="state.showReplaceConfirmation">
     <div class="config-confirm-dialog">
-      <h4>Replace existing vehicle configuration</h4>
+      <h4>
+        Replace Vehicle Configuration
+        <span ng-if="state.pendingConfigName">"{{state.pendingConfigName}}"</span>
+      </h4>
       <p>
         A configuration named
         "{{state.pendingExistingConfig ? getSavedConfigLabel(state.pendingExistingConfig) : state.pendingConfigName}}"
-        already exists. Replace it with "{{state.pendingConfigName}}"?
+        already exists. Do you want to replace it?
       </p>
       <p class="file-hint" ng-if="state.pendingSanitizedName">
         File name: {{state.pendingSanitizedName}}.pc
