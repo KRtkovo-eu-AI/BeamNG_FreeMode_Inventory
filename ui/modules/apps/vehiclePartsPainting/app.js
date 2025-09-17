@@ -110,6 +110,8 @@ angular.module('beamng.apps')
       const LIVERY_EDITOR_UNSUPPORTED_MESSAGE = 'Vehicle Livery Editor is not available for this vehicle.';
       const LIVERY_EDITOR_MESSAGE_CATEGORY = 'vehiclePartsPainting';
 
+      const DEFAULT_CONFIG_PREVIEW_IMAGE = 'ui/modules/apps/vehiclePartsPainting/missing-preview.png';
+
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
@@ -904,6 +906,12 @@ end)()`;
       function hasConfigPreview(config) {
         if (!config || typeof config !== 'object') { return false; }
         return typeof config.previewImage === 'string' && config.previewImage.trim() !== '';
+      }
+
+      function resolveConfigPreviewPath(config) {
+        if (!config || typeof config !== 'object') { return null; }
+        if (hasConfigPreview(config)) { return config.previewImage; }
+        return DEFAULT_CONFIG_PREVIEW_IMAGE;
       }
 
       function isConfigDeletable(config) {
@@ -2248,8 +2256,9 @@ end)()`;
       };
 
       $scope.getSavedConfigPreviewSrc = function (config) {
-        if (!hasConfigPreview(config)) { return null; }
-        return buildConfigPreviewSrc(config.previewImage);
+        const path = resolveConfigPreviewPath(config);
+        if (!path) { return null; }
+        return buildConfigPreviewSrc(path);
       };
 
       $scope.canDeleteSavedConfig = function (config) {

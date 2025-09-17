@@ -1291,8 +1291,7 @@
       <p>Are you sure you want to delete this configuration?</p>
       <div class="config-target"
            ng-if="state.deleteConfigDialog.config">
-        <div class="config-target-preview"
-             ng-if="hasSavedConfigPreview(state.deleteConfigDialog.config)">
+        <div class="config-target-preview">
           <img ng-src="{{getSavedConfigPreviewSrc(state.deleteConfigDialog.config)}}"
                ng-attr-alt="{{getSavedConfigLabel(state.deleteConfigDialog.config)}} preview">
         </div>
@@ -1602,7 +1601,7 @@
                     ng-repeat="config in getSavedConfigs() track by config.relativePath"
                     ng-class="{selected: isSavedConfigSelected(config)}"
                     ng-click="selectSavedConfig(config)">
-                <div class="saved-preview" ng-if="hasSavedConfigPreview(config)">
+                <div class="saved-preview">
                   <img ng-src="{{getSavedConfigPreviewSrc(config)}}"
                        ng-attr-alt="{{getSavedConfigLabel(config)}} preview">
                 </div>
