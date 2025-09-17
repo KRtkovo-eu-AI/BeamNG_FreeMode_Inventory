@@ -387,12 +387,15 @@ function resetPaint(scope, partPath) {
 }
 
 function setFilterText(scope, controller, value, options) {
+  options = options || {};
   scope.state.filterText = value;
-  if (typeof scope.onFilterInputChanged === 'function') {
+  const shouldInvokeChange = options.invokeChangeHook !== false;
+  if (shouldInvokeChange && typeof scope.onFilterInputChanged === 'function') {
     scope.onFilterInputChanged();
   }
   scope.$digest();
-  if (!options || options.flush !== false) {
+  const shouldFlush = options.flush !== false;
+  if (shouldFlush) {
     controller.timeout.flush();
   }
 }
@@ -490,6 +493,23 @@ function setFilterText(scope, controller, value, options) {
   assert(node && node.part && node.part.partPath === 'vehicle/hood', 'Clearing the filter again should restore hood to the tree');
   filteredDoor = findNode(state.filteredTree, 'vehicle/door');
   assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Clearing the filter again should restore door to the tree');
+
+  setFilterText(scope, controller, 'hood');
+  let hiddenDoorAfterFilter = findNode(state.filteredTree, 'vehicle/door');
+  assert.strictEqual(hiddenDoorAfterFilter, null, 'Door should be hidden after filtering for hood before simulating search confirm actions');
+
+  setFilterText(scope, controller, '', { invokeChangeHook: false, flush: false });
+  controller.timeout.flush();
+  let restoredDoorAfterDirectClear = findNode(state.filteredTree, 'vehicle/door');
+  assert(restoredDoorAfterDirectClear && restoredDoorAfterDirectClear.part && restoredDoorAfterDirectClear.part.partPath === 'vehicle/door', 'Clearing the filter without the change hook should restore door to the tree');
+  let restoredRootAfterDirectClear = findNode(state.filteredTree, 'vehicle/root');
+  assert(restoredRootAfterDirectClear && restoredRootAfterDirectClear.part && restoredRootAfterDirectClear.part.partPath === 'vehicle/root', 'Clearing the filter without the change hook should keep the root visible');
+
+  setFilterText(scope, controller, 'door');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Filtering after clearing without the change hook should still find door parts');
+  filteredHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert.strictEqual(filteredHood, null, 'Filtering for door after clearing without the change hook should hide hood nodes');
 
   scope.clearFilter();
   scope.$digest();

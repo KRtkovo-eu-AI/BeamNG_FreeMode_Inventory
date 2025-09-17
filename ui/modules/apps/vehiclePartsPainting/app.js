@@ -1795,16 +1795,34 @@ end)()`;
       function scheduleFilteredPartsRecompute(options) {
         options = options || {};
         const immediate = !!options.immediate;
-        cancelFilterRecompute();
+        const preserveExisting = !!options.preserveExisting;
+
+        if (!preserveExisting) {
+          cancelFilterRecompute();
+        } else if (immediate && filterRecomputePromise) {
+          $timeout.cancel(filterRecomputePromise);
+          filterRecomputePromise = null;
+        }
+
         if (immediate) {
           computeFilteredParts();
           return;
         }
+
+        if (preserveExisting && filterRecomputePromise) {
+          return;
+        }
+
         filterRecomputePromise = $timeout(function () {
           filterRecomputePromise = null;
           computeFilteredParts();
         }, FILTER_DEBOUNCE_DELAY_MS);
       }
+
+      $scope.$watch(function () { return state.filterText; }, function (newValue, oldValue) {
+        if (newValue === oldValue) { return; }
+        scheduleFilteredPartsRecompute({ preserveExisting: true });
+      });
 
       $scope.onFilterInputChanged = function () {
         scheduleFilteredPartsRecompute();
