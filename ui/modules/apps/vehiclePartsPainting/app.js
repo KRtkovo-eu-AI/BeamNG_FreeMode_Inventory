@@ -1725,10 +1725,15 @@ end)()`;
         }
       }
 
+      function normalizeFilterText(value) {
+        if (typeof value !== 'string') { return ''; }
+        return value.trim().toLowerCase();
+      }
+
       function computeFilteredParts() {
         ensurePartsTreeCurrent();
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
-        const normalized = rawFilter.trim().toLowerCase();
+        const normalized = normalizeFilterText(rawFilter);
         const parts = Array.isArray(state.parts) ? state.parts.slice() : [];
         let filtered = parts;
         if (normalized) {
@@ -1792,6 +1797,16 @@ end)()`;
         }
       }
 
+      function shouldRecomputeFilterImmediately(previousValue, nextValue) {
+        const previousNormalized = normalizeFilterText(previousValue);
+        const nextNormalized = normalizeFilterText(nextValue);
+        if (!nextNormalized) { return true; }
+        return nextNormalized.length < previousNormalized.length;
+      }
+
+      let lastFilterTextValue = state.filterText;
+      let filterChangeHandledByHook = false;
+
       function scheduleFilteredPartsRecompute(options) {
         options = options || {};
         const immediate = !!options.immediate;
@@ -1821,11 +1836,29 @@ end)()`;
 
       $scope.$watch(function () { return state.filterText; }, function (newValue, oldValue) {
         if (newValue === oldValue) { return; }
-        scheduleFilteredPartsRecompute({ preserveExisting: true });
+        const shouldImmediate = shouldRecomputeFilterImmediately(oldValue, newValue);
+        const handledByHook = shouldImmediate && filterChangeHandledByHook;
+        filterChangeHandledByHook = false;
+        if (!handledByHook) {
+          if (shouldImmediate) {
+            scheduleFilteredPartsRecompute({ immediate: true });
+          } else {
+            scheduleFilteredPartsRecompute({ preserveExisting: true });
+          }
+        }
+        lastFilterTextValue = newValue;
       });
 
       $scope.onFilterInputChanged = function () {
-        scheduleFilteredPartsRecompute();
+        const previousValue = lastFilterTextValue;
+        const currentValue = state.filterText;
+        const shouldImmediate = shouldRecomputeFilterImmediately(previousValue, currentValue);
+        filterChangeHandledByHook = shouldImmediate;
+        if (shouldImmediate) {
+          scheduleFilteredPartsRecompute({ immediate: true });
+        } else {
+          scheduleFilteredPartsRecompute();
+        }
       };
 
       $scope.onColorChannelChanged = function (paint) {

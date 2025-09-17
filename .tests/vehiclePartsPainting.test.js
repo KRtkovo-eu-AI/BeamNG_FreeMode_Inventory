@@ -511,6 +511,21 @@ function setFilterText(scope, controller, value, options) {
   filteredHood = findNode(state.filteredTree, 'vehicle/hood');
   assert.strictEqual(filteredHood, null, 'Filtering for door after clearing without the change hook should hide hood nodes');
 
+  setFilterText(scope, controller, 'door');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Filtering for door should isolate the matching part');
+  setFilterText(scope, controller, 'd', { flush: false });
+  let hoodAfterBackspace = findNode(state.filteredTree, 'vehicle/hood');
+  assert(hoodAfterBackspace && hoodAfterBackspace.part && hoodAfterBackspace.part.partPath === 'vehicle/hood', 'Backspacing the filter should immediately restore hood before the debounce flush');
+  let doorAfterBackspace = findNode(state.filteredTree, 'vehicle/door');
+  assert(doorAfterBackspace && doorAfterBackspace.part && doorAfterBackspace.part.partPath === 'vehicle/door', 'Backspacing the filter should keep door visible without waiting for debounce');
+  assert.strictEqual(state.filteredParts.length, parts.length, 'Broadening the filter should expand the matching parts immediately');
+  controller.timeout.flush();
+  hoodAfterBackspace = findNode(state.filteredTree, 'vehicle/hood');
+  assert(hoodAfterBackspace && hoodAfterBackspace.part && hoodAfterBackspace.part.partPath === 'vehicle/hood', 'Debounce flush after broadening should retain hood visibility');
+  doorAfterBackspace = findNode(state.filteredTree, 'vehicle/door');
+  assert(doorAfterBackspace && doorAfterBackspace.part && doorAfterBackspace.part.partPath === 'vehicle/door', 'Debounce flush after broadening should retain door visibility');
+
   scope.clearFilter();
   scope.$digest();
   controller.timeout.flush();
