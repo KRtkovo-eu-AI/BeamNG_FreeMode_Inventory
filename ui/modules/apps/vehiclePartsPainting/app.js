@@ -78,6 +78,22 @@ angular.module('beamng.apps')
       $scope.editedPaints = [];
       $scope.basePaintEditors = [];
 
+      const colorPickerState = {
+        context: null,
+        index: null,
+        targetPaint: null,
+        working: null,
+        hsv: { h: 0, s: 0, v: 1 },
+        rectBounds: null,
+        visible: false
+      };
+      let suppressHsvSync = false;
+      let hsvRectDragging = false;
+
+      $scope.colorPickerState = colorPickerState;
+
+      const globalWindow = (typeof window !== 'undefined') ? window : null;
+
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       let customBadgeRefreshPromise = null;
       let partLookup = Object.create(null);
@@ -100,6 +116,57 @@ angular.module('beamng.apps')
 
       function rgbToHex(r, g, b) {
         return ('#' + componentToHex(r) + componentToHex(g) + componentToHex(b)).toUpperCase();
+      }
+
+      function rgbToHsvColor(r, g, b) {
+        r = clamp01(r / 255);
+        g = clamp01(g / 255);
+        b = clamp01(b / 255);
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const delta = max - min;
+        let h = 0;
+        if (delta > 0) {
+          if (max === r) {
+            h = ((g - b) / delta) % 6;
+          } else if (max === g) {
+            h = ((b - r) / delta) + 2;
+          } else {
+            h = ((r - g) / delta) + 4;
+          }
+          h *= 60;
+        }
+        if (h < 0) { h += 360; }
+        const s = max === 0 ? 0 : delta / max;
+        const v = max;
+        return { h: h, s: s, v: v };
+      }
+
+      function hsvToRgbColor(h, s, v) {
+        if (!isFinite(h)) { h = 0; }
+        h = ((h % 360) + 360) % 360;
+        s = clamp01(s);
+        v = clamp01(v);
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let r1 = 0;
+        let g1 = 0;
+        let b1 = 0;
+        const region = Math.floor(h / 60) % 6;
+        switch (region) {
+          case 0: r1 = c; g1 = x; b1 = 0; break;
+          case 1: r1 = x; g1 = c; b1 = 0; break;
+          case 2: r1 = 0; g1 = c; b1 = x; break;
+          case 3: r1 = 0; g1 = x; b1 = c; break;
+          case 4: r1 = x; g1 = 0; b1 = c; break;
+          default: r1 = c; g1 = 0; b1 = x; break;
+        }
+        return {
+          r: Math.round((r1 + m) * 255),
+          g: Math.round((g1 + m) * 255),
+          b: Math.round((b1 + m) * 255)
+        };
       }
 
       function parseHtmlColor(value) {
@@ -150,6 +217,19 @@ angular.module('beamng.apps')
         color.g = clampColorByte(color.g);
         color.b = clampColorByte(color.b);
         return color;
+      }
+
+      function createPickerWorkingPaint(paint) {
+        if (!paint) { return null; }
+        const working = angular.copy(paint);
+        sanitizeColor(working);
+        working.alpha = clamp01(working.alpha);
+        working.metallic = clamp01(working.metallic);
+        working.roughness = clamp01(working.roughness);
+        working.clearcoat = clamp01(working.clearcoat);
+        working.clearcoatRoughness = clamp01(working.clearcoatRoughness);
+        syncHtmlColor(working);
+        return working;
       }
 
       function getPaintHex(paint) {
@@ -332,11 +412,159 @@ angular.module('beamng.apps')
         }
 
         syncHtmlColor(paint);
+        if (colorPickerState.working === paint) {
+          syncActiveHsvFromWorking();
+        }
       }
 
       function toLuaString(str) {
         if (str === undefined || str === null) { return 'nil'; }
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+      }
+
+      function getPaintByContext(context, index) {
+        if (context === 'base') {
+          return Array.isArray($scope.basePaintEditors) && index != null ? $scope.basePaintEditors[index] || null : null;
+        }
+        if (context === 'part') {
+          return Array.isArray($scope.editedPaints) && index != null ? $scope.editedPaints[index] || null : null;
+        }
+        return null;
+      }
+
+      function clearActiveColorTarget() {
+        stopHsvRectDrag();
+        colorPickerState.context = null;
+        colorPickerState.index = null;
+        colorPickerState.targetPaint = null;
+        colorPickerState.working = null;
+        colorPickerState.visible = false;
+        colorPickerState.hsv.h = 0;
+        colorPickerState.hsv.s = 0;
+        colorPickerState.hsv.v = 1;
+        colorPickerState.rectBounds = null;
+      }
+
+      function syncActiveHsvFromWorking() {
+        const working = colorPickerState.working;
+        if (!working) { return; }
+        const color = ensureColorObject(working);
+        const hsv = rgbToHsvColor(color.r, color.g, color.b);
+        colorPickerState.hsv.h = hsv.h;
+        colorPickerState.hsv.s = hsv.s;
+        colorPickerState.hsv.v = hsv.v;
+      }
+
+      function setActiveColorTarget(context, index) {
+        const paint = getPaintByContext(context, index);
+        if (!paint) {
+          clearActiveColorTarget();
+          return;
+        }
+        stopHsvRectDrag();
+        colorPickerState.context = context;
+        colorPickerState.index = index;
+        colorPickerState.targetPaint = paint;
+        syncHtmlColor(paint);
+        colorPickerState.working = createPickerWorkingPaint(paint);
+        colorPickerState.visible = !!colorPickerState.working;
+        syncActiveHsvFromWorking();
+      }
+
+      function refreshActiveColorTarget() {
+        if (colorPickerState.context === null || colorPickerState.index === null) { return; }
+        const paint = getPaintByContext(colorPickerState.context, colorPickerState.index);
+        if (!paint) {
+          clearActiveColorTarget();
+          return;
+        }
+        if (colorPickerState.targetPaint !== paint) {
+          colorPickerState.targetPaint = paint;
+          if (!colorPickerState.visible) {
+            colorPickerState.working = createPickerWorkingPaint(paint);
+            syncActiveHsvFromWorking();
+          }
+        }
+        syncHtmlColor(paint);
+      }
+
+      function handlePaintReplacement(context, index) {
+        if (colorPickerState.context !== context || colorPickerState.index !== index) { return; }
+        refreshActiveColorTarget();
+      }
+
+      function applyActiveHsv() {
+        const paint = colorPickerState.working;
+        if (!paint) { return; }
+        suppressHsvSync = true;
+        const hsv = colorPickerState.hsv;
+        const rgb = hsvToRgbColor(hsv.h, hsv.s, hsv.v);
+        const color = ensureColorObject(paint);
+        color.r = rgb.r;
+        color.g = rgb.g;
+        color.b = rgb.b;
+        syncHtmlColor(paint);
+        $scope.$evalAsync(function () {
+          suppressHsvSync = false;
+        });
+      }
+
+      function applyWorkingPaintToTarget() {
+        const working = colorPickerState.working;
+        const target = colorPickerState.targetPaint;
+        if (!working || !target) { return; }
+        const sourceColor = sanitizeColor(working);
+        const targetColor = ensureColorObject(target);
+        targetColor.r = sourceColor.r;
+        targetColor.g = sourceColor.g;
+        targetColor.b = sourceColor.b;
+        target.alpha = clamp01(working.alpha);
+        target.metallic = clamp01(working.metallic);
+        target.roughness = clamp01(working.roughness);
+        target.clearcoat = clamp01(working.clearcoat);
+        target.clearcoatRoughness = clamp01(working.clearcoatRoughness);
+        syncHtmlColor(target);
+      }
+
+      function updateHsvFromClientPosition(clientX, clientY) {
+        if (!colorPickerState.working || !colorPickerState.rectBounds) { return; }
+        const rect = colorPickerState.rectBounds;
+        const width = rect.width || (rect.right - rect.left);
+        const height = rect.height || (rect.bottom - rect.top);
+        if (!width || !height) { return; }
+        const ratioX = clamp01((clientX - rect.left) / width);
+        const ratioY = clamp01((clientY - rect.top) / height);
+        colorPickerState.hsv.s = ratioX;
+        colorPickerState.hsv.v = clamp01(1 - ratioY);
+        applyActiveHsv();
+      }
+
+      function stopHsvRectDrag() {
+        if (!hsvRectDragging) { return; }
+        hsvRectDragging = false;
+        colorPickerState.rectBounds = null;
+        if (globalWindow) {
+          globalWindow.removeEventListener('mousemove', handleHsvRectMouseMove);
+          globalWindow.removeEventListener('mouseup', handleHsvRectMouseUp);
+        }
+      }
+
+      function handleHsvRectMouseMove(event) {
+        if (!hsvRectDragging) { return; }
+        if (event && typeof event.preventDefault === 'function') { event.preventDefault(); }
+        updateHsvFromClientPosition(event.clientX, event.clientY);
+        if (!$scope.$$phase) {
+          $scope.$applyAsync();
+        }
+      }
+
+      function handleHsvRectMouseUp(event) {
+        if (event && typeof event.preventDefault === 'function') { event.preventDefault(); }
+        updateHsvFromClientPosition(event.clientX, event.clientY);
+        if (!$scope.$$phase) {
+          $scope.$applyAsync();
+        }
+        stopHsvRectDrag();
       }
 
       function sanitizeConfigFileName(name) {
@@ -492,9 +720,13 @@ angular.module('beamng.apps')
       function syncBasePaintEditorsFromState() {
         if (!Array.isArray(state.basePaints) || !state.basePaints.length) {
           $scope.basePaintEditors = [];
+          if (colorPickerState.context === 'base') {
+            clearActiveColorTarget();
+          }
           return;
         }
         $scope.basePaintEditors = convertPaintsToView(state.basePaints);
+        refreshActiveColorTarget();
       }
 
       function getBasePaintEditorPaints() {
@@ -863,6 +1095,9 @@ angular.module('beamng.apps')
       function updateEditedPaints(part) {
         if (!part) {
           $scope.editedPaints = [];
+          if (colorPickerState.context === 'part') {
+            clearActiveColorTarget();
+          }
           return;
         }
         const candidates = [
@@ -882,6 +1117,7 @@ angular.module('beamng.apps')
           source = state.basePaints;
         }
         $scope.editedPaints = convertPaintsToView(source);
+        refreshActiveColorTarget();
       }
 
       function setSelectedPart(part, options) {
@@ -1190,6 +1426,9 @@ angular.module('beamng.apps')
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
         syncHtmlColor(paint);
+        if (colorPickerState.working === paint) {
+          syncActiveHsvFromWorking();
+        }
       };
 
       $scope.onHtmlColorInputChanged = function (paint) {
@@ -1201,6 +1440,9 @@ angular.module('beamng.apps')
         color.g = parsed.g;
         color.b = parsed.b;
         syncHtmlColor(paint);
+        if (colorPickerState.working === paint) {
+          syncActiveHsvFromWorking();
+        }
       };
 
       $scope.onHtmlColorInputBlur = function (paint) {
@@ -1208,6 +1450,9 @@ angular.module('beamng.apps')
         const parsed = parseHtmlColor(paint.htmlColor);
         if (!parsed) {
           syncHtmlColor(paint);
+          if (colorPickerState.working === paint) {
+            syncActiveHsvFromWorking();
+          }
         }
       };
 
@@ -1351,6 +1596,93 @@ angular.module('beamng.apps')
         const paint = state.basePaints[index] || state.basePaints[state.basePaints.length - 1];
         if (!paint) { return; }
         $scope.editedPaints[index] = createViewPaint(paint);
+        handlePaintReplacement('part', index);
+      };
+
+      $scope.activateColorEditor = function (context, index) {
+        setActiveColorTarget(context, index);
+      };
+
+      $scope.isColorEditorActive = function (context, index) {
+        return colorPickerState.visible &&
+          colorPickerState.context === context &&
+          colorPickerState.index === index &&
+          !!colorPickerState.working;
+      };
+
+      $scope.getColorButtonLabel = function (context, index) {
+        const slot = index != null ? (index + 1) : '';
+        if (context === 'base') {
+          return 'Edit vehicle paint ' + slot + ' color';
+        }
+        if (context === 'part') {
+          const part = state.selectedPart;
+          const partLabel = part ? (part.displayName || part.partName || 'Part') : 'Part';
+          return 'Edit ' + partLabel + ' paint ' + slot + ' color';
+        }
+        return 'Edit color';
+      };
+
+      function getActiveColorLabel() {
+        if (!colorPickerState.working) { return ''; }
+        if (colorPickerState.context === 'base') {
+          return 'Vehicle paint ' + (colorPickerState.index + 1);
+        }
+        if (colorPickerState.context === 'part') {
+          const part = state.selectedPart;
+          const partLabel = part ? (part.displayName || part.partName || 'Part') : 'Part';
+          return partLabel + ' – Paint ' + (colorPickerState.index + 1);
+        }
+        return '';
+      }
+
+      $scope.getActiveColorTargetLabel = function () {
+        return getActiveColorLabel();
+      };
+
+      $scope.getHsvRectangleStyle = function () {
+        const hue = colorPickerState.hsv.h || 0;
+        return {
+          background: 'linear-gradient(to right, #fff, hsl(' + Math.round(hue) + ', 100%, 50%))'
+        };
+      };
+
+      $scope.getHsvPointerStyle = function () {
+        const saturation = clamp01(colorPickerState.hsv.s || 0);
+        const value = clamp01(colorPickerState.hsv.v || 0);
+        return {
+          left: (saturation * 100) + '%',
+          top: ((1 - value) * 100) + '%'
+        };
+      };
+
+      $scope.onHueSliderChange = function () {
+        if (!colorPickerState.working) { return; }
+        applyActiveHsv();
+      };
+
+      $scope.onHsvRectangleMouseDown = function ($event) {
+        if (!colorPickerState.working) { return; }
+        if ($event && typeof $event.preventDefault === 'function') { $event.preventDefault(); }
+        const target = $event && $event.currentTarget ? $event.currentTarget : null;
+        if (!target || typeof target.getBoundingClientRect !== 'function') { return; }
+        colorPickerState.rectBounds = target.getBoundingClientRect();
+        hsvRectDragging = true;
+        updateHsvFromClientPosition($event.clientX, $event.clientY);
+        if (globalWindow) {
+          globalWindow.addEventListener('mousemove', handleHsvRectMouseMove);
+          globalWindow.addEventListener('mouseup', handleHsvRectMouseUp);
+        }
+      };
+
+      $scope.applyColorPickerSelection = function () {
+        if (!colorPickerState.working || !colorPickerState.targetPaint) { return; }
+        applyWorkingPaintToTarget();
+        clearActiveColorTarget();
+      };
+
+      $scope.cancelColorPicker = function () {
+        clearActiveColorTarget();
       };
 
       $scope.selectPart = function (part) {
@@ -1693,6 +2025,19 @@ angular.module('beamng.apps')
             updateColorPresets(data.colorPresets);
           }
         });
+      });
+
+      $scope.$watch(function () {
+        if (!colorPickerState.working) { return null; }
+        const color = ensureColorObject(colorPickerState.working);
+        return [color.r, color.g, color.b].join(',');
+      }, function (newValue, oldValue) {
+        if (!newValue || newValue === oldValue || suppressHsvSync) { return; }
+        syncActiveHsvFromWorking();
+      });
+
+      $scope.$on('$destroy', function () {
+        stopHsvRectDrag();
       });
 
       bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
