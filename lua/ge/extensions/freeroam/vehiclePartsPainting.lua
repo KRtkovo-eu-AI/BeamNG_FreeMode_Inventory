@@ -1352,8 +1352,13 @@ local function applyBasePaintsToVehicle(vehObj, paints)
     end
   end
 
-  if vehObj.queueLuaCommand then
-    vehObj:queueLuaCommand('extensions.core_vehicles.updateVehicleColors()')
+  if vehObj.queueLuaCommand and type(vehObj.queueLuaCommand) == 'function' then
+    local updateColorsCommand = [[
+if extensions and extensions.core_vehicles and extensions.core_vehicles.updateVehicleColors then
+  extensions.core_vehicles.updateVehicleColors()
+end
+]]
+    vehObj:queueLuaCommand(updateColorsCommand)
   end
 end
 
