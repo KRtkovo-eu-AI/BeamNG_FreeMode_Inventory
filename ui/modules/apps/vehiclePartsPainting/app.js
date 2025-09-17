@@ -100,6 +100,12 @@ angular.module('beamng.apps')
 
       const globalWindow = (typeof window !== 'undefined') ? window : null;
 
+      const LIVERY_EDITOR_CONFIRMATION_TEXT = 'This is an early highly experimental preview of the Decal Editor. Please be aware that anything created with this feature may be lost in future hotfixes and updates. Do you wish to proceed?';
+      const LIVERY_EDITOR_NO_VEHICLE_MESSAGE = 'Vehicle Livery Editor requires an active player vehicle.';
+      const LIVERY_EDITOR_UNAVAILABLE_MESSAGE = 'Vehicle Livery Editor is not available in this UI.';
+      const LIVERY_EDITOR_UNSUPPORTED_MESSAGE = 'Vehicle Livery Editor is not available for this vehicle.';
+      const LIVERY_EDITOR_MESSAGE_CATEGORY = 'vehiclePartsPainting';
+
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       let customBadgeRefreshPromise = null;
       let partLookup = Object.create(null);
@@ -555,6 +561,46 @@ angular.module('beamng.apps')
       function toLuaString(str) {
         if (str === undefined || str === null) { return 'nil'; }
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+      }
+
+      function sendUiMessage(messageText) {
+        if (messageText === undefined || messageText === null) { return; }
+        const text = String(messageText);
+        if (!text) { return; }
+        const command = 'ui_message(' + toLuaString(text) + ', 5, ' + toLuaString(LIVERY_EDITOR_MESSAGE_CATEGORY) + ')';
+        bngApi.engineLua(command);
+      }
+
+      function interpretLuaBoolean(value) {
+        if (value === true) { return true; }
+        if (value === false || value === null || value === undefined) { return false; }
+        if (typeof value === 'number') { return value !== 0; }
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (!normalized || normalized === 'false' || normalized === 'nil' || normalized === '0') { return false; }
+          return true;
+        }
+        return !!value;
+      }
+
+      function requestDynamicDecalSupport(callback) {
+        const command = `(function()
+  local veh = be:getPlayerVehicle(0)
+  if veh == nil then return false end
+  local hasPart = extensions.core_vehicle_partmgmt.hasAvailablePart(veh.JBeam .. "_skin_dynamicTextures")
+  if hasPart == nil then return false end
+  return hasPart
+end)()`;
+        bngApi.engineLua(command, function (result) {
+          if (typeof callback !== 'function') { return; }
+          try {
+            callback(interpretLuaBoolean(result));
+          } catch (err) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+              globalWindow.console.error('VehiclePartsPainting: Livery support callback failed.', err);
+            }
+          }
+        });
       }
 
       function applyUserPaintPresets(presets) {
@@ -2018,6 +2064,53 @@ angular.module('beamng.apps')
 
       $scope.restoreApp = function () {
         state.minimized = false;
+      };
+
+      $scope.openLiveryEditor = function () {
+        if (!state.vehicleId) {
+          sendUiMessage(LIVERY_EDITOR_NO_VEHICLE_MESSAGE);
+          return;
+        }
+
+        const bngVue = globalWindow && globalWindow.bngVue;
+        const gotoGameState = bngVue && bngVue.gotoGameState;
+
+        if (typeof gotoGameState !== 'function') {
+          if (globalWindow && globalWindow.console && typeof globalWindow.console.warn === 'function') {
+            globalWindow.console.warn('VehiclePartsPainting: gotoGameState is unavailable; cannot open livery editor.');
+          }
+          sendUiMessage(LIVERY_EDITOR_UNAVAILABLE_MESSAGE);
+          return;
+        }
+
+        requestDynamicDecalSupport(function (supported) {
+          if (!supported) {
+            sendUiMessage(LIVERY_EDITOR_UNSUPPORTED_MESSAGE);
+            return;
+          }
+
+          let proceed = true;
+          if (globalWindow && typeof globalWindow.confirm === 'function') {
+            try {
+              proceed = !!globalWindow.confirm(LIVERY_EDITOR_CONFIRMATION_TEXT);
+            } catch (err) {
+              proceed = false;
+              if (globalWindow.console && typeof globalWindow.console.warn === 'function') {
+                globalWindow.console.warn('VehiclePartsPainting: Livery editor confirmation failed.', err);
+              }
+            }
+          }
+
+          if (!proceed) { return; }
+
+          try {
+            gotoGameState.call(bngVue, 'livery-manager');
+          } catch (err) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+              globalWindow.console.error('VehiclePartsPainting: Failed to open livery editor.', err);
+            }
+          }
+        });
       };
 
       $scope.toggleBasePaintCollapsed = function () {

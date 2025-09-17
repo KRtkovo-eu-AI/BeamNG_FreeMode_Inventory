@@ -269,15 +269,27 @@ function instantiateController() {
   controllerHooks = null;
 
   const bngApiCalls = [];
+  const engineLuaCallbacks = [];
   const bngApiStub = {
-    engineLua: function (command) {
+    engineLua: function (command, callback) {
       bngApiCalls.push(command);
+      if (typeof callback === 'function') {
+        engineLuaCallbacks.push({ command: command, callback: callback });
+      }
+    }
+  };
+
+  const gotoGameStateCalls = [];
+  const bngVueStub = {
+    gotoGameState: function (stateName) {
+      gotoGameStateCalls.push(stateName);
     }
   };
 
   global.window = {
     bngApi: bngApiStub,
     console: console,
+    bngVue: bngVueStub,
     __vehiclePartsPaintingTestHooks: {
       registerController: function (hooks) {
         controllerHooks = hooks;
@@ -339,7 +351,10 @@ function instantiateController() {
     interval: interval,
     timeout: timeout,
     bngApiCalls: bngApiCalls,
-    hooks: controllerHooks
+    hooks: controllerHooks,
+    engineLuaCallbacks: engineLuaCallbacks,
+    gotoGameStateCalls: gotoGameStateCalls,
+    window: global.window
   };
 }
 
@@ -695,6 +710,36 @@ function resetPaint(scope, partPath) {
   const removeCommand = bngApiCalls[bngApiCalls.length - 1];
   const remainingPresets = parseSettingsSetStateCommand(removeCommand);
   assert(Array.isArray(remainingPresets) && remainingPresets.length === 0, 'Removing a preset should clear stored presets');
+
+  const gotoCalls = controller.gotoGameStateCalls;
+  const engineLuaCallbacks = controller.engineLuaCallbacks;
+
+  scope.state.vehicleId = scope.state.vehicleId || 4242;
+
+  scope.openLiveryEditor();
+  assert.strictEqual(gotoCalls.length, 0, 'Livery editor should not open before capability probe resolves');
+  assert(engineLuaCallbacks.length >= 1, 'Livery editor launch should request dynamic decal availability');
+  const liveryProbe = engineLuaCallbacks.shift();
+  assert(liveryProbe && typeof liveryProbe.callback === 'function', 'Livery support probe should expose a callback');
+  assert(liveryProbe.command && liveryProbe.command.indexOf('core_vehicle_partmgmt.hasAvailablePart') !== -1, 'Livery probe should query dynamic decal part availability');
+
+  controller.window.confirm = function () { return true; };
+  liveryProbe.callback(true);
+  assert.strictEqual(gotoCalls.length, 1, 'Supported vehicles should navigate to the livery editor when confirmed');
+  assert.strictEqual(gotoCalls[0], 'livery-manager', 'Livery editor navigation target should be livery-manager');
+
+  gotoCalls.length = 0;
+
+  scope.openLiveryEditor();
+  const unsupportedProbe = engineLuaCallbacks.shift();
+  assert(unsupportedProbe && typeof unsupportedProbe.callback === 'function', 'Second livery probe should expose a callback');
+  unsupportedProbe.callback(false);
+  const liveryMessageCommand = bngApiCalls[bngApiCalls.length - 1];
+  assert(liveryMessageCommand && liveryMessageCommand.indexOf('ui_message') !== -1, 'Unsupported vehicles should trigger a UI message');
+  assert(liveryMessageCommand.toLowerCase().indexOf('not available') !== -1, 'Unsupported vehicles should explain why the livery editor is unavailable');
+  assert.strictEqual(gotoCalls.length, 0, 'Unsupported vehicles should not navigate to the livery editor');
+
+  delete controller.window.confirm;
 
   console.log('All vehicle parts painting tests passed.');
 })();
