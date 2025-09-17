@@ -48,6 +48,7 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
+        configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',
@@ -851,6 +852,10 @@ angular.module('beamng.apps')
 
       $scope.restoreApp = function () {
         state.minimized = false;
+      };
+
+      $scope.toggleConfigToolsCollapsed = function () {
+        state.configToolsCollapsed = !state.configToolsCollapsed;
       };
 
       $scope.refresh = function () {

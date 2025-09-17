@@ -335,6 +335,31 @@
       flex-direction: column;
       gap: 8px;
     }
+    .vehicle-parts-painting .config-tools .config-tools-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .config-tools .collapse-toggle {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .vehicle-parts-painting .config-tools .collapse-toggle:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .config-tools .config-tools-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .config-tools.is-collapsed .config-tools-body {
+      display: none;
+    }
     .vehicle-parts-painting .config-tools h3 {
       margin: 0;
       font-size: 16px;
@@ -745,38 +770,49 @@
       </script>
     </div>
     <div class="editor-side">
-      <div class="config-tools">
-        <h3>Saved Configurations</h3>
-        <div class="config-actions">
-          <input type="text"
-                  placeholder="Configuration name"
-                  ng-model="state.configNameInput"
-                  ng-disabled="state.isSavingConfig || state.showReplaceConfirmation"
-                  autocomplete="off">
+      <div class="config-tools" ng-class="{'is-collapsed': state.configToolsCollapsed}">
+        <div class="config-tools-header">
+          <h3>Saved Configurations</h3>
           <button type="button"
-                  ng-click="saveCurrentConfiguration()"
-                  ng-disabled="state.isSavingConfig || state.showReplaceConfirmation">Save Configuration</button>
+                  class="collapse-toggle"
+                  ng-click="toggleConfigToolsCollapsed()"
+                  ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
+                  ng-disabled="true" disabled="disabled"
+                  aria-controls="vehiclePartsConfigToolsBody">
+            {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
+          </button>
         </div>
-        <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
-        <div class="saved-configs" ng-if="hasSavedConfigs()">
-          <div class="saved-item"
-                ng-repeat="config in getSavedConfigs() track by config.relativePath"
-                ng-class="{selected: isSavedConfigSelected(config)}"
-                ng-click="selectSavedConfig(config)">
-            <div class="saved-details">
-              <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
-              <div class="saved-meta">{{config.relativePath}}</div>
-            </div>
-            <div class="saved-actions">
-              <button type="button"
-                      ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
-                      ng-disabled="state.isSpawningConfig">Spawn</button>
+        <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
+          <div class="config-actions">
+            <input type="text"
+                    placeholder="Configuration name"
+                    ng-model="state.configNameInput"
+                    autocomplete="off">
+            <button type="button"
+                    ng-click="saveCurrentConfiguration()"
+                    ng-disabled="true">Save Configuration</button>
+          </div>
+          <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
+          <div class="saved-configs" ng-if="hasSavedConfigs()">
+            <div class="saved-item"
+                  ng-repeat="config in getSavedConfigs() track by config.relativePath"
+                  ng-class="{selected: isSavedConfigSelected(config)}"
+                  ng-click="selectSavedConfig(config)">
+              <div class="saved-details">
+                <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
+                <div class="saved-meta">{{config.relativePath}}</div>
+              </div>
+              <div class="saved-actions">
+                <button type="button"
+                        ng-click="spawnSavedConfiguration(config); $event.stopPropagation();"
+                        ng-disabled="true">Spawn</button>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>
-        <div class="config-footer">
-          <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
+          <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>
+          <div class="config-footer">
+            <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
+          </div>
         </div>
       </div>
       <div class="editor-panel" ng-if="state.selectedPart">
