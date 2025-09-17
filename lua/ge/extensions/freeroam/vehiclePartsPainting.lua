@@ -17,6 +17,7 @@ local partDescriptorsByVeh = {}
 local activePartIdSetByVeh = {}
 local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
+local screenshotCreatorUnavailableLogged = false
 local userColorPresets = nil
 local colorPresetPreferencesPath = false
 local editorPreferencesCandidates = nil
@@ -1089,7 +1090,10 @@ local function saveCurrentUserConfig(configName)
                 log('W', logTag, string.format('Failed to trigger util_screenshotCreator for "%s": %s', tostring(previewSelection), tostring(errScreenshot)))
               end
             else
-              log('D', logTag, 'util_screenshotCreator extension unavailable or missing startWork; skipping screenshot generation')
+              if not screenshotCreatorUnavailableLogged then
+                log('D', logTag, 'util_screenshotCreator extension unavailable or missing startWork; skipping screenshot generation')
+                screenshotCreatorUnavailableLogged = true
+              end
             end
           end
           if displayName and displayName ~= '' then
