@@ -1,4 +1,38 @@
 angular.module('beamng.apps')
+.directive('vehiclePartsPaintingFilterInput', [function () {
+  return {
+    restrict: 'A',
+    link: function (scope, element) {
+      if (!element || typeof element.on !== 'function') { return; }
+
+      function sanitizeValue(value) {
+        if (typeof value === 'string') { return value; }
+        if (value === undefined || value === null) { return ''; }
+        return String(value);
+      }
+
+      function emitChange() {
+        if (!scope) { return; }
+        const handler = scope.handleFilterInput;
+        if (typeof handler !== 'function') { return; }
+        const rawValue = typeof element.val === 'function' ? element.val() : element.value;
+        scope.$evalAsync(function () {
+          handler(sanitizeValue(rawValue));
+        });
+      }
+
+      element.on('input', emitChange);
+      element.on('search', emitChange);
+      element.on('change', emitChange);
+
+      scope.$on('$destroy', function () {
+        element.off('input', emitChange);
+        element.off('search', emitChange);
+        element.off('change', emitChange);
+      });
+    }
+  };
+}])
 .directive('vehiclePartsPainting', ['$injector', function ($injector) {
   function resolveBngApi() {
     if ($injector) {
@@ -1416,6 +1450,7 @@ end)()`;
           refreshCustomBadges: refreshCustomBadgeVisibility,
           computeFilteredParts: computeFilteredParts,
           markPartsTreeDirty: markPartsTreeDirty,
+          handleFilterInput: handleFilterInputChange,
           getCustomPaintState: function () { return customPaintStateByPath; }
         });
       }
@@ -1782,6 +1817,23 @@ end)()`;
         }
       }
 
+      function handleFilterInputChange(rawValue) {
+        let value = '';
+        if (typeof rawValue === 'string') {
+          value = rawValue;
+        } else if (rawValue !== undefined && rawValue !== null) {
+          value = String(rawValue);
+        }
+
+        if (state.filterText !== value) {
+          state.filterText = value;
+        } else {
+          computeFilteredParts();
+        }
+      }
+
+      $scope.handleFilterInput = handleFilterInputChange;
+
       $scope.$watch(function () { return state.filterText; }, function () {
         computeFilteredParts();
       });
@@ -2124,7 +2176,7 @@ end)()`;
       };
 
       $scope.clearFilter = function () {
-        state.filterText = '';
+        handleFilterInputChange('');
       };
 
       $scope.minimizeApp = function () {

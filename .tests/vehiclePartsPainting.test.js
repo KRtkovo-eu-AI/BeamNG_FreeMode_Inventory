@@ -456,6 +456,31 @@ function resetPaint(scope, partPath) {
   node = findNode(state.filteredTree, 'vehicle/root');
   assert(node && !scope.hasCustomBadge(node.part), 'Part 1 custom paint badge should be cleared after reset');
 
+  hooks.handleFilterInput('hood');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && state.filteredParts.length === 1, 'Filter input handler should narrow results to hood');
+
+  hooks.handleFilterInput('hood scoop');
+  scope.$digest();
+  assert.strictEqual(state.filteredParts.length, 0, 'Filter handler should exclude parts with unmatched queries');
+
+  hooks.handleFilterInput('hood');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && state.filteredParts.length === 1, 'Filter handler should restore hood results after refining query');
+
+  hooks.handleFilterInput('');
+  scope.$digest();
+  assert.strictEqual(state.filterText, '', 'Filter handler should clear the filter text');
+
+  state.filteredTree = [];
+  hooks.handleFilterInput('');
+  scope.$digest();
+  assert.strictEqual(state.filteredTree.length, 1, 'Filter handler should repopulate the full tree when value remains unchanged');
+  node = findNode(state.filteredTree, 'vehicle/root');
+  assert(node, 'Root node should be present after reapplying empty filter value');
+
   assert(Array.isArray(scope.basePaintEditors) && scope.basePaintEditors.length === 3, 'Base paint editors should mirror vehicle paints');
   scope.basePaintEditors[0].color.g = 128;
   scope.basePaintEditors[0].color.b = 64;
