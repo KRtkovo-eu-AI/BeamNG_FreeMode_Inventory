@@ -6,6 +6,8 @@ local M = {}
 
 local logTag = 'vehiclePartsPainting'
 
+local TOPBAR_HELPER_EXTENSION = 'ui_topBar_vehiclePartsPainting'
+
 local vehManager = extensions.core_vehicle_manager
 local jbeamIO = require('jbeam/io')
 
@@ -19,6 +21,27 @@ local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
+
+local function ensureTopBarHelperLoaded()
+  local manager = rawget(_G, 'extensions')
+  if type(manager) ~= 'table' then
+    return
+  end
+
+  if type(manager.isExtensionLoaded) == 'function' then
+    local ok, isLoaded = pcall(manager.isExtensionLoaded, TOPBAR_HELPER_EXTENSION)
+    if ok and isLoaded then
+      return
+    end
+  end
+
+  if type(manager.load) == 'function' then
+    local ok, err = pcall(manager.load, TOPBAR_HELPER_EXTENSION)
+    if not ok and err then
+      log('W', logTag, 'Failed to load '..TOPBAR_HELPER_EXTENSION..': '..tostring(err))
+    end
+  end
+end
 
 local sanitizeColorPresetEntry
 
@@ -2312,6 +2335,7 @@ local function onVehicleSwitched(oldId, newId, player)
 end
 
 local function onExtensionLoaded()
+  ensureTopBarHelperLoaded()
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
   partDescriptorsByVeh = {}
@@ -2348,6 +2372,7 @@ local function onExtensionUnloaded()
 end
 
 local function open()
+  ensureTopBarHelperLoaded()
   requestState()
   requestSavedConfigs()
   showAllParts()
