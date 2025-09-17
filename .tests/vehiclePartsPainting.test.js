@@ -171,6 +171,39 @@ function createTimeoutStub() {
   return timeout;
 }
 
+function createEventTargetStub() {
+  const listeners = Object.create(null);
+  return {
+    value: '',
+    addEventListener: function (type, handler) {
+      if (!listeners[type]) {
+        listeners[type] = [];
+      }
+      listeners[type].push(handler);
+    },
+    removeEventListener: function (type, handler) {
+      const handlers = listeners[type];
+      if (!handlers) { return; }
+      const index = handlers.indexOf(handler);
+      if (index !== -1) {
+        handlers.splice(index, 1);
+      }
+    },
+    trigger: function (type) {
+      const handlers = listeners[type];
+      if (!handlers) { return; }
+      const event = { type: type, target: this, currentTarget: this };
+      const snapshot = handlers.slice();
+      for (let i = 0; i < snapshot.length; i++) {
+        const handler = snapshot[i];
+        if (typeof handler === 'function') {
+          handler(event);
+        }
+      }
+    }
+  };
+}
+
 function decodeLuaStringLiteral(value) {
   let result = '';
   for (let i = 0; i < value.length; i++) {
@@ -325,6 +358,18 @@ function instantiateController() {
   const scope = new ScopeStub();
   const interval = createIntervalStub();
   const timeout = createTimeoutStub();
+  const filterInput = createEventTargetStub();
+  const elementStub = {
+    0: {
+      querySelector: function (selector) {
+        if (selector === '.filter-field input') {
+          return filterInput;
+        }
+        return null;
+      }
+    },
+    length: 1
+  };
 
   const injected = controllerDeps.map((dep) => {
     if (dep === '$scope') {
@@ -335,6 +380,9 @@ function instantiateController() {
     }
     if (dep === '$timeout') {
       return timeout;
+    }
+    if (dep === '$element') {
+      return elementStub;
     }
     throw new Error('Unknown controller dependency: ' + dep);
   });
@@ -354,7 +402,8 @@ function instantiateController() {
     hooks: controllerHooks,
     engineLuaCallbacks: engineLuaCallbacks,
     gotoGameStateCalls: gotoGameStateCalls,
-    window: global.window
+    window: global.window,
+    filterInput: filterInput
   };
 }
 
@@ -388,11 +437,20 @@ function resetPaint(scope, partPath) {
 
 function setFilterText(scope, controller, value, options) {
   options = options || {};
+  if (controller && controller.filterInput) {
+    controller.filterInput.value = value;
+  }
   scope.state.filterText = value;
   if (options.skipDigest) {
     return;
   }
   scope.$digest();
+}
+
+function triggerFilterSearch(controller, value) {
+  assert(controller && controller.filterInput, 'Filter input stub not available');
+  controller.filterInput.value = value;
+  controller.filterInput.trigger('search');
 }
 
 (function runTests() {
@@ -559,6 +617,39 @@ function setFilterText(scope, controller, value, options) {
   assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Programmatic filter reset should restore the door node');
   filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
   assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Programmatic filter reset should restore the bumper node');
+
+  triggerFilterSearch(controller, 'bumper');
+  scope.$digest();
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Search events should isolate the bumper part');
+  let searchMissingDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert.strictEqual(searchMissingDoor, null, 'Search events should hide non-matching parts');
+
+  triggerFilterSearch(controller, '');
+  scope.$digest();
+  assert.strictEqual(state.filterText, '', 'Search events should synchronize the filter text with the input value');
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && node.part && node.part.partPath === 'vehicle/hood', 'Clearing via search event should restore the hood node');
+  doorNode = findNode(state.filteredTree, 'vehicle/door');
+  assert(doorNode && doorNode.part && doorNode.part.partPath === 'vehicle/door', 'Clearing via search event should restore the door node');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Clearing via search event should restore the bumper node');
+
+  triggerFilterSearch(controller, 'hood');
+  scope.$digest();
+  filteredHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert(filteredHood && filteredHood.part && filteredHood.part.partPath === 'vehicle/hood', 'Search events should filter hood parts after native clear');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert.strictEqual(filteredBumper, null, 'Search events should continue hiding unmatched bumper nodes after refiltering');
+
+  triggerFilterSearch(controller, '');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && node.part && node.part.partPath === 'vehicle/hood', 'Second search event clear should restore the hood node');
+  doorNode = findNode(state.filteredTree, 'vehicle/door');
+  assert(doorNode && doorNode.part && doorNode.part.partPath === 'vehicle/door', 'Second search event clear should restore the door node');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Second search event clear should restore the bumper node');
 
   const customMap = hooks.getCustomPaintState();
   customMap['vehicle/door'] = true;
