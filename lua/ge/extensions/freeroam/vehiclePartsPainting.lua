@@ -6,7 +6,7 @@ local M = {}
 
 local logTag = 'vehiclePartsPainting'
 
-local TOPBAR_HELPER_EXTENSION = 'ui_topBar_vehiclePartsPainting'
+local TOPBAR_HELPER_EXTENSION = 'ui/topBar/vehiclePartsPainting'
 
 local vehManager = extensions.core_vehicle_manager
 local jbeamIO = require('jbeam/io')

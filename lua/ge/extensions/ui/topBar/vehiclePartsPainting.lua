@@ -4,7 +4,7 @@
 
 local M = {}
 
-local logTag = 'ui_topBar_vehiclePartsPainting'
+local logTag = 'ui/topBar/vehiclePartsPainting'
 local ITEM_ID = 'vehiclePartsPainting'
 local TOPBAR_EXTENSION_NAME = 'ui_topBar'
 local RETRY_INTERVAL = 0.5
