@@ -1098,6 +1098,22 @@ end
   vehObj:queueLuaCommand(command)
 end
 
+local function queueApplyBasePaintsToAllParts(vehObj, paints)
+  if not vehObj or not paints then return end
+  if type(vehObj.queueLuaCommand) ~= 'function' then return end
+
+  local command = string.format([[local paints = %s
+if partCondition and partCondition.setAllPartPaints then
+  local ok, err = pcall(partCondition.setAllPartPaints, paints, 0)
+  if not ok then
+    log('W', 'vehiclePartsPainting', 'setAllPartPaints failed for vehicle '..tostring(obj:getID())..': '..tostring(err))
+  end
+end
+]], paintsToLuaLiteral(paints))
+
+  vehObj:queueLuaCommand(command)
+end
+
 local function collectPartIdentifierCandidates(partPath, partName, slotPath)
   local candidates = {}
   local seen = {}
@@ -1365,8 +1381,34 @@ local function applyBasePaintsToVehicle(vehObj, paints)
   if not vehObj or type(paints) ~= 'table' then return end
   if tableIsEmpty(paints) then return end
 
-  local count = #paints
-  for i = 1, math.min(3, math.max(1, count)) do
+  local vehId = vehObj.getID and vehObj:getID()
+  local count = math.max(1, #paints)
+  local colorsExtension = getLoadedExtension('core_vehicle_colors')
+  local canUseColorsExtension = colorsExtension and type(colorsExtension.setVehiclePaint) == 'function'
+  local usedExtension = false
+
+  if canUseColorsExtension and vehId and vehId ~= -1 then
+    for i = 1, math.min(3, count) do
+      local paint = paints[i] or paints[count]
+      if paint then
+        local paintCopy = copyPaint(paint)
+        if paintCopy then
+          local ok, err = safePcall(colorsExtension.setVehiclePaint, i, paintCopy, vehId)
+          if not ok then
+            log('W', logTag, string.format('setVehiclePaint failed for vehicle %s slot %d: %s', tostring(vehId), i, tostring(err)))
+          else
+            usedExtension = true
+          end
+        end
+      end
+    end
+  end
+
+  if usedExtension then
+    return
+  end
+
+  for i = 1, math.min(3, count) do
     local paint = paints[i] or paints[count]
     if paint then
       applyBasePaintToVehicleSlot(vehObj, i - 1, paint)
@@ -1419,10 +1461,14 @@ local function setVehicleBasePaints(paints)
 
   log('I', logTag, string.format('Updating vehicle %s base paints to %s', tostring(vehId), paintsToLogSummary(sanitized)))
 
-  applyBasePaintsToVehicle(vehObj, sanitized)
-
   vehData.config = vehData.config or {}
   vehData.config.paints = copyPaints(sanitized)
+
+  ensureVehiclePartConditionInitialized(vehObj, vehId)
+
+  applyBasePaintsToVehicle(vehObj, sanitized)
+  queueApplyBasePaintsToAllParts(vehObj, sanitized)
+  applyStoredPaints(vehId)
 
   sendState(vehId)
 end
