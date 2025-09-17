@@ -81,9 +81,11 @@ angular.module('beamng.apps')
       const colorPickerState = {
         context: null,
         index: null,
-        paint: null,
+        targetPaint: null,
+        working: null,
         hsv: { h: 0, s: 0, v: 1 },
-        rectBounds: null
+        rectBounds: null,
+        visible: false
       };
       let suppressHsvSync = false;
       let hsvRectDragging = false;
@@ -215,6 +217,19 @@ angular.module('beamng.apps')
         color.g = clampColorByte(color.g);
         color.b = clampColorByte(color.b);
         return color;
+      }
+
+      function createPickerWorkingPaint(paint) {
+        if (!paint) { return null; }
+        const working = angular.copy(paint);
+        sanitizeColor(working);
+        working.alpha = clamp01(working.alpha);
+        working.metallic = clamp01(working.metallic);
+        working.roughness = clamp01(working.roughness);
+        working.clearcoat = clamp01(working.clearcoat);
+        working.clearcoatRoughness = clamp01(working.clearcoatRoughness);
+        syncHtmlColor(working);
+        return working;
       }
 
       function getPaintHex(paint) {
@@ -397,8 +412,8 @@ angular.module('beamng.apps')
         }
 
         syncHtmlColor(paint);
-        if (colorPickerState.paint === paint) {
-          syncActiveHsvFromPaint();
+        if (colorPickerState.working === paint) {
+          syncActiveHsvFromWorking();
         }
       }
 
@@ -421,17 +436,19 @@ angular.module('beamng.apps')
         stopHsvRectDrag();
         colorPickerState.context = null;
         colorPickerState.index = null;
-        colorPickerState.paint = null;
+        colorPickerState.targetPaint = null;
+        colorPickerState.working = null;
+        colorPickerState.visible = false;
         colorPickerState.hsv.h = 0;
         colorPickerState.hsv.s = 0;
         colorPickerState.hsv.v = 1;
         colorPickerState.rectBounds = null;
       }
 
-      function syncActiveHsvFromPaint() {
-        const paint = colorPickerState.paint;
-        if (!paint) { return; }
-        const color = ensureColorObject(paint);
+      function syncActiveHsvFromWorking() {
+        const working = colorPickerState.working;
+        if (!working) { return; }
+        const color = ensureColorObject(working);
         const hsv = rgbToHsvColor(color.r, color.g, color.b);
         colorPickerState.hsv.h = hsv.h;
         colorPickerState.hsv.s = hsv.s;
@@ -444,11 +461,14 @@ angular.module('beamng.apps')
           clearActiveColorTarget();
           return;
         }
+        stopHsvRectDrag();
         colorPickerState.context = context;
         colorPickerState.index = index;
-        colorPickerState.paint = paint;
+        colorPickerState.targetPaint = paint;
         syncHtmlColor(paint);
-        syncActiveHsvFromPaint();
+        colorPickerState.working = createPickerWorkingPaint(paint);
+        colorPickerState.visible = !!colorPickerState.working;
+        syncActiveHsvFromWorking();
       }
 
       function refreshActiveColorTarget() {
@@ -458,11 +478,14 @@ angular.module('beamng.apps')
           clearActiveColorTarget();
           return;
         }
-        if (colorPickerState.paint !== paint) {
-          colorPickerState.paint = paint;
+        if (colorPickerState.targetPaint !== paint) {
+          colorPickerState.targetPaint = paint;
+          if (!colorPickerState.visible) {
+            colorPickerState.working = createPickerWorkingPaint(paint);
+            syncActiveHsvFromWorking();
+          }
         }
         syncHtmlColor(paint);
-        syncActiveHsvFromPaint();
       }
 
       function handlePaintReplacement(context, index) {
@@ -471,7 +494,7 @@ angular.module('beamng.apps')
       }
 
       function applyActiveHsv() {
-        const paint = colorPickerState.paint;
+        const paint = colorPickerState.working;
         if (!paint) { return; }
         suppressHsvSync = true;
         const hsv = colorPickerState.hsv;
@@ -486,8 +509,25 @@ angular.module('beamng.apps')
         });
       }
 
+      function applyWorkingPaintToTarget() {
+        const working = colorPickerState.working;
+        const target = colorPickerState.targetPaint;
+        if (!working || !target) { return; }
+        const sourceColor = sanitizeColor(working);
+        const targetColor = ensureColorObject(target);
+        targetColor.r = sourceColor.r;
+        targetColor.g = sourceColor.g;
+        targetColor.b = sourceColor.b;
+        target.alpha = clamp01(working.alpha);
+        target.metallic = clamp01(working.metallic);
+        target.roughness = clamp01(working.roughness);
+        target.clearcoat = clamp01(working.clearcoat);
+        target.clearcoatRoughness = clamp01(working.clearcoatRoughness);
+        syncHtmlColor(target);
+      }
+
       function updateHsvFromClientPosition(clientX, clientY) {
-        if (!colorPickerState.paint || !colorPickerState.rectBounds) { return; }
+        if (!colorPickerState.working || !colorPickerState.rectBounds) { return; }
         const rect = colorPickerState.rectBounds;
         const width = rect.width || (rect.right - rect.left);
         const height = rect.height || (rect.bottom - rect.top);
@@ -1386,6 +1426,9 @@ angular.module('beamng.apps')
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
         syncHtmlColor(paint);
+        if (colorPickerState.working === paint) {
+          syncActiveHsvFromWorking();
+        }
       };
 
       $scope.onHtmlColorInputChanged = function (paint) {
@@ -1397,6 +1440,9 @@ angular.module('beamng.apps')
         color.g = parsed.g;
         color.b = parsed.b;
         syncHtmlColor(paint);
+        if (colorPickerState.working === paint) {
+          syncActiveHsvFromWorking();
+        }
       };
 
       $scope.onHtmlColorInputBlur = function (paint) {
@@ -1404,6 +1450,9 @@ angular.module('beamng.apps')
         const parsed = parseHtmlColor(paint.htmlColor);
         if (!parsed) {
           syncHtmlColor(paint);
+          if (colorPickerState.working === paint) {
+            syncActiveHsvFromWorking();
+          }
         }
       };
 
@@ -1555,7 +1604,10 @@ angular.module('beamng.apps')
       };
 
       $scope.isColorEditorActive = function (context, index) {
-        return colorPickerState.context === context && colorPickerState.index === index && !!colorPickerState.paint;
+        return colorPickerState.visible &&
+          colorPickerState.context === context &&
+          colorPickerState.index === index &&
+          !!colorPickerState.working;
       };
 
       $scope.getColorButtonLabel = function (context, index) {
@@ -1572,7 +1624,7 @@ angular.module('beamng.apps')
       };
 
       function getActiveColorLabel() {
-        if (!colorPickerState.paint) { return ''; }
+        if (!colorPickerState.working) { return ''; }
         if (colorPickerState.context === 'base') {
           return 'Vehicle paint ' + (colorPickerState.index + 1);
         }
@@ -1605,12 +1657,12 @@ angular.module('beamng.apps')
       };
 
       $scope.onHueSliderChange = function () {
-        if (!colorPickerState.paint) { return; }
+        if (!colorPickerState.working) { return; }
         applyActiveHsv();
       };
 
       $scope.onHsvRectangleMouseDown = function ($event) {
-        if (!colorPickerState.paint) { return; }
+        if (!colorPickerState.working) { return; }
         if ($event && typeof $event.preventDefault === 'function') { $event.preventDefault(); }
         const target = $event && $event.currentTarget ? $event.currentTarget : null;
         if (!target || typeof target.getBoundingClientRect !== 'function') { return; }
@@ -1621,6 +1673,16 @@ angular.module('beamng.apps')
           globalWindow.addEventListener('mousemove', handleHsvRectMouseMove);
           globalWindow.addEventListener('mouseup', handleHsvRectMouseUp);
         }
+      };
+
+      $scope.applyColorPickerSelection = function () {
+        if (!colorPickerState.working || !colorPickerState.targetPaint) { return; }
+        applyWorkingPaintToTarget();
+        clearActiveColorTarget();
+      };
+
+      $scope.cancelColorPicker = function () {
+        clearActiveColorTarget();
       };
 
       $scope.selectPart = function (part) {
@@ -1966,12 +2028,12 @@ angular.module('beamng.apps')
       });
 
       $scope.$watch(function () {
-        if (!colorPickerState.paint) { return null; }
-        const color = ensureColorObject(colorPickerState.paint);
+        if (!colorPickerState.working) { return null; }
+        const color = ensureColorObject(colorPickerState.working);
         return [color.r, color.g, color.b].join(',');
       }, function (newValue, oldValue) {
         if (!newValue || newValue === oldValue || suppressHsvSync) { return; }
-        syncActiveHsvFromPaint();
+        syncActiveHsvFromWorking();
       });
 
       $scope.$on('$destroy', function () {
