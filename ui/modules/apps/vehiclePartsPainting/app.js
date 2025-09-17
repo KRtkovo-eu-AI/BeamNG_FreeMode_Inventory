@@ -1805,7 +1805,7 @@ end)()`;
       }
 
       let lastFilterTextValue = state.filterText;
-      let filterChangeHandledByHook = false;
+      let filterChangeHandledByHookValue = null;
 
       function scheduleFilteredPartsRecompute(options) {
         options = options || {};
@@ -1837,8 +1837,8 @@ end)()`;
       $scope.$watch(function () { return state.filterText; }, function (newValue, oldValue) {
         if (newValue === oldValue) { return; }
         const shouldImmediate = shouldRecomputeFilterImmediately(oldValue, newValue);
-        const handledByHook = shouldImmediate && filterChangeHandledByHook;
-        filterChangeHandledByHook = false;
+        const handledByHook = shouldImmediate && filterChangeHandledByHookValue === newValue;
+        filterChangeHandledByHookValue = null;
         if (!handledByHook) {
           if (shouldImmediate) {
             scheduleFilteredPartsRecompute({ immediate: true });
@@ -1853,7 +1853,7 @@ end)()`;
         const previousValue = lastFilterTextValue;
         const currentValue = state.filterText;
         const shouldImmediate = shouldRecomputeFilterImmediately(previousValue, currentValue);
-        filterChangeHandledByHook = shouldImmediate;
+        filterChangeHandledByHookValue = shouldImmediate ? currentValue : null;
         if (shouldImmediate) {
           scheduleFilteredPartsRecompute({ immediate: true });
         } else {

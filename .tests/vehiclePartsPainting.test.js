@@ -419,7 +419,8 @@ function setFilterText(scope, controller, value, options) {
   const parts = [
     createPart('vehicle/root', 'body', basePaints),
     createPart('vehicle/hood', 'body/hood', basePaints),
-    createPart('vehicle/door', 'body/door', basePaints)
+    createPart('vehicle/door', 'body/door', basePaints),
+    createPart('vehicle/bumper_front', 'body/bumper', basePaints)
   ];
 
   emitState(scope, {
@@ -526,9 +527,62 @@ function setFilterText(scope, controller, value, options) {
   doorAfterBackspace = findNode(state.filteredTree, 'vehicle/door');
   assert(doorAfterBackspace && doorAfterBackspace.part && doorAfterBackspace.part.partPath === 'vehicle/door', 'Debounce flush after broadening should retain door visibility');
 
+  setFilterText(scope, controller, 'bumper');
+  let filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Filtering for bumper should isolate the bumper part');
+  let missingDoorAfterBumperFilter = findNode(state.filteredTree, 'vehicle/door');
+  assert.strictEqual(missingDoorAfterBumperFilter, null, 'Filtering for bumper should hide door parts');
+
+  scope.onFilterInputChanged();
+  scope.$digest();
+  controller.timeout.flush();
+
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Confirming the bumper filter should keep the bumper visible');
+
+  setFilterText(scope, controller, 'bumpe');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Editing the bumper filter should keep the bumper node visible');
+  let missingHoodAfterEdit = findNode(state.filteredTree, 'vehicle/hood');
+  assert.strictEqual(missingHoodAfterEdit, null, 'Editing the bumper filter should continue hiding hood parts');
+
+  setFilterText(scope, controller, 'bump');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Broadening the bumper filter should retain the bumper node');
+
   scope.clearFilter();
   scope.$digest();
   controller.timeout.flush();
+
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Clearing the filter should restore the bumper node to the tree');
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && node.part && node.part.partPath === 'vehicle/hood', 'Clearing the filter should restore the hood node to the tree');
+  doorNode = findNode(state.filteredTree, 'vehicle/door');
+  assert(doorNode && doorNode.part && doorNode.part.partPath === 'vehicle/door', 'Clearing the filter should restore the door node to the tree');
+
+  setFilterText(scope, controller, 'door');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Filtering for door after confirming search should still isolate the door part');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert.strictEqual(filteredBumper, null, 'Filtering for door after confirming search should hide bumper parts');
+
+  setFilterText(scope, controller, '');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Clearing the filter after refiltering should restore the bumper node');
+
+  setFilterText(scope, controller, 'door');
+  scope.state.filterText = 'd';
+  scope.onFilterInputChanged();
+  scope.state.filterText = '';
+  scope.$digest();
+  controller.timeout.flush();
+  assert.strictEqual(state.filterText, '', 'Programmatic filter reset should leave the search box empty');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Programmatic filter reset should restore the door node');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Programmatic filter reset should restore the bumper node');
+
   const customMap = hooks.getCustomPaintState();
   customMap['vehicle/door'] = true;
   scope.$digest();
