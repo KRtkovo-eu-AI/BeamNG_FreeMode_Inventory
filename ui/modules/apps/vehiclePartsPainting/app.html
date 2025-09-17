@@ -344,10 +344,11 @@
     .vehicle-parts-painting .config-tools .collapse-toggle {
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.3);
-      color: inherit;
+      color: rgba(255, 255, 255, 0.3);
       padding: 4px 10px;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 10px;
+      font-style: italic;
     }
     .vehicle-parts-painting .config-tools .collapse-toggle:hover {
       border-color: rgba(255, 255, 255, 0.6);
@@ -779,7 +780,8 @@
                   ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
                   ng-disabled="true" disabled="disabled"
                   aria-controls="vehiclePartsConfigToolsBody">
-            {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
+            <!--{{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}-->
+            {{state.configToolsCollapsed ? 'Not Implemented Yet' : 'Collapse'}}
           </button>
         </div>
         <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
