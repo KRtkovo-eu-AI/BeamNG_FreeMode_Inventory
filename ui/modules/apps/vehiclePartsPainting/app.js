@@ -51,7 +51,8 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
-        configToolsCollapsed: false,
+        basePaintCollapsed: true,
+        configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',
@@ -67,6 +68,7 @@ angular.module('beamng.apps')
 
       $scope.state = state;
       $scope.editedPaints = [];
+      $scope.basePaintEditors = [];
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       let customBadgeRefreshPromise = null;
@@ -368,6 +370,49 @@ angular.module('beamng.apps')
         return result;
       }
 
+      function syncBasePaintEditorsFromState() {
+        if (!Array.isArray(state.basePaints) || !state.basePaints.length) {
+          $scope.basePaintEditors = [];
+          return;
+        }
+        $scope.basePaintEditors = convertPaintsToView(state.basePaints);
+      }
+
+      function getBasePaintEditorPaints() {
+        return viewToPaints($scope.basePaintEditors);
+      }
+
+      function updatePartsWithBasePaint(basePaints) {
+        if (!Array.isArray(state.parts) || !state.parts.length) { return; }
+        const baseClone = clonePaints(basePaints);
+        const hasBase = baseClone.length > 0;
+        let changed = false;
+        for (let i = 0; i < state.parts.length; i++) {
+          const part = state.parts[i];
+          if (!part || part.hasCustomPaint) { continue; }
+          const updatedPart = Object.assign({}, part, {
+            hasCustomPaint: false,
+            customPaints: null,
+            currentPaints: hasBase ? clonePaints(baseClone) : []
+          });
+          applyPartReplacement(updatedPart, i);
+          changed = true;
+        }
+        if (changed) {
+          computeFilteredParts();
+        }
+      }
+
+      function applyBasePaintsLocally(paints) {
+        const baseClone = clonePaints(paints);
+        state.basePaints = baseClone;
+        syncBasePaintEditorsFromState();
+        updatePartsWithBasePaint(baseClone);
+        refreshCustomBadgeVisibility();
+      }
+
+      syncBasePaintEditorsFromState();
+
       function resetPartLookup() {
         partLookup = Object.create(null);
         partIndexLookup = Object.create(null);
@@ -622,6 +667,26 @@ angular.module('beamng.apps')
           computeFilteredParts();
         }
       }
+
+      $scope.hasBasePaintChanges = function () {
+        if (!$scope.basePaintEditors || !$scope.basePaintEditors.length) { return false; }
+        const paints = getBasePaintEditorPaints();
+        return !paintCollectionsEqual(state.basePaints, paints);
+      };
+
+      $scope.applyBasePaints = function () {
+        if (!$scope.basePaintEditors || !$scope.basePaintEditors.length) { return; }
+        const paints = getBasePaintEditorPaints();
+        if (!paints.length) { return; }
+        applyBasePaintsLocally(paints);
+        const payload = { paints: paints };
+        const command = 'freeroam_vehiclePartsPainting.setVehicleBasePaintsJson(' + toLuaString(JSON.stringify(payload)) + ')';
+        bngApi.engineLua(command);
+      };
+
+      $scope.resetBasePaintEditors = function () {
+        syncBasePaintEditorsFromState();
+      };
 
       $scope.hasCustomBadge = function (part) {
         if (!part || !part.partPath) { return false; }
@@ -1142,6 +1207,10 @@ angular.module('beamng.apps')
         state.minimized = false;
       };
 
+      $scope.toggleBasePaintCollapsed = function () {
+        state.basePaintCollapsed = !state.basePaintCollapsed;
+      };
+
       $scope.toggleConfigToolsCollapsed = function () {
         state.configToolsCollapsed = !state.configToolsCollapsed;
       };
@@ -1315,6 +1384,7 @@ angular.module('beamng.apps')
             clearPendingReplacement();
             clearCustomPaintState();
             state.basePaints = [];
+            $scope.basePaintEditors = [];
             state.parts = [];
             resetPartLookup();
             state.partsTree = [];
@@ -1359,7 +1429,8 @@ angular.module('beamng.apps')
             clearCustomPaintState();
           }
 
-          state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
+          state.basePaints = Array.isArray(data.basePaints) ? clonePaints(data.basePaints) : [];
+          syncBasePaintEditorsFromState();
           state.parts = Array.isArray(data.parts) ? data.parts : [];
           rebuildPartLookup();
           rebuildCurrentPartsTree();

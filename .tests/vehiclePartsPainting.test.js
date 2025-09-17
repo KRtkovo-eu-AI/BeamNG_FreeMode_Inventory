@@ -290,6 +290,7 @@ function resetPaint(scope, partPath) {
 (function runTests() {
   const controller = instantiateController();
   const scope = controller.scope;
+  const bngApiCalls = controller.bngApiCalls;
   const hooks = controller.hooks;
 
   const basePaints = [
@@ -355,6 +356,31 @@ function resetPaint(scope, partPath) {
   resetPaint(scope, 'vehicle/root');
   node = findNode(state.filteredTree, 'vehicle/root');
   assert(node && !scope.hasCustomBadge(node.part), 'Part 1 custom paint badge should be cleared after reset');
+
+  assert(Array.isArray(scope.basePaintEditors) && scope.basePaintEditors.length === 3, 'Base paint editors should mirror vehicle paints');
+  scope.basePaintEditors[0].color.g = 128;
+  scope.basePaintEditors[0].color.b = 64;
+  scope.$digest();
+  assert(scope.hasBasePaintChanges(), 'Base paint change should be detected');
+  scope.applyBasePaints();
+  scope.$digest();
+  assert(!scope.hasBasePaintChanges(), 'Base paint change state should clear after apply');
+  const lastCommand = bngApiCalls[bngApiCalls.length - 1];
+  assert(lastCommand && lastCommand.startsWith('freeroam_vehiclePartsPainting.setVehicleBasePaintsJson('), 'Base paint command should be queued');
+  const updatedBasePaint = scope.state.basePaints[0];
+  assert(Math.abs(updatedBasePaint.baseColor[1] - (128 / 255)) < 0.001, 'Base paint green channel should update');
+  assert(Math.abs(updatedBasePaint.baseColor[2] - (64 / 255)) < 0.001, 'Base paint blue channel should update');
+  doorNode = findNode(state.filteredTree, 'vehicle/door');
+  const doorPaint = doorNode.part.currentPaints[0];
+  assert(Math.abs(doorPaint.baseColor[1] - (128 / 255)) < 0.001, 'Door part should inherit updated base paint');
+  assert(Math.abs(doorPaint.baseColor[2] - (64 / 255)) < 0.001, 'Door part should inherit updated base paint blue channel');
+  assert(!scope.hasCustomBadge(doorNode.part), 'Door should remain without a custom badge after base paint change');
+
+  assert(state.basePaintCollapsed === false, 'Base paint panel should default to expanded');
+  scope.toggleBasePaintCollapsed();
+  assert(state.basePaintCollapsed === true, 'Base paint panel should collapse when toggled');
+  scope.toggleBasePaintCollapsed();
+  assert(state.basePaintCollapsed === false, 'Base paint panel should expand when toggled again');
 
   console.log('All vehicle parts painting tests passed.');
 })();

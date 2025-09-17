@@ -59,6 +59,24 @@ local function deepCopy(value)
   return copy
 end
 
+local function getLoadedExtension(name)
+  if type(name) ~= 'string' or name == '' then
+    return nil
+  end
+
+  local globalEnv = _G
+  if type(globalEnv) ~= 'table' then
+    return nil
+  end
+
+  local manager = rawget(globalEnv, 'extensions')
+  if type(manager) ~= 'table' then
+    return nil
+  end
+
+  return rawget(manager, name)
+end
+
 local function sanitizeFileName(name)
   if not name or name == '' then
     return nil
@@ -100,14 +118,17 @@ local function getVehicleModelIdentifier(vehData, vehObj, vehId)
       return vehData.ioCtx.jbeam
     end
   end
-  if vehId and extensions.core_vehicles and type(extensions.core_vehicles.getVehicleDetails) == 'function' then
-    local okDetails, details = safePcall(extensions.core_vehicles.getVehicleDetails, vehId)
-    if okDetails and details then
-      if details.current and details.current.key and details.current.key ~= '' then
-        return details.current.key
-      end
-      if details.model and details.model.key and details.model.key ~= '' then
-        return details.model.key
+  if vehId then
+    local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+    if coreVehiclesExtension and type(coreVehiclesExtension.getVehicleDetails) == 'function' then
+      local okDetails, details = safePcall(coreVehiclesExtension.getVehicleDetails, vehId)
+      if okDetails and details then
+        if details.current and details.current.key and details.current.key ~= '' then
+          return details.current.key
+        end
+        if details.model and details.model.key and details.model.key ~= '' then
+          return details.model.key
+        end
       end
     end
   end
@@ -1077,6 +1098,22 @@ end
   vehObj:queueLuaCommand(command)
 end
 
+local function queueApplyBasePaintsToAllParts(vehObj, paints)
+  if not vehObj or not paints then return end
+  if type(vehObj.queueLuaCommand) ~= 'function' then return end
+
+  local command = string.format([[local paints = %s
+if partCondition and partCondition.setAllPartPaints then
+  local ok, err = pcall(partCondition.setAllPartPaints, paints, 0)
+  if not ok then
+    log('W', 'vehiclePartsPainting', 'setAllPartPaints failed for vehicle '..tostring(obj:getID())..': '..tostring(err))
+  end
+end
+]], paintsToLuaLiteral(paints))
+
+  vehObj:queueLuaCommand(command)
+end
+
 local function collectPartIdentifierCandidates(partPath, partName, slotPath)
   local candidates = {}
   local seen = {}
@@ -1302,6 +1339,153 @@ local function sanitizePaints(paints)
   return sanitized
 end
 
+local function applyBasePaintToVehicleSlot(vehObj, slotIndex, paint)
+  if not vehObj or type(paint) ~= 'table' then return end
+  local base = paint.baseColor or {}
+  local function makeColor(r, g, b, a)
+    if Point4F then
+      return Point4F(r, g, b, a)
+    elseif ColorF then
+      return ColorF(r, g, b, a)
+    else
+      return {x = r, y = g, z = b, w = a, r = r, g = g, b = b, a = a}
+    end
+  end
+
+  local color = makeColor(
+    clamp01(base[1]),
+    clamp01(base[2]),
+    clamp01(base[3]),
+    clamp01(base[4] or 1)
+  )
+
+  if slotIndex == 0 then
+    vehObj.color = color
+  elseif slotIndex == 1 then
+    vehObj.colorPalette0 = color
+  elseif slotIndex == 2 then
+    vehObj.colorPalette1 = color
+  end
+
+  if vehObj.setField then
+    local metallic = formatNumberLiteral(paint.metallic or 0)
+    local roughness = formatNumberLiteral(paint.roughness or 0.5)
+    local clearcoat = formatNumberLiteral(paint.clearcoat or 0)
+    local clearcoatRoughness = formatNumberLiteral(paint.clearcoatRoughness or 0)
+    local data = string.format('%s %s %s %s', metallic, roughness, clearcoat, clearcoatRoughness)
+    vehObj:setField('metallicPaintData', tostring(slotIndex), data)
+  end
+end
+
+local function applyBasePaintsToVehicle(vehObj, paints)
+  if not vehObj or type(paints) ~= 'table' then return end
+  if tableIsEmpty(paints) then return end
+
+  local vehId = vehObj.getID and vehObj:getID()
+  local count = math.max(1, #paints)
+  local colorsExtension = getLoadedExtension('core_vehicle_colors')
+  local canUseColorsExtension = colorsExtension and type(colorsExtension.setVehiclePaint) == 'function'
+  local usedExtension = false
+
+  if canUseColorsExtension and vehId and vehId ~= -1 then
+    for i = 1, math.min(3, count) do
+      local paint = paints[i] or paints[count]
+      if paint then
+        local paintCopy = copyPaint(paint)
+        if paintCopy then
+          local ok, err = safePcall(colorsExtension.setVehiclePaint, i, paintCopy, vehId)
+          if not ok then
+            log('W', logTag, string.format('setVehiclePaint failed for vehicle %s slot %d: %s', tostring(vehId), i, tostring(err)))
+          else
+            usedExtension = true
+          end
+        end
+      end
+    end
+  end
+
+  if usedExtension then
+    return
+  end
+
+  for i = 1, math.min(3, count) do
+    local paint = paints[i] or paints[count]
+    if paint then
+      applyBasePaintToVehicleSlot(vehObj, i - 1, paint)
+    end
+  end
+
+  local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+  local canUpdateColors = coreVehiclesExtension and type(coreVehiclesExtension.updateVehicleColors) == 'function'
+
+  if vehObj.queueLuaCommand and type(vehObj.queueLuaCommand) == 'function' and canUpdateColors then
+    local updateColorsCommand = [[
+local globalEnv = _G
+if type(globalEnv) == 'table' then
+  local manager = rawget(globalEnv, 'extensions')
+  if type(manager) == 'table' then
+    local coreVehicles = rawget(manager, 'core_vehicles')
+    if coreVehicles and type(coreVehicles.updateVehicleColors) == 'function' then
+      coreVehicles.updateVehicleColors()
+    end
+  end
+end
+]]
+    vehObj:queueLuaCommand(updateColorsCommand)
+  elseif canUpdateColors then
+    coreVehiclesExtension.updateVehicleColors()
+  end
+end
+
+local sendState
+local applyStoredPaints
+
+local function setVehicleBasePaints(paints)
+  local vehObj = getPlayerVehicle(0)
+  if not vehObj then
+    log('W', logTag, 'Unable to set vehicle base paints: player vehicle unavailable')
+    return
+  end
+
+  local vehId = vehObj:getID()
+  local vehData = vehManager.getVehicleData(vehId)
+  if not vehData then
+    log('W', logTag, string.format('Unable to set vehicle base paints: vehicle data unavailable for %s', tostring(vehId)))
+    return
+  end
+
+  local sanitized = sanitizePaints(paints)
+  if not sanitized then
+    log('W', logTag, 'Invalid base paint data received; ignoring request')
+    return
+  end
+
+  log('I', logTag, string.format('Updating vehicle %s base paints to %s', tostring(vehId), paintsToLogSummary(sanitized)))
+
+  vehData.config = vehData.config or {}
+  vehData.config.paints = copyPaints(sanitized)
+
+  ensureVehiclePartConditionInitialized(vehObj, vehId)
+
+  applyBasePaintsToVehicle(vehObj, sanitized)
+  queueApplyBasePaintsToAllParts(vehObj, sanitized)
+  applyStoredPaints(vehId)
+
+  sendState(vehId)
+end
+
+local function setVehicleBasePaintsJson(jsonStr)
+  if type(jsonStr) ~= 'string' then return end
+  local ok, data = pcall(jsonDecode, jsonStr)
+  if not ok then
+    log('E', logTag, 'Failed to decode base paint JSON: ' .. tostring(data))
+    return
+  end
+
+  local paints = data.paints or data
+  setVehicleBasePaints(paints)
+end
+
 local function getVehicleBasePaints(vehData, vehObj)
   local basePaints = {}
   if vehData and vehData.config and type(vehData.config.paints) == 'table' then
@@ -1461,7 +1645,7 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
   end
 end
 
-local function sendState(targetVehId)
+sendState = function(targetVehId)
   local vehId = targetVehId or be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
     guihooks.trigger('VehiclePartsPaintingState', {vehicleId = false, parts = {}, basePaints = {}, colorPresets = copyColorPresets()})
@@ -1537,7 +1721,7 @@ local function sendState(targetVehId)
   sendSavedConfigs(vehId, vehData, vehObj)
 end
 
-local function applyStoredPaints(vehId)
+applyStoredPaints = function(vehId)
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   if not vehObj or not vehData then return end
@@ -2122,6 +2306,8 @@ M.requestColorPresets = requestColorPresets
 M.applyPartPaintJson = applyPartPaintJson
 M.setPartPaint = setPartPaint
 M.resetPartPaint = resetPartPaint
+M.setVehicleBasePaints = setVehicleBasePaints
+M.setVehicleBasePaintsJson = setVehicleBasePaintsJson
 M.highlightPart = highlightPart
 M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
