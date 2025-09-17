@@ -1258,12 +1258,11 @@ angular.module('beamng.apps')
         let chosenName = defaultName;
         if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
           const response = window.prompt('Name for color preset', defaultName);
-          if (response === null) {
-            return;
-          }
-          const trimmed = response.trim();
-          if (trimmed) {
-            chosenName = trimmed;
+          if (typeof response === 'string') {
+            const trimmed = response.trim();
+            if (trimmed) {
+              chosenName = trimmed;
+            }
           }
         }
         payload.name = chosenName;
