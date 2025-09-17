@@ -617,6 +617,67 @@
     .vehicle-parts-painting .paint-card .color-field .html-color-input input[type="text"]::placeholder {
       color: rgba(255, 255, 255, 0.5);
     }
+    .vehicle-parts-painting .paint-card .color-field .user-palette {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .palette-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .palette-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .palette-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .toggle-palette {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 3px;
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .toggle-palette:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .palette-actions .add-preset {
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      padding: 0;
+      background: transparent;
+      border: 1px dashed rgba(255, 255, 255, 0.5);
+      color: #ffffff;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vehicle-parts-painting .paint-card .color-field .user-palette .palette-actions .add-preset:hover {
+      border-color: #ffffff;
+      color: #ffffff;
+    }
     .vehicle-parts-painting .paint-card .color-field .color-presets {
       display: flex;
       flex-wrap: wrap;
@@ -638,24 +699,6 @@
     }
     .vehicle-parts-painting .paint-card .color-field .color-presets .preset-swatch:hover {
       border-color: rgba(255, 255, 255, 0.75);
-    }
-    .vehicle-parts-painting .paint-card .color-field .color-presets .add-preset {
-      width: 26px;
-      height: 26px;
-      border-radius: 4px;
-      padding: 0;
-      background: transparent;
-      border: 1px dashed rgba(255, 255, 255, 0.5);
-      color: #ffffff;
-      font-size: 18px;
-      line-height: 1;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .vehicle-parts-painting .paint-card .color-field .color-presets .add-preset:hover {
-      border-color: #ffffff;
-      color: #ffffff;
     }
     .vehicle-parts-painting .paint-card .color-field .color-presets-empty {
       font-size: 11px;
@@ -904,17 +947,31 @@
                           autocapitalize="none"
                           spellcheck="false">
                 </div>
-                <div class="color-presets">
-                  <div class="preset-list" ng-if="state.colorPresets.length">
-                    <button type="button"
-                            class="preset-swatch"
-                            ng-repeat="preset in state.colorPresets track by $index"
-                            ng-style="getColorPresetStyle(preset)"
-                            ng-attr-title="{{getColorPresetTitle(preset)}}"
-                            ng-click="applyColorPreset(paint, preset)"></button>
+                <div class="user-palette" ng-class="{'is-collapsed': isUserPaletteCollapsed(paint)}">
+                  <div class="palette-header">
+                    <span>User palette</span>
+                    <div class="palette-actions">
+                      <button type="button"
+                              class="toggle-palette"
+                              ng-click="toggleUserPalette(paint)">
+                        {{isUserPaletteCollapsed(paint) ? 'Expand' : 'Collapse'}}
+                      </button>
+                    </div>
+                  </div>
+                  <div class="palette-body" ng-if="!isUserPaletteCollapsed(paint)">
+                    <div class="color-presets" ng-if="state.colorPresets.length">
+                      <div class="preset-list">
+                        <button type="button"
+                                class="preset-swatch"
+                                ng-repeat="preset in state.colorPresets track by $index"
+                                ng-style="getColorPresetStyle(preset)"
+                                ng-attr-title="{{getColorPresetTitle(preset)}}"
+                                ng-click="applyColorPreset(paint, preset)"></button>
+                      </div>
+                    </div>
+                    <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
                   </div>
                 </div>
-                <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
                 <div class="color-channels">
                   <div class="color-channel">
                     <span>R</span>
@@ -1000,21 +1057,35 @@
                         autocapitalize="none"
                         spellcheck="false">
               </div>
-              <div class="color-presets">
-                <div class="preset-list" ng-if="state.colorPresets.length">
-                  <button type="button"
-                          class="preset-swatch"
-                          ng-repeat="preset in state.colorPresets track by $index"
-                          ng-style="getColorPresetStyle(preset)"
-                          ng-attr-title="{{getColorPresetTitle(preset)}}"
-                          ng-click="applyColorPreset(paint, preset)"></button>
+              <div class="user-palette" ng-class="{'is-collapsed': isUserPaletteCollapsed(paint)}">
+                <div class="palette-header">
+                  <span>User palette</span>
+                  <div class="palette-actions">
+                    <button type="button"
+                            class="add-preset"
+                            ng-click="addColorPreset(paint)"
+                            title="Add current color to palette">+</button>
+                    <button type="button"
+                            class="toggle-palette"
+                            ng-click="toggleUserPalette(paint)">
+                      {{isUserPaletteCollapsed(paint) ? 'Expand' : 'Collapse'}}
+                    </button>
+                  </div>
                 </div>
-                <!--<button type="button"
-                        class="add-preset"
-                        ng-click="addColorPreset(paint)"
-                        title="Add current color to palette">+</button>-->
+                <div class="palette-body" ng-if="!isUserPaletteCollapsed(paint)">
+                  <div class="color-presets" ng-if="state.colorPresets.length">
+                    <div class="preset-list">
+                      <button type="button"
+                              class="preset-swatch"
+                              ng-repeat="preset in state.colorPresets track by $index"
+                              ng-style="getColorPresetStyle(preset)"
+                              ng-attr-title="{{getColorPresetTitle(preset)}}"
+                              ng-click="applyColorPreset(paint, preset)"></button>
+                    </div>
+                  </div>
+                  <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
+                </div>
               </div>
-              <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
               <div class="color-channels">
                 <div class="color-channel">
                   <span>R</span>

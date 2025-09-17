@@ -330,6 +330,7 @@ angular.module('beamng.apps')
           clearcoat: clamp01(paint.clearcoat),
           clearcoatRoughness: clamp01(paint.clearcoatRoughness)
         };
+        viewPaint.__paletteCollapsed = false;
         syncHtmlColor(viewPaint);
         return viewPaint;
       }
@@ -371,6 +372,14 @@ angular.module('beamng.apps')
           });
         }
         return paints;
+      }
+
+      function ensureUserPaletteFlag(paint) {
+        if (!paint || typeof paint !== 'object') { return false; }
+        if (typeof paint.__paletteCollapsed !== 'boolean') {
+          paint.__paletteCollapsed = false;
+        }
+        return paint.__paletteCollapsed;
       }
 
       function clonePaint(paint) {
@@ -1171,6 +1180,16 @@ angular.module('beamng.apps')
         applyPresetToPaint(paint, preset);
       };
 
+      $scope.isUserPaletteCollapsed = function (paint) {
+        return !!ensureUserPaletteFlag(paint);
+      };
+
+      $scope.toggleUserPalette = function (paint) {
+        if (!paint || typeof paint !== 'object') { return; }
+        const current = ensureUserPaletteFlag(paint);
+        paint.__paletteCollapsed = !current;
+      };
+
       $scope.addColorPreset = function (paint) {
         if (!paint) { return; }
         const color = ensureColorObject(paint);
@@ -1203,6 +1222,26 @@ angular.module('beamng.apps')
           }
         }
         payload.name = chosenName;
+        const sanitizedPreset = sanitizeColorPresetEntry(payload);
+        if (sanitizedPreset) {
+          const updatedPresets = Array.isArray(state.colorPresets) ? state.colorPresets.slice() : [];
+          const targetName = sanitizedPreset.name ? sanitizedPreset.name.toLowerCase() : null;
+          let replaced = false;
+          if (targetName) {
+            for (let i = 0; i < updatedPresets.length; i++) {
+              const existing = updatedPresets[i];
+              if (existing && existing.name && existing.name.toLowerCase() === targetName) {
+                updatedPresets[i] = sanitizedPreset;
+                replaced = true;
+                break;
+              }
+            }
+          }
+          if (!replaced) {
+            updatedPresets.push(sanitizedPreset);
+          }
+          state.colorPresets = updatedPresets;
+        }
         const command = 'freeroam_vehiclePartsPainting.addColorPreset(' + toLuaString(JSON.stringify(payload)) + ')';
         bngApi.engineLua(command);
       };
