@@ -1074,6 +1074,24 @@ local function saveCurrentUserConfig(configName)
 
         local okSave, resultOrErr = safePcall(saveEntryPoint, fileName)
         if okSave and resultOrErr ~= false then
+          local previewSelection = displayName
+          if not previewSelection or previewSelection == '' then
+            previewSelection = sanitizedBaseName
+          end
+          if type(previewSelection) == 'string' then
+            previewSelection = previewSelection:gsub('%.[Pp][Cc]$', '')
+          end
+          if previewSelection and previewSelection ~= '' then
+            local screenshotCreatorExtension = getLoadedExtension('util_screenshotCreator')
+            if screenshotCreatorExtension and type(screenshotCreatorExtension.startWork) == 'function' then
+              local okScreenshot, errScreenshot = safePcall(screenshotCreatorExtension.startWork, { selection = previewSelection })
+              if not okScreenshot then
+                log('W', logTag, string.format('Failed to trigger util_screenshotCreator for "%s": %s', tostring(previewSelection), tostring(errScreenshot)))
+              end
+            else
+              log('D', logTag, 'util_screenshotCreator extension unavailable or missing startWork; skipping screenshot generation')
+            end
+          end
           if displayName and displayName ~= '' then
             if displayName ~= sanitizedBaseName then
               log('I', logTag, string.format('Saved vehicle configuration "%s" to "%s" via core_vehicle_partmgmt.%s', tostring(displayName), tostring(fileName), tostring(saveEntryPointName)))
