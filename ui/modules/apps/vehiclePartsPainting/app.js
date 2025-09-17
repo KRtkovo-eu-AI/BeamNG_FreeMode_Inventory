@@ -1547,6 +1547,7 @@ end)()`;
         if (part.displayName) { fields.push(part.displayName); }
         if (part.partName) { fields.push(part.partName); }
         if (part.slotName) { fields.push(part.slotName); }
+        if (part.slotLabel) { fields.push(part.slotLabel); }
         for (let i = 0; i < fields.length; i++) {
           const value = fields[i];
           if (typeof value === 'string' && value.toLowerCase().indexOf(lowered) !== -1) {
