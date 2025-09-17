@@ -1291,8 +1291,7 @@
       <p>Are you sure you want to delete this configuration?</p>
       <div class="config-target"
            ng-if="state.deleteConfigDialog.config">
-        <div class="config-target-preview"
-             ng-if="hasSavedConfigPreview(state.deleteConfigDialog.config)">
+        <div class="config-target-preview">
           <img ng-src="{{getSavedConfigPreviewSrc(state.deleteConfigDialog.config)}}"
                ng-attr-alt="{{getSavedConfigLabel(state.deleteConfigDialog.config)}} preview">
         </div>
@@ -1491,7 +1490,7 @@
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.0.3, made by KRtekTM</span></h2>
+      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.0.3 | made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1602,7 +1601,7 @@
                     ng-repeat="config in getSavedConfigs() track by config.relativePath"
                     ng-class="{selected: isSavedConfigSelected(config)}"
                     ng-click="selectSavedConfig(config)">
-                <div class="saved-preview" ng-if="hasSavedConfigPreview(config)">
+                <div class="saved-preview">
                   <img ng-src="{{getSavedConfigPreviewSrc(config)}}"
                        ng-attr-alt="{{getSavedConfigLabel(config)}} preview">
                 </div>
