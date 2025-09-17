@@ -2384,6 +2384,48 @@ local function onVehiclePartsPaintingResult(vehId, partPath, partName, slotPath,
   end
 end
 
+local function resolveHighlightInfo(vehId, partPath)
+  if not vehId or not partPath or partPath == '' then
+    return nil, nil, nil, {}
+  end
+
+  local descriptors = partDescriptorsByVeh[vehId]
+  local descriptor = descriptors and descriptors[partPath]
+  local slotPath = descriptor and descriptor.slotPath or nil
+  local partName = descriptor and descriptor.partName or nil
+
+  if not partName then
+    local vehData = vehManager.getVehicleData(vehId)
+    partName = resolvePartName(vehData, partPath)
+    if descriptor and partName then
+      descriptor.partName = partName
+    end
+  end
+
+  local identifiers = descriptor and descriptor.identifiers
+  if not identifiers or tableIsEmpty(identifiers) then
+    identifiers, descriptor = resolvePartIdentifiersForVehicle(vehId, partPath, partName, slotPath)
+  end
+
+  if not descriptor and partDescriptorsByVeh[vehId] then
+    descriptor = partDescriptorsByVeh[vehId][partPath]
+  end
+
+  if descriptor then
+    if partName and partName ~= '' then
+      descriptor.partName = descriptor.partName or partName
+    end
+    if slotPath and slotPath ~= '' then
+      descriptor.slotPath = descriptor.slotPath or slotPath
+    end
+    identifiers = descriptor.identifiers or identifiers
+    partName = descriptor.partName or partName
+    slotPath = descriptor.slotPath or slotPath
+  end
+
+  return descriptor, partName, slotPath, identifiers or {}
+end
+
 local function applyPartTransparency(vehId, partPath)
   if not vehId or vehId == -1 then return end
 
@@ -2397,23 +2439,7 @@ local function applyPartTransparency(vehId, partPath)
 
   vehObj:setMeshAlpha(highlightFadeAlpha, "", false)
 
-  local descriptors = partDescriptorsByVeh[vehId]
-  local descriptor = descriptors and descriptors[partPath]
-  local slotPath = descriptor and descriptor.slotPath or nil
-  local partName = descriptor and descriptor.partName or nil
-
-  if not partName then
-    local vehData = vehManager.getVehicleData(vehId)
-    partName = resolvePartName(vehData, partPath)
-  end
-
-  local identifiers = descriptor and descriptor.identifiers
-  if not identifiers or tableIsEmpty(identifiers) then
-    identifiers = resolvePartIdentifiersForVehicle(vehId, partPath, partName, slotPath)
-    if descriptor then
-      descriptor.identifiers = identifiers
-    end
-  end
+  local descriptor, partName, slotPath, identifiers = resolveHighlightInfo(vehId, partPath)
 
   local restored = false
   if identifiers and not tableIsEmpty(identifiers) then
@@ -2428,6 +2454,36 @@ local function applyPartTransparency(vehId, partPath)
   if not restored then
     vehObj:setMeshAlpha(1, "", false)
   end
+end
+
+local function buildHighlightSelection(vehId, partPath)
+  local selection = {}
+  if not partPath or partPath == '' then
+    return selection
+  end
+
+  selection[partPath] = true
+
+  local _, partName, slotPath, identifiers = resolveHighlightInfo(vehId, partPath)
+  local candidates = collectPartIdentifierCandidates(partPath, partName, slotPath)
+
+  if candidates then
+    for _, identifier in ipairs(candidates) do
+      if identifier and identifier ~= '' then
+        selection[identifier] = true
+      end
+    end
+  end
+
+  if identifiers then
+    for _, identifier in ipairs(identifiers) do
+      if identifier and identifier ~= '' then
+        selection[identifier] = true
+      end
+    end
+  end
+
+  return selection
 end
 
 local function showAllParts(targetVehId)
@@ -2487,8 +2543,11 @@ local function showAllParts(targetVehId)
 
   local currentPlayerVehId = be:getPlayerVehicleID(0)
   if vehId == currentPlayerVehId then
+    if extensions.core_vehicle_partmgmt and type(extensions.core_vehicle_partmgmt.selectParts) == 'function' then
+      extensions.core_vehicle_partmgmt.selectParts({}, vehId)
+    end
     if extensions.core_vehicle_partmgmt and type(extensions.core_vehicle_partmgmt.highlightParts) == 'function' then
-      extensions.core_vehicle_partmgmt.highlightParts(highlight or {})
+      extensions.core_vehicle_partmgmt.highlightParts(highlight or {}, vehId)
     elseif vehObj then
       vehObj:queueLuaCommand('bdebug.setPartsSelected({})')
     end
@@ -2498,14 +2557,20 @@ local function showAllParts(targetVehId)
 end
 
 local function highlightPart(partPath)
-  local parts = {}
   local vehId = be:getPlayerVehicleID(0)
   highlightedParts = {}
+  local selection = {}
   if partPath and partPath ~= '' then
-    parts[partPath] = true
     highlightedParts[partPath] = true
+    selection = buildHighlightSelection(vehId, partPath)
   end
-  extensions.core_vehicle_partmgmt.highlightParts(parts)
+  if extensions.core_vehicle_partmgmt then
+    if type(extensions.core_vehicle_partmgmt.selectParts) == 'function' then
+      extensions.core_vehicle_partmgmt.selectParts(selection, vehId)
+    elseif type(extensions.core_vehicle_partmgmt.highlightParts) == 'function' then
+      extensions.core_vehicle_partmgmt.highlightParts(selection, vehId)
+    end
+  end
   applyPartTransparency(vehId, partPath)
 end
 
