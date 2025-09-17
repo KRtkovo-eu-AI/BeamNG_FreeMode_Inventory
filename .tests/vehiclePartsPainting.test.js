@@ -219,6 +219,17 @@ function structuredClonePaints(paints) {
   }));
 }
 
+function cloneStateForEvent(scope) {
+  const state = scope.state || {};
+  const basePaints = Array.isArray(state.basePaints) ? structuredClonePaints(state.basePaints) : [];
+  const partsClone = Array.isArray(state.parts) ? JSON.parse(JSON.stringify(state.parts)) : [];
+  return {
+    vehicleId: state.vehicleId,
+    basePaints: basePaints,
+    parts: partsClone
+  };
+}
+
 function createPart(partPath, slotPath, basePaints) {
   return {
     partPath: partPath,
@@ -496,8 +507,53 @@ function resetPaint(scope, partPath) {
   scope.$digest();
 
   assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should sync from event payload');
-  const palettePreset = state.colorPresets[0];
+  let palettePreset = state.colorPresets[0];
   assert.strictEqual(palettePreset.storageIndex, 1, 'Preset should retain its storage index');
+
+  scope.basePaintEditors[0].color.r = 32;
+  scope.basePaintEditors[0].color.g = 64;
+  scope.applyBasePaints();
+  scope.$digest();
+
+  const repaintState = cloneStateForEvent(scope);
+  repaintState.colorPresets = null;
+  emitState(scope, repaintState);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when payload omits presets via null placeholder');
+
+  const invalidPalettePayload = cloneStateForEvent(scope);
+  invalidPalettePayload.colorPresets = { length: 1, n: 1 };
+  emitState(scope, invalidPalettePayload);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when payload lacks numeric entries');
+
+  const luaStylePalette = cloneStateForEvent(scope);
+  luaStylePalette.colorPresets = {
+    length: 1,
+    n: 1,
+    1: {
+      name: 'Lua style swatch',
+      value: { r: 0.3, g: 0.4, b: 0.5, a: 0.75 },
+      metallic: 0.1,
+      roughness: 0.2,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.4
+    }
+  };
+  emitState(scope, luaStylePalette);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should parse Lua-style tables');
+  palettePreset = state.colorPresets[0];
+  assert.strictEqual(palettePreset.name, 'Lua style swatch', 'Lua-style payload should preserve preset names');
+  assert(Math.abs(palettePreset.paint.metallic - 0.1) < 1e-6, 'Lua-style payload should preserve numeric fields');
+
+  const placeholderPaletteAfterBaseApply = cloneStateForEvent(scope);
+  placeholderPaletteAfterBaseApply.colorPresets = [];
+  emitState(scope, placeholderPaletteAfterBaseApply);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when base paint updates omit presets via empty array placeholder');
+
+  applyCustomPaint(scope, 'vehicle/root', { r: 64 });
+  const placeholderPaletteAfterPartApply = cloneStateForEvent(scope);
+  placeholderPaletteAfterPartApply.colorPresets = [];
+  emitState(scope, placeholderPaletteAfterPartApply);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when part repaint updates omit presets via empty array placeholder');
 
   scope.onPresetPressStart({}, palettePreset);
   controller.timeout.flush();
@@ -508,6 +564,7 @@ function resetPaint(scope, partPath) {
   scope.confirmRemovePreset();
   assert.strictEqual(state.removePresetDialog.visible, false, 'Removal dialog should close after confirmation');
   assert.strictEqual(bngApiCalls.length, commandCountBeforeRemove + 1, 'Removing a preset should queue a backend command');
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 0, 'Color presets should clear locally after removing the last preset');
   const removeCommand = bngApiCalls[bngApiCalls.length - 1];
   const remainingPresets = parseSettingsSetStateCommand(removeCommand);
   assert(Array.isArray(remainingPresets) && remainingPresets.length === 0, 'Removing a preset should clear stored presets');

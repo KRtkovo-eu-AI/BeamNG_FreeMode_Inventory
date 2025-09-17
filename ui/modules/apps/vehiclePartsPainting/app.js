@@ -323,6 +323,49 @@ angular.module('beamng.apps')
         return [];
       }
 
+      function convertPresetTableToArray(value) {
+        if (!value || typeof value !== 'object') { return null; }
+        if (Array.isArray(value)) { return value; }
+        const keys = Object.keys(value);
+        if (!keys.length) { return []; }
+        const array = [];
+        let hasNumericKey = false;
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          if (!Object.prototype.hasOwnProperty.call(value, key)) { continue; }
+          if (key === 'length' || key === 'n') { continue; }
+          if (!/^[0-9]+$/.test(key)) { continue; }
+          const index = parseInt(key, 10);
+          if (!isFinite(index) || index < 1) { continue; }
+          array[index - 1] = value[key];
+          hasNumericKey = true;
+        }
+        if (!hasNumericKey) {
+          const length = typeof value.length === 'number' ? value.length : null;
+          const nValue = typeof value.n === 'number' ? value.n : null;
+          const maxIndex = Math.max(length || 0, nValue || 0);
+          if (maxIndex > 0) {
+            for (let i = 1; i <= maxIndex; i++) {
+              const candidate = value[i] !== undefined ? value[i] : value[String(i)];
+              if (candidate !== undefined) {
+                array[i - 1] = candidate;
+                hasNumericKey = true;
+              }
+            }
+          }
+          if (!hasNumericKey) {
+            if ((length !== null && length <= 0) || (nValue !== null && nValue <= 0)) { return []; }
+            return null;
+          }
+        }
+        let lastDefinedIndex = array.length - 1;
+        while (lastDefinedIndex >= 0 && array[lastDefinedIndex] === undefined) {
+          lastDefinedIndex--;
+        }
+        array.length = lastDefinedIndex + 1;
+        return array;
+      }
+
       function cloneSanitizedPresets(presets) {
         const sanitizedList = [];
         if (!Array.isArray(presets)) { return sanitizedList; }
@@ -396,9 +439,29 @@ angular.module('beamng.apps')
         return null;
       }
 
-      function updateColorPresets(rawPresets) {
+      function updateColorPresets(rawPresets, options) {
+        options = options || {};
+        const preserveExistingOnEmpty = options && options.preserveExistingOnEmpty === true;
+        if (rawPresets === undefined) { return; }
+        if (rawPresets === null) {
+          // Some state refresh payloads omit preset data by sending null. Keep the
+          // existing palette in that case so previously loaded swatches remain
+          // available to the user until a concrete update arrives.
+          return;
+        }
         if (typeof rawPresets === 'string') {
           rawPresets = decodeSettingsPresetArray(rawPresets);
+        }
+        if (!Array.isArray(rawPresets)) {
+          const converted = convertPresetTableToArray(rawPresets);
+          if (Array.isArray(converted)) {
+            rawPresets = converted;
+          } else if (converted === null) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.warn === 'function') {
+              globalWindow.console.warn('VehiclePartsPainting: Ignoring colorPresets payload with unexpected structure.');
+            }
+            return;
+          }
         }
         if (!Array.isArray(rawPresets)) {
           state.colorPresets = [];
@@ -413,6 +476,12 @@ angular.module('beamng.apps')
           if (preset) {
             preset.storageIndex = presets.length + 1;
             presets.push(preset);
+          }
+        }
+        if (!presets.length && preserveExistingOnEmpty) {
+          const hasExisting = Array.isArray(state.colorPresets) && state.colorPresets.length > 0;
+          if (hasExisting) {
+            return;
           }
         }
         state.colorPresets = presets;
@@ -2017,7 +2086,7 @@ angular.module('beamng.apps')
           state.vehicleId = data.vehicleId || null;
 
           if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
-            updateColorPresets(data.colorPresets);
+            updateColorPresets(data.colorPresets, { preserveExistingOnEmpty: true });
           }
 
           if (!state.vehicleId) {
