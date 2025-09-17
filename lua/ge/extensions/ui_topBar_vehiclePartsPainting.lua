@@ -11,7 +11,7 @@ local RETRY_INTERVAL = 0.5
 
 local desiredItemDefinition = {
   id = ITEM_ID,
-  label = 'vehiclePartsPainting.topbarLabel',
+  label = 'Parts Painting',
   icon = 'engine',
   targetState = 'menu.vehiclePartsPainting',
   substate = 'menu.vehiclePartsPainting',
