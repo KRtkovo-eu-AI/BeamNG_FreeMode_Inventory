@@ -21,6 +21,7 @@ local desiredItemDefinition = {
 
 local retryTimer = 0
 local isRegistered = false
+local fallbackRegistered = false
 
 local function deepCopy(value)
   if type(value) ~= 'table' then
@@ -32,6 +33,105 @@ local function deepCopy(value)
     copy[k] = deepCopy(v)
   end
   return copy
+end
+
+local function mergeItem(existing)
+  local changed = false
+  local desired = desiredItemDefinition
+  if not existing then
+    return deepCopy(desired), true
+  end
+
+  for key, value in pairs(desired) do
+    if existing[key] ~= value then
+      existing[key] = deepCopy(value)
+      changed = true
+    end
+  end
+
+  for key in pairs(existing) do
+    if desired[key] == nil then
+      existing[key] = nil
+      changed = true
+    end
+  end
+
+  return existing, changed
+end
+
+local function isArrayLike(tbl)
+  if type(tbl) ~= 'table' then
+    return false
+  end
+
+  local count = 0
+  for key in pairs(tbl) do
+    if type(key) ~= 'number' then
+      return false
+    end
+    count = count + 1
+  end
+
+  if count == 0 then
+    return false
+  end
+
+  for i = 1, count do
+    if tbl[i] == nil then
+      return false
+    end
+  end
+
+  return true
+end
+
+local function ensureItemInTable(items)
+  if type(items) ~= 'table' then
+    return false, false
+  end
+
+  local existing = items[ITEM_ID]
+  if existing ~= nil then
+    local merged, changed = mergeItem(existing)
+    items[ITEM_ID] = merged
+    return true, changed
+  end
+
+  if isArrayLike(items) then
+    for index, entry in ipairs(items) do
+      if type(entry) == 'table' and entry.id == ITEM_ID then
+        local merged, changed = mergeItem(entry)
+        items[index] = merged
+        return true, changed
+      end
+    end
+
+    table.insert(items, deepCopy(desiredItemDefinition))
+    return true, true
+  end
+
+  for key, entry in pairs(items) do
+    if type(entry) == 'table' and entry.id == ITEM_ID then
+      local merged, changed = mergeItem(entry)
+      items[key] = merged
+      return true, changed
+    end
+  end
+
+  items[ITEM_ID] = deepCopy(desiredItemDefinition)
+  return true, true
+end
+
+local function ensureItemInPayload(payload)
+  if type(payload) ~= 'table' then
+    return false, false
+  end
+
+  if type(payload.items) == 'table' then
+    return ensureItemInTable(payload.items)
+  end
+
+  return ensureItemInTable(payload)
 end
 
 local function getExtensionsTable()
@@ -117,6 +217,7 @@ local function pushItems(extension, items)
     return false
   end
 
+  local manager = getExtensionsTable()
   local setCandidates = {
     'setExternalItems',
     'setExternalEntries',
@@ -140,9 +241,14 @@ local function pushItems(extension, items)
   if item then
     local addCandidates = {
       'registerExternalItem',
+      'registerExternalEntry',
       'registerItem',
+      'registerEntry',
+      'addExternalEntries',
+      'addExternalItems',
       'addExternalItem',
       'addItem',
+      'addEntries',
       'addEntry',
     }
 
@@ -157,11 +263,42 @@ local function pushItems(extension, items)
     end
   end
 
+  if manager and type(manager.call) == 'function' then
+    local callCandidates = {
+      'registerExternalItems',
+      'registerExternalEntries',
+      'registerItems',
+      'registerEntries',
+      'addExternalItems',
+      'addExternalEntries',
+      'addItems',
+      'addEntries',
+      'registerExternalItem',
+      'registerExternalEntry',
+      'addExternalItem',
+      'addExternalEntry',
+    }
+
+    for _, fnName in ipairs(callCandidates) do
+      local ok = select(1, safeCall(manager.call, manager, TOPBAR_EXTENSION_NAME, fnName, items))
+      if ok then
+        return true
+      end
+
+      if item then
+        ok = select(1, safeCall(manager.call, manager, TOPBAR_EXTENSION_NAME, fnName, item))
+        if ok then
+          return true
+        end
+      end
+    end
+  end
+
   local fieldCandidates = {'externalItems', 'externalEntries', 'items', 'entries'}
   for _, field in ipairs(fieldCandidates) do
     local target = rawget(extension, field)
     if type(target) == 'table' then
-      target[ITEM_ID] = deepCopy(items[ITEM_ID])
+      ensureItemInTable(target)
       return true
     end
   end
@@ -206,30 +343,6 @@ local function broadcastItems(extension, items)
   return false
 end
 
-local function mergeItem(existing)
-  local changed = false
-  local desired = desiredItemDefinition
-  if not existing then
-    return deepCopy(desired), true
-  end
-
-  for key, value in pairs(desired) do
-    if existing[key] ~= value then
-      existing[key] = deepCopy(value)
-      changed = true
-    end
-  end
-
-  for key in pairs(existing) do
-    if desired[key] == nil then
-      existing[key] = nil
-      changed = true
-    end
-  end
-
-  return existing, changed
-end
-
 local function registerItem()
   ensureTopBarLoaded()
   local extension = getTopBarExtension()
@@ -240,9 +353,7 @@ local function registerItem()
   local items = fetchItems(extension)
   items = items or {}
 
-  local existing = items[ITEM_ID]
-  local merged, changed = mergeItem(existing)
-  items[ITEM_ID] = merged
+  local _, changed = ensureItemInTable(items)
 
   if not changed and isRegistered then
     return true
@@ -250,8 +361,13 @@ local function registerItem()
 
   local pushed = pushItems(extension, items)
   if not pushed then
-    log('W', logTag, 'Unable to inject Vehicle Parts Painting entry into top bar (no compatible registration method found).')
-    return false
+    if not fallbackRegistered then
+      log('I', logTag, 'Falling back to hook-based Vehicle Parts Painting top bar registration.')
+      fallbackRegistered = true
+    end
+    broadcastItems(extension, items)
+    isRegistered = true
+    return true
   end
 
   broadcastItems(extension, items)
@@ -309,9 +425,24 @@ local function update(dt)
   end
 end
 
+local function onTopBarPayload(payload)
+  local injected = select(1, ensureItemInPayload(payload))
+  if injected then
+    isRegistered = true
+  end
+end
+
+local function onTopBarItems(items)
+  local injected = select(1, ensureItemInTable(items))
+  if injected then
+    isRegistered = true
+  end
+end
+
 local function onExtensionLoaded()
   retryTimer = 0
   isRegistered = false
+  fallbackRegistered = false
   ensureTopBarLoaded()
   registerItem()
 end
@@ -320,14 +451,37 @@ local function onExtensionUnloaded()
   unregisterItem()
   retryTimer = 0
   isRegistered = false
+  fallbackRegistered = false
 end
 
 local function onUpdate(dtReal, dtSim, dtRaw)
   update(dtReal)
 end
 
+local function onTopBarDataRequested(data)
+  onTopBarPayload(data)
+end
+
+local function onTopBarEntriesChanged(items)
+  onTopBarItems(items)
+end
+
+local function onTopBarCollectionRequested(entries)
+  onTopBarItems(entries)
+end
+
 M.onExtensionLoaded = onExtensionLoaded
 M.onExtensionUnloaded = onExtensionUnloaded
 M.onUpdate = onUpdate
+M.ui_topBar_dataRequested = onTopBarDataRequested
+M.ui_topBar_entriesChanged = onTopBarEntriesChanged
+M.ui_topBar_collectExternalEntries = onTopBarCollectionRequested
+M.ui_topBar_collectExternalItems = onTopBarCollectionRequested
+M.ui_topBar_collectEntries = onTopBarCollectionRequested
+M.ui_topBar_collectItems = onTopBarCollectionRequested
+M.ui_topBar_getExternalEntries = onTopBarCollectionRequested
+M.ui_topBar_getExternalItems = onTopBarCollectionRequested
+M.ui_topBar_getEntries = onTopBarCollectionRequested
+M.ui_topBar_getItems = onTopBarCollectionRequested
 
 return M
