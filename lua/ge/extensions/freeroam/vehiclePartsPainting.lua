@@ -22,6 +22,8 @@ local colorPresetPreferencesPath = false
 local editorPreferencesCandidates = nil
 local lastKnownPlayerVehicleId = nil
 
+local sanitizeColorPresetEntry
+
 local function isLikelyPlayerVehicleId(vehId)
   if not vehId or vehId == -1 then
     return false
@@ -568,7 +570,7 @@ local function sanitizePresetPaint(paint)
   return sanitized
 end
 
-local function sanitizeColorPresetEntry(entry)
+sanitizeColorPresetEntry = function(entry)
   if type(entry) ~= 'table' then
     return nil
   end
