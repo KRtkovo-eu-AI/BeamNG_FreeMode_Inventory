@@ -23,6 +23,24 @@ local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
 
+local function getLoadedExtension(name)
+  if type(name) ~= 'string' or name == '' then
+    return nil
+  end
+
+  local globalEnv = _G
+  if type(globalEnv) ~= 'table' then
+    return nil
+  end
+
+  local manager = rawget(globalEnv, 'extensions')
+  if type(manager) ~= 'table' then
+    return nil
+  end
+
+  return rawget(manager, name)
+end
+
 local function ensureTopBarHelperLoaded()
   local manager = rawget(_G, 'extensions')
   if type(manager) ~= 'table' then
@@ -106,24 +124,6 @@ local function deepCopy(value)
     copy[k] = deepCopy(v)
   end
   return copy
-end
-
-local function getLoadedExtension(name)
-  if type(name) ~= 'string' or name == '' then
-    return nil
-  end
-
-  local globalEnv = _G
-  if type(globalEnv) ~= 'table' then
-    return nil
-  end
-
-  local manager = rawget(globalEnv, 'extensions')
-  if type(manager) ~= 'table' then
-    return nil
-  end
-
-  return rawget(manager, name)
 end
 
 local function sanitizeFileName(name)
