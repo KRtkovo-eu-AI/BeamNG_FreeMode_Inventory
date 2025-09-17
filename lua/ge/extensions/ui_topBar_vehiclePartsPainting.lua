@@ -157,8 +157,8 @@ local function refreshEntriesFromTopBar()
     return true
   end
 
-  safeCall(topBar, 'requestEntries')
-  return false
+  ok = safeCall(topBar, 'requestEntries')
+  return ok
 end
 
 local function registerItem()
@@ -181,11 +181,10 @@ local function registerItem()
     return true
   end
 
-  -- As a last resort, emit our own payload so the UI learns about the button
-  triggerEntriesChanged({})
-  triggerVisibleItems()
   registered = true
-  return true
+  triggerVisibleItems()
+  log('W', logTag, 'Failed to request ui_topBar entries while registering vehiclePartsPainting button')
+  return false
 end
 
 local function unregisterItem()
@@ -214,9 +213,10 @@ local function unregisterItem()
     end
     safeCall(topBar, 'unregisterItem', itemId)
     safeCall(topBar, 'removeItem', itemId)
+    safeCall(topBar, 'requestEntries')
   end
 
-  triggerEntriesChanged({}, true)
+  triggerVisibleItems()
 end
 
 local function onExtensionLoaded()
