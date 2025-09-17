@@ -34,9 +34,15 @@
       justify-content: center;
       background: rgba(0, 0, 0, 0.78);
       padding: 24px 16px;
-      z-index: 5;
       overflow: auto;
       box-sizing: border-box;
+    }
+    .vehicle-parts-painting .color-picker-overlay {
+      z-index: 5;
+    }
+    .vehicle-parts-painting .config-confirm-overlay,
+    .vehicle-parts-painting .palette-dialog-overlay {
+      z-index: 10;
     }
     .vehicle-parts-painting .config-confirm-dialog,
     .vehicle-parts-painting .palette-dialog,
@@ -263,7 +269,7 @@
     .vehicle-parts-painting .no-vehicle,
     .vehicle-parts-painting .placeholder {
       flex: 1;
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
       text-align: center;
@@ -455,7 +461,7 @@
       opacity: 0.7;
     }
     .vehicle-parts-painting .config-tools {
-      background: rgba(0, 0, 0, 0.35);
+      background: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
       padding: 10px;
       display: flex;
@@ -738,7 +744,7 @@
       opacity: 0.85;
     }
     .vehicle-parts-painting .color-picker-dialog .finish-fields {
-      display: grid;
+      display: block;
       grid-template-columns: 1fr;
       gap: 10px;
     }
@@ -1117,8 +1123,8 @@
         File name: {{state.pendingSanitizedName}}.pc
       </p>
       <div class="dialog-actions">
-        <button type="button" class="cancel" ng-click="cancelReplaceSavedConfig()">Cancel</button>
         <button type="button" class="confirm" ng-click="confirmReplaceSavedConfig()">Replace</button>
+        <button type="button" class="cancel" ng-click="cancelReplaceSavedConfig()">Cancel</button>
       </div>
     </div>
   </div>
@@ -1137,8 +1143,8 @@
         </div>
       </div>
       <div class="dialog-actions">
-        <button type="button" class="cancel" ng-click="cancelRemovePreset()">Cancel</button>
         <button type="button" class="danger" ng-click="confirmRemovePreset()">Delete</button>
+        <button type="button" class="cancel" ng-click="cancelRemovePreset()">Cancel</button>
       </div>
     </div>
   </div>
@@ -1279,11 +1285,11 @@
         Select a paint swatch to edit its color.
       </div>
       <div class="dialog-actions">
-        <button type="button" class="secondary" ng-click="cancelColorPicker()">Cancel</button>
         <button type="button"
                 class="primary"
                 ng-click="applyColorPickerSelection()"
                 ng-disabled="!colorPickerState.working || !colorPickerState.targetPaint">Apply color to paint slot</button>
+        <button type="button" class="secondary" ng-click="cancelColorPicker()">Cancel</button>
       </div>
     </div>
   </div>
