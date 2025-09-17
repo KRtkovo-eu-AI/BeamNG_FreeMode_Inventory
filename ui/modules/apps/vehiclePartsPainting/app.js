@@ -51,7 +51,7 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
-        basePaintCollapsed: true,
+        basePaintCollapsed: false,
         configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
@@ -1326,9 +1326,14 @@ angular.module('beamng.apps')
       $scope.selectSavedConfig = function (config) {
         if (!config) {
           state.selectedSavedConfig = null;
+          state.configNameInput = '';
+          state.saveErrorMessage = null;
           return;
         }
         state.selectedSavedConfig = config;
+        const displayName = getSavedConfigDisplayName(config);
+        state.configNameInput = displayName || '';
+        state.saveErrorMessage = null;
       };
 
       $scope.saveCurrentConfiguration = function () {

@@ -1032,12 +1032,91 @@ local function sendSavedConfigs(vehId, vehData, vehObj)
 end
 
 local function saveCurrentUserConfig(configName)
-  log('W', logTag, string.format('Ignoring saveCurrentUserConfig request for %s (feature disabled)', tostring(configName)))
   local vehId = be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
     guihooks.trigger('VehiclePartsPaintingSavedConfigs', { vehicleId = -1, configs = {} })
     return
   end
+
+  local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+  if not coreVehiclesExtension then
+    log('E', logTag, 'Unable to save vehicle configuration: core_vehicles extension unavailable')
+  else
+    local displayName = sanitizeConfigDisplayName(configName) or nil
+    local candidateNames = {}
+    if displayName and displayName ~= '' then
+      candidateNames[#candidateNames + 1] = displayName
+      local sanitizedFileName = sanitizeFileName(displayName)
+      if sanitizedFileName and sanitizedFileName ~= '' and sanitizedFileName ~= displayName then
+        candidateNames[#candidateNames + 1] = sanitizedFileName
+      end
+    else
+      local fallback = sanitizeFileName(configName)
+      if fallback and fallback ~= '' then
+        candidateNames[#candidateNames + 1] = fallback
+      end
+    end
+
+    if #candidateNames == 0 then
+      log('W', logTag, string.format('Unable to save vehicle configuration: invalid name %s', tostring(configName)))
+    else
+      local saveSucceeded = false
+      local usedMethod = nil
+      local lastError = nil
+
+      local function trySave(candidate)
+        local attempts = {
+          { name = 'saveConfig', fn = coreVehiclesExtension.saveConfig },
+          { name = 'saveCurrentConfig', fn = coreVehiclesExtension.saveCurrentConfig },
+          { name = 'saveCurrentVehicleConfig', fn = coreVehiclesExtension.saveCurrentVehicleConfig }
+        }
+        local attemptedAny = false
+        local attemptError = nil
+
+        for _, attempt in ipairs(attempts) do
+          if type(attempt.fn) == 'function' then
+            attemptedAny = true
+            local ok, resultOrErr = safePcall(attempt.fn, candidate)
+            if ok then
+              if resultOrErr ~= false then
+                return true, attempt.name
+              end
+              attemptError = string.format('%s returned false', attempt.name)
+            else
+              attemptError = string.format('%s: %s', attempt.name, tostring(resultOrErr))
+            end
+          end
+        end
+
+        if not attemptedAny then
+          return false, 'no_save_function_available'
+        end
+
+        return false, attemptError or 'unknown_error'
+      end
+
+      for _, candidate in ipairs(candidateNames) do
+        local ok, result = trySave(candidate)
+        if ok then
+          saveSucceeded = true
+          usedMethod = result
+          if candidate ~= displayName and displayName and displayName ~= '' then
+            log('I', logTag, string.format('Saved vehicle configuration "%s" using fallback name "%s" via core_vehicles.%s', tostring(displayName), tostring(candidate), tostring(usedMethod)))
+          else
+            log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicles.%s', tostring(candidate), tostring(usedMethod)))
+          end
+          break
+        else
+          lastError = result
+        end
+      end
+
+      if not saveSucceeded then
+        log('E', logTag, string.format('Failed to save vehicle configuration "%s": %s', tostring(displayName or configName), tostring(lastError or 'unknown_error')))
+      end
+    end
+  end
+
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
   sendSavedConfigs(vehId, vehData, vehObj)
