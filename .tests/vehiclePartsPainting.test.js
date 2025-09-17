@@ -141,6 +141,36 @@ function createIntervalStub() {
   return interval;
 }
 
+function createTimeoutStub() {
+  const handles = [];
+  function timeout(callback, delay) {
+    const handle = { callback: callback, delay: delay, cancelled: false };
+    handles.push(handle);
+    return handle;
+  }
+  timeout.cancel = function cancel(handle) {
+    if (!handle) {
+      return;
+    }
+    handle.cancelled = true;
+    const index = handles.indexOf(handle);
+    if (index !== -1) {
+      handles.splice(index, 1);
+    }
+  };
+  timeout.flush = function flush() {
+    const snapshot = handles.slice();
+    handles.length = 0;
+    for (let i = 0; i < snapshot.length; i++) {
+      const handle = snapshot[i];
+      if (!handle.cancelled && typeof handle.callback === 'function') {
+        handle.callback();
+      }
+    }
+  };
+  return timeout;
+}
+
 function structuredClonePaints(paints) {
   return paints.map((paint) => ({
     baseColor: paint.baseColor.slice(),
@@ -233,6 +263,7 @@ function instantiateController() {
 
   const scope = new ScopeStub();
   const interval = createIntervalStub();
+  const timeout = createTimeoutStub();
 
   const injected = controllerDeps.map((dep) => {
     if (dep === '$scope') {
@@ -240,6 +271,9 @@ function instantiateController() {
     }
     if (dep === '$interval') {
       return interval;
+    }
+    if (dep === '$timeout') {
+      return timeout;
     }
     throw new Error('Unknown controller dependency: ' + dep);
   });
@@ -254,6 +288,7 @@ function instantiateController() {
   return {
     scope: scope,
     interval: interval,
+    timeout: timeout,
     bngApiCalls: bngApiCalls,
     hooks: controllerHooks
   };

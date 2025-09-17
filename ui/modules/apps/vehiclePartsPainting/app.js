@@ -36,7 +36,7 @@ angular.module('beamng.apps')
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', '$interval', function ($scope, $interval) {
+    controller: ['$scope', '$interval', '$timeout', function ($scope, $interval, $timeout) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -63,7 +63,9 @@ angular.module('beamng.apps')
         pendingConfigName: null,
         pendingSanitizedName: null,
         pendingExistingConfig: null,
-        colorPresets: []
+        colorPresets: [],
+        showPresetDeleteConfirmation: false,
+        pendingPresetToDelete: null
       };
 
       $scope.state = state;
@@ -77,6 +79,9 @@ angular.module('beamng.apps')
       let treeNodesByPath = Object.create(null);
       let partsTreeDirty = false;
       let customPaintStateByPath = Object.create(null);
+      const PRESET_HOLD_DELAY_MS = 650;
+      let presetHoldTimer = null;
+      let activePresetHold = null;
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -231,6 +236,80 @@ angular.module('beamng.apps')
         if (preset.title) { return preset.title; }
         if (preset.name) { return preset.name; }
         return '';
+      }
+
+      function normalizePresetName(name) {
+        if (typeof name !== 'string') { return null; }
+        const trimmed = name.trim();
+        return trimmed ? trimmed.toLowerCase() : null;
+      }
+
+      function removePresetLocally(preset) {
+        if (!preset) { return false; }
+        const presets = Array.isArray(state.colorPresets) ? state.colorPresets : [];
+        const index = presets.indexOf(preset);
+        if (index !== -1) {
+          const updated = presets.slice();
+          updated.splice(index, 1);
+          state.colorPresets = updated;
+          return true;
+        }
+        const targetName = normalizePresetName(preset.name);
+        if (!targetName) { return false; }
+        const updatedPresets = [];
+        let removed = false;
+        for (let i = 0; i < presets.length; i++) {
+          const existing = presets[i];
+          if (!removed && existing && normalizePresetName(existing.name) === targetName) {
+            removed = true;
+            continue;
+          }
+          updatedPresets.push(existing);
+        }
+        if (removed) {
+          state.colorPresets = updatedPresets;
+        }
+        return removed;
+      }
+
+      function clearPendingPresetDeletion() {
+        state.showPresetDeleteConfirmation = false;
+        state.pendingPresetToDelete = null;
+      }
+
+      function openPresetDeleteDialog(preset) {
+        if (!preset) { return; }
+        state.pendingPresetToDelete = preset;
+        state.showPresetDeleteConfirmation = true;
+      }
+
+      function resetPresetHold() {
+        if (presetHoldTimer) {
+          $timeout.cancel(presetHoldTimer);
+          presetHoldTimer = null;
+        }
+        activePresetHold = null;
+      }
+
+      function releasePresetHold() {
+        if (presetHoldTimer) {
+          $timeout.cancel(presetHoldTimer);
+          presetHoldTimer = null;
+        }
+        if (activePresetHold && !activePresetHold.triggered) {
+          activePresetHold = null;
+        }
+      }
+
+      function beginPresetHold(preset) {
+        resetPresetHold();
+        if (!preset) { return; }
+        activePresetHold = { preset: preset, triggered: false };
+        presetHoldTimer = $timeout(function () {
+          if (!activePresetHold || activePresetHold.preset !== preset) { return; }
+          activePresetHold.triggered = true;
+          openPresetDeleteDialog(preset);
+        }, PRESET_HOLD_DELAY_MS);
       }
 
       function applyPresetToPaint(paint, preset) {
@@ -1180,6 +1259,29 @@ angular.module('beamng.apps')
         applyPresetToPaint(paint, preset);
       };
 
+      $scope.handleColorPresetClick = function ($event, paint, preset) {
+        if (activePresetHold && activePresetHold.preset === preset && activePresetHold.triggered) {
+          if ($event && typeof $event.preventDefault === 'function') { $event.preventDefault(); }
+          if ($event && typeof $event.stopPropagation === 'function') { $event.stopPropagation(); }
+          resetPresetHold();
+          return;
+        }
+        resetPresetHold();
+        $scope.applyColorPreset(paint, preset);
+      };
+
+      $scope.onColorPresetPressStart = function (preset) {
+        beginPresetHold(preset);
+      };
+
+      $scope.onColorPresetPressEnd = function () {
+        releasePresetHold();
+      };
+
+      $scope.onColorPresetPressCancel = function () {
+        resetPresetHold();
+      };
+
       $scope.isUserPaletteCollapsed = function (paint) {
         return !!ensureUserPaletteFlag(paint);
       };
@@ -1244,6 +1346,37 @@ angular.module('beamng.apps')
         }
         const command = 'freeroam_vehiclePartsPainting.addColorPreset(' + toLuaString(JSON.stringify(payload)) + ')';
         bngApi.engineLua(command);
+      };
+
+      $scope.cancelDeleteColorPreset = function () {
+        clearPendingPresetDeletion();
+        resetPresetHold();
+      };
+
+      $scope.confirmDeleteColorPreset = function () {
+        const preset = state.pendingPresetToDelete;
+        if (!preset) {
+          clearPendingPresetDeletion();
+          resetPresetHold();
+          return;
+        }
+        const payload = {};
+        const presetName = typeof preset.name === 'string' ? preset.name : null;
+        const trimmedName = presetName ? presetName.trim() : '';
+        if (trimmedName) {
+          payload.name = trimmedName;
+        } else if (Array.isArray(preset.value)) {
+          payload.value = preset.value.slice();
+        } else if (preset.paint && Array.isArray(preset.paint.baseColor)) {
+          payload.value = preset.paint.baseColor.slice();
+        }
+        removePresetLocally(preset);
+        clearPendingPresetDeletion();
+        resetPresetHold();
+        if (Object.keys(payload).length) {
+          const command = 'freeroam_vehiclePartsPainting.removeColorPreset(' + toLuaString(JSON.stringify(payload)) + ')';
+          bngApi.engineLua(command);
+        }
       };
 
       $scope.copyFromVehicle = function (index) {
@@ -1466,6 +1599,8 @@ angular.module('beamng.apps')
       };
 
       $scope.$on('$destroy', function () {
+        resetPresetHold();
+        clearPendingPresetDeletion();
         if (customBadgeRefreshPromise) {
           $interval.cancel(customBadgeRefreshPromise);
           customBadgeRefreshPromise = null;

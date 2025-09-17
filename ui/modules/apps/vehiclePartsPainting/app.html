@@ -84,6 +84,39 @@
     .vehicle-parts-painting .config-confirm-dialog .dialog-actions .cancel:hover {
       background: rgba(255, 255, 255, 0.25);
     }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions .danger {
+      background: rgba(214, 62, 62, 0.95);
+      color: #fff;
+    }
+    .vehicle-parts-painting .config-confirm-dialog .dialog-actions .danger:hover {
+      background: rgba(214, 62, 62, 1);
+    }
+    .vehicle-parts-painting .preset-delete-dialog .selected-color {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 14px 0 18px 0;
+    }
+    .vehicle-parts-painting .preset-delete-dialog .selected-color .swatch {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+    }
+    .vehicle-parts-painting .preset-delete-dialog .selected-color .details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .vehicle-parts-painting .preset-delete-dialog .selected-color .details .name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .vehicle-parts-painting .preset-delete-dialog .selected-color .details .meta {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+    }
     .vehicle-parts-painting .app-content {
       flex: 1;
       display: flex;
@@ -789,6 +822,23 @@
       </div>
     </div>
   </div>
+  <div class="config-confirm-overlay" ng-if="state.showPresetDeleteConfirmation">
+    <div class="config-confirm-dialog preset-delete-dialog">
+      <h4>Delete color preset</h4>
+      <p>Do you want to delete this color from your user palette?</p>
+      <div class="selected-color" ng-if="state.pendingPresetToDelete">
+        <div class="swatch" ng-style="getColorPresetStyle(state.pendingPresetToDelete)"></div>
+        <div class="details">
+          <div class="name">{{state.pendingPresetToDelete.name}}</div>
+          <div class="meta">{{getColorPresetTitle(state.pendingPresetToDelete)}}</div>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="cancel" ng-click="cancelDeleteColorPreset()">Cancel</button>
+        <button type="button" class="confirm danger" ng-click="confirmDeleteColorPreset()">Delete</button>
+      </div>
+    </div>
+  </div>
   <div class="minimized-bar" ng-if="state.minimized">
     <span class="title">Vehicle Parts Painting</span>
     <button type="button" ng-click="restoreApp()">Restore</button>
@@ -966,7 +1016,10 @@
                                 ng-repeat="preset in state.colorPresets track by $index"
                                 ng-style="getColorPresetStyle(preset)"
                                 ng-attr-title="{{getColorPresetTitle(preset)}}"
-                                ng-click="applyColorPreset(paint, preset)"></button>
+                                ng-mousedown="onColorPresetPressStart(preset, $event)"
+                                ng-mouseup="onColorPresetPressEnd($event)"
+                                ng-mouseleave="onColorPresetPressCancel()"
+                                ng-click="handleColorPresetClick($event, paint, preset)"></button>
                       </div>
                     </div>
                     <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
@@ -1080,7 +1133,10 @@
                               ng-repeat="preset in state.colorPresets track by $index"
                               ng-style="getColorPresetStyle(preset)"
                               ng-attr-title="{{getColorPresetTitle(preset)}}"
-                              ng-click="applyColorPreset(paint, preset)"></button>
+                              ng-mousedown="onColorPresetPressStart(preset, $event)"
+                              ng-mouseup="onColorPresetPressEnd($event)"
+                              ng-mouseleave="onColorPresetPressCancel()"
+                              ng-click="handleColorPresetClick($event, paint, preset)"></button>
                     </div>
                   </div>
                   <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>

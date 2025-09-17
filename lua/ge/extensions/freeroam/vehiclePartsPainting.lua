@@ -867,6 +867,116 @@ local function addColorPreset(jsonStr)
   addColorPresetEntry(data)
 end
 
+local function removeColorPresetEntry(entry)
+  ensureColorPresetsLoaded()
+  if type(userColorPresets) ~= 'table' then
+    return
+  end
+
+  local targetName = nil
+  local targetValue = nil
+
+  if type(entry) == 'string' then
+    targetName = entry
+  elseif type(entry) == 'table' then
+    if entry.name ~= nil then
+      targetName = entry.name
+    end
+    if type(entry.value) == 'table' then
+      targetValue = entry.value
+    end
+    if targetName == nil or targetValue == nil then
+      local sanitized = sanitizeColorPresetEntry(entry)
+      if sanitized then
+        if targetName == nil and sanitized.name ~= nil then
+          targetName = sanitized.name
+        end
+        if targetValue == nil and sanitized.paint and type(sanitized.paint.baseColor) == 'table' then
+          targetValue = sanitized.paint.baseColor
+        end
+      end
+    end
+  end
+
+  if targetName ~= nil then
+    targetName = tostring(targetName)
+    targetName = targetName:gsub('^%s+', ''):gsub('%s+$', '')
+    if targetName ~= '' then
+      targetName = string.lower(targetName)
+    else
+      targetName = nil
+    end
+  end
+
+  local removed = false
+
+  if targetName ~= nil then
+    for index = #userColorPresets, 1, -1 do
+      local preset = userColorPresets[index]
+      if preset and preset.name and string.lower(tostring(preset.name)) == targetName then
+        table.remove(userColorPresets, index)
+        removed = true
+        break
+      end
+    end
+  end
+
+  local function colorsMatch(candidate)
+    if type(candidate) ~= 'table' or type(targetValue) ~= 'table' then
+      return false
+    end
+    for i = 1, 4 do
+      local expectedRaw = targetValue[i]
+      if expectedRaw ~= nil then
+        local expected = clampFraction01(expectedRaw)
+        local actual = clampFraction01(candidate[i])
+        if math.abs(expected - actual) > 1e-6 then
+          return false
+        end
+      end
+    end
+    return true
+  end
+
+  if not removed and type(targetValue) == 'table' then
+    for index = #userColorPresets, 1, -1 do
+      local preset = userColorPresets[index]
+      local baseColor = preset and preset.paint and preset.paint.baseColor
+      if colorsMatch(baseColor) then
+        table.remove(userColorPresets, index)
+        removed = true
+        break
+      end
+    end
+  end
+
+  if not removed then
+    return
+  end
+
+  local okSave, err = saveColorPresetsToDisk(userColorPresets)
+  if not okSave then
+    log('W', logTag, string.format('Failed to save color presets: %s', tostring(err)))
+  end
+
+  sendColorPresets()
+end
+
+local function removeColorPreset(jsonStr)
+  if not jsonStr then return end
+  if type(jsonStr) == 'table' then
+    removeColorPresetEntry(jsonStr)
+    return
+  end
+  if type(jsonStr) ~= 'string' then return end
+  local okDecode, data = pcall(jsonDecode, jsonStr)
+  if not okDecode then
+    log('W', logTag, 'Failed to decode color preset JSON: ' .. tostring(data))
+    return
+  end
+  removeColorPresetEntry(data)
+end
+
 local function requestColorPresets()
   sendColorPresets()
 end
@@ -2553,6 +2663,7 @@ M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 M.saveCurrentConfiguration = saveCurrentConfiguration
 M.spawnSavedConfiguration = spawnSavedConfiguration
 M.addColorPreset = addColorPreset
+M.removeColorPreset = removeColorPreset
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
