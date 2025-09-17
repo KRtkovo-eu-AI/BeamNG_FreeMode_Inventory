@@ -1254,6 +1254,45 @@ local function resolvePartName(vehData, partPath)
   return nil
 end
 
+local function resolveSlotLabel(availableParts, parentPartName, slotKey, node)
+  if availableParts and parentPartName and parentPartName ~= '' and slotKey and slotKey ~= '' then
+    local parentInfo = availableParts[parentPartName]
+    if parentInfo then
+      local slotInfoUi = parentInfo.slotInfoUi
+      if slotInfoUi then
+        local slotInfo = slotInfoUi[slotKey]
+        if slotInfo then
+          local description = slotInfo.description or slotInfo.name
+          if description and description ~= '' then
+            return description
+          end
+        end
+      end
+    end
+  end
+
+  if node then
+    if node.name and node.name ~= '' then
+      return node.name
+    end
+    if node.displayName and node.displayName ~= '' then
+      return node.displayName
+    end
+    if node.title and node.title ~= '' then
+      return node.title
+    end
+    if node.id and node.id ~= '' then
+      return node.id
+    end
+  end
+
+  if slotKey and slotKey ~= '' then
+    return slotKey
+  end
+
+  return nil
+end
+
 local function formatNumberLiteral(value)
   local num = tonumber(value) or 0
   if math.abs(num) < 1e-6 then num = 0 end
@@ -1914,7 +1953,7 @@ local function cleanupState(vehId, validPaths, vehData)
   end
 end
 
-local function gatherParts(node, result, availableParts, basePaints, validPaths, depth, vehId, descriptors, activePartIds)
+local function gatherParts(node, result, availableParts, basePaints, validPaths, depth, vehId, descriptors, activePartIds, parentPartName, slotKey)
   if not node then return end
   local slotPath = node.path or ''
   local partPath = node.partPath
@@ -1935,10 +1974,14 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
     validPaths[partPath] = true
     local info = availableParts[chosenPartName] or {}
     local displayName = info.description or info.name or chosenPartName
+    local slotLabel = resolveSlotLabel(availableParts, parentPartName, slotKey, node)
+    local slotDisplayName = slotLabel or nil
+    local slotName = node.name or node.id or slotKey
     local entry = {
       partPath = partPath,
       partName = chosenPartName,
-      slotName = node.name or node.id,
+      slotName = slotName,
+      slotLabel = slotDisplayName,
       slotPath = slotPath,
       depth = depth or 0,
       displayName = displayName,
@@ -1987,7 +2030,7 @@ local function gatherParts(node, result, availableParts, basePaints, validPaths,
     end
     table.sort(orderedChildren, function(a, b) return a.key < b.key end)
     for _, child in ipairs(orderedChildren) do
-      gatherParts(child.child, result, availableParts, basePaints, validPaths, (depth or 0) + 1, vehId, descriptors, activePartIds)
+      gatherParts(child.child, result, availableParts, basePaints, validPaths, (depth or 0) + 1, vehId, descriptors, activePartIds, chosenPartName, child.key)
     end
   end
 end
@@ -2025,7 +2068,7 @@ sendState = function(targetVehId)
   end
 
   local descriptors = {}
-  gatherParts(vehData.config.partsTree, parts, availableParts, basePaints, validPaths, 0, vehId, descriptors, activePartIds)
+  gatherParts(vehData.config.partsTree, parts, availableParts, basePaints, validPaths, 0, vehId, descriptors, activePartIds, nil, nil)
   cleanupState(vehId, validPaths, vehData)
 
   if tableIsEmpty(validPaths) then
@@ -2384,7 +2427,58 @@ local function onVehiclePartsPaintingResult(vehId, partPath, partName, slotPath,
   end
 end
 
+local function resolveHighlightInfo(vehId, partPath)
+  if not vehId or not partPath or partPath == '' then
+    return nil, nil, nil, {}
+  end
+
+  local descriptors = partDescriptorsByVeh[vehId]
+  local descriptor = descriptors and descriptors[partPath]
+  local slotPath = descriptor and descriptor.slotPath or nil
+  local partName = descriptor and descriptor.partName or nil
+
+  if not partName then
+    local vehData = vehManager.getVehicleData(vehId)
+    partName = resolvePartName(vehData, partPath)
+    if descriptor and partName then
+      descriptor.partName = partName
+    end
+  end
+
+  local identifiers = descriptor and descriptor.identifiers
+  if not identifiers or tableIsEmpty(identifiers) then
+    identifiers, descriptor = resolvePartIdentifiersForVehicle(vehId, partPath, partName, slotPath)
+  end
+
+  if not descriptor and partDescriptorsByVeh[vehId] then
+    descriptor = partDescriptorsByVeh[vehId][partPath]
+  end
+
+  if descriptor then
+    if partName and partName ~= '' then
+      descriptor.partName = descriptor.partName or partName
+    end
+    if slotPath and slotPath ~= '' then
+      descriptor.slotPath = descriptor.slotPath or slotPath
+    end
+    identifiers = descriptor.identifiers or identifiers
+    partName = descriptor.partName or partName
+    slotPath = descriptor.slotPath or slotPath
+  end
+
+  return descriptor, partName, slotPath, identifiers or {}
+end
+
+local function shouldUseMeshAlphaFallback()
+  local partManager = extensions and extensions.core_vehicle_partmgmt
+  return not (partManager and type(partManager.selectParts) == 'function')
+end
+
 local function applyPartTransparency(vehId, partPath)
+  if not shouldUseMeshAlphaFallback() then
+    return
+  end
+
   if not vehId or vehId == -1 then return end
 
   local vehObj = getObjectByID(vehId)
@@ -2397,23 +2491,7 @@ local function applyPartTransparency(vehId, partPath)
 
   vehObj:setMeshAlpha(highlightFadeAlpha, "", false)
 
-  local descriptors = partDescriptorsByVeh[vehId]
-  local descriptor = descriptors and descriptors[partPath]
-  local slotPath = descriptor and descriptor.slotPath or nil
-  local partName = descriptor and descriptor.partName or nil
-
-  if not partName then
-    local vehData = vehManager.getVehicleData(vehId)
-    partName = resolvePartName(vehData, partPath)
-  end
-
-  local identifiers = descriptor and descriptor.identifiers
-  if not identifiers or tableIsEmpty(identifiers) then
-    identifiers = resolvePartIdentifiersForVehicle(vehId, partPath, partName, slotPath)
-    if descriptor then
-      descriptor.identifiers = identifiers
-    end
-  end
+  local descriptor, partName, slotPath, identifiers = resolveHighlightInfo(vehId, partPath)
 
   local restored = false
   if identifiers and not tableIsEmpty(identifiers) then
@@ -2428,6 +2506,36 @@ local function applyPartTransparency(vehId, partPath)
   if not restored then
     vehObj:setMeshAlpha(1, "", false)
   end
+end
+
+local function buildHighlightSelection(vehId, partPath)
+  local selection = {}
+  if not partPath or partPath == '' then
+    return selection
+  end
+
+  selection[partPath] = true
+
+  local _, partName, slotPath, identifiers = resolveHighlightInfo(vehId, partPath)
+  local candidates = collectPartIdentifierCandidates(partPath, partName, slotPath)
+
+  if candidates then
+    for _, identifier in ipairs(candidates) do
+      if identifier and identifier ~= '' then
+        selection[identifier] = true
+      end
+    end
+  end
+
+  if identifiers then
+    for _, identifier in ipairs(identifiers) do
+      if identifier and identifier ~= '' then
+        selection[identifier] = true
+      end
+    end
+  end
+
+  return selection
 end
 
 local function showAllParts(targetVehId)
@@ -2460,7 +2568,7 @@ local function showAllParts(targetVehId)
     end
 
     local descriptors = {}
-    gatherParts(vehData.config.partsTree, tmpParts, availableParts, basePaints, highlight, 0, vehId, descriptors, activePartIds)
+    gatherParts(vehData.config.partsTree, tmpParts, availableParts, basePaints, highlight, 0, vehId, descriptors, activePartIds, nil, nil)
     if tableIsEmpty(highlight) then
       highlight = nil
       validPartPathsByVeh[vehId] = nil
@@ -2487,8 +2595,18 @@ local function showAllParts(targetVehId)
 
   local currentPlayerVehId = be:getPlayerVehicleID(0)
   if vehId == currentPlayerVehId then
-    if extensions.core_vehicle_partmgmt and type(extensions.core_vehicle_partmgmt.highlightParts) == 'function' then
-      extensions.core_vehicle_partmgmt.highlightParts(highlight or {})
+    local partManager = extensions.core_vehicle_partmgmt
+    if partManager then
+      if type(partManager.showHighlightedParts) == 'function' then
+        partManager.showHighlightedParts(vehId)
+      elseif type(partManager.selectParts) == 'function' then
+        partManager.selectParts({}, vehId)
+      end
+      if type(partManager.highlightParts) == 'function' then
+        partManager.highlightParts(highlight or {}, vehId)
+      elseif vehObj then
+        vehObj:queueLuaCommand('bdebug.setPartsSelected({})')
+      end
     elseif vehObj then
       vehObj:queueLuaCommand('bdebug.setPartsSelected({})')
     end
@@ -2498,14 +2616,20 @@ local function showAllParts(targetVehId)
 end
 
 local function highlightPart(partPath)
-  local parts = {}
   local vehId = be:getPlayerVehicleID(0)
   highlightedParts = {}
+  local selection = {}
   if partPath and partPath ~= '' then
-    parts[partPath] = true
     highlightedParts[partPath] = true
+    selection = buildHighlightSelection(vehId, partPath)
   end
-  extensions.core_vehicle_partmgmt.highlightParts(parts)
+  if extensions.core_vehicle_partmgmt then
+    if type(extensions.core_vehicle_partmgmt.selectParts) == 'function' then
+      extensions.core_vehicle_partmgmt.selectParts(selection, vehId)
+    elseif type(extensions.core_vehicle_partmgmt.highlightParts) == 'function' then
+      extensions.core_vehicle_partmgmt.highlightParts(selection, vehId)
+    end
+  end
   applyPartTransparency(vehId, partPath)
 end
 

@@ -1561,7 +1561,7 @@
           <span class="toggle placeholder" ng-if="!node.children || !node.children.length"></span>
           <div class="node-content">
             <div class="name">{{node.part.displayName || node.part.partName}}</div>
-            <div class="slot" ng-if="node.part.slotName">{{node.part.slotName}}</div>
+            <div class="slot" ng-if="node.part.slotName || node.part.slotLabel">{{node.part.slotLabel || node.part.slotName}}</div>
             <span class="custom-tag" ng-if="hasCustomBadge(node.part)">CUSTOM</span>
           </div>
         </div>
@@ -1678,7 +1678,7 @@
             <div class="part-summary">
               <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
               <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
-              <div class="meta" ng-if="state.selectedPart.slotName">Slot: {{state.selectedPart.slotName}}</div>
+              <div class="meta" ng-if="state.selectedPart.slotName || state.selectedPart.slotLabel">Slot: {{state.selectedPart.slotLabel || state.selectedPart.slotName}}</div>
             </div>
             <div class="header-actions">
               <button type="button"
