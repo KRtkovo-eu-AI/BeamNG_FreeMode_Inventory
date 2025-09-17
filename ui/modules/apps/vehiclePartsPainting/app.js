@@ -27,13 +27,16 @@ angular.module('beamng.apps')
   }
 
   const bngApi = resolveBngApi();
+  const testHooks = (typeof window !== 'undefined' && window.__vehiclePartsPaintingTestHooks)
+    ? window.__vehiclePartsPaintingTestHooks
+    : null;
 
   return {
     templateUrl: '/ui/modules/apps/vehiclePartsPainting/app.html',
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', function ($scope) {
+    controller: ['$scope', '$interval', function ($scope, $interval) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -64,6 +67,14 @@ angular.module('beamng.apps')
 
       $scope.state = state;
       $scope.editedPaints = [];
+
+      const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
+      let customBadgeRefreshPromise = null;
+      let partLookup = Object.create(null);
+      let partIndexLookup = Object.create(null);
+      let treeNodesByPath = Object.create(null);
+      let partsTreeDirty = false;
+      let customPaintStateByPath = Object.create(null);
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -357,6 +368,281 @@ angular.module('beamng.apps')
         return result;
       }
 
+      function resetPartLookup() {
+        partLookup = Object.create(null);
+        partIndexLookup = Object.create(null);
+      }
+
+      function registerPart(part, index) {
+        if (!part || typeof part !== 'object' || !part.partPath) { return; }
+        const path = part.partPath;
+        partLookup[path] = part;
+        if (typeof index === 'number' && index >= 0) {
+          partIndexLookup[path] = index;
+        }
+      }
+
+      function rebuildPartLookup() {
+        resetPartLookup();
+        if (!Array.isArray(state.parts)) { return; }
+        for (let i = 0; i < state.parts.length; i++) {
+          registerPart(state.parts[i], i);
+        }
+      }
+
+      function findPartIndex(partPath) {
+        if (!partPath) { return -1; }
+        const stored = partIndexLookup[partPath];
+        const partsArray = Array.isArray(state.parts) ? state.parts : null;
+        if (typeof stored === 'number' && stored >= 0 && partsArray && partsArray[stored] && partsArray[stored].partPath === partPath) {
+          return stored;
+        }
+        if (!partsArray) { return -1; }
+        for (let i = 0; i < partsArray.length; i++) {
+          const candidate = partsArray[i];
+          if (candidate && candidate.partPath === partPath) {
+            registerPart(candidate, i);
+            return i;
+          }
+        }
+        return -1;
+      }
+
+      function getPartEntry(partPath) {
+        if (!partPath) { return { part: null, index: -1 }; }
+        const partsArray = Array.isArray(state.parts) ? state.parts : null;
+        let index = findPartIndex(partPath);
+        let part = null;
+        if (index !== -1 && partsArray) {
+          part = partsArray[index];
+        }
+        if (!part) {
+          part = partLookup[partPath] || null;
+        }
+        if (!part && state.selectedPart && state.selectedPart.partPath === partPath) {
+          part = state.selectedPart;
+        }
+        if (part && index === -1 && partsArray) {
+          index = findPartIndex(partPath);
+          if (index !== -1 && partsArray[index]) {
+            part = partsArray[index];
+          }
+        }
+        return { part: part, index: index };
+      }
+
+      function clearCustomPaintState() {
+        customPaintStateByPath = Object.create(null);
+      }
+
+      function setCustomPaintState(path, value) {
+        if (!path) { return false; }
+        const normalized = !!value;
+        if (customPaintStateByPath[path] === normalized) { return false; }
+        customPaintStateByPath[path] = normalized;
+        return true;
+      }
+
+      function getCustomPaintState(path) {
+        if (!path) { return false; }
+        const value = customPaintStateByPath[path];
+        if (value === undefined) { return false; }
+        return !!value;
+      }
+
+      function resetTreeNodeLookup() {
+        treeNodesByPath = Object.create(null);
+      }
+
+      function registerTreeNode(part, node) {
+        if (!node || !part || !part.partPath) { return; }
+        const path = part.partPath;
+        if (!treeNodesByPath[path]) {
+          treeNodesByPath[path] = [];
+        }
+        if (treeNodesByPath[path].indexOf(node) === -1) {
+          treeNodesByPath[path].push(node);
+        }
+      }
+
+      function indexTreeNodes(nodes) {
+        if (!Array.isArray(nodes)) { return; }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (!node || !node.part) { continue; }
+          registerTreeNode(node.part, node);
+          if (Array.isArray(node.children) && node.children.length) {
+            indexTreeNodes(node.children);
+          }
+        }
+      }
+
+      function rebuildPartsTreeWithIndex(parts) {
+        const tree = buildPartsTree(parts);
+        resetTreeNodeLookup();
+        indexTreeNodes(tree);
+        return tree;
+      }
+
+      function markPartsTreeDirty() {
+        partsTreeDirty = true;
+      }
+
+      function rebuildCurrentPartsTree() {
+        state.partsTree = rebuildPartsTreeWithIndex(state.parts);
+        partsTreeDirty = false;
+      }
+
+      function ensurePartsTreeCurrent() {
+        if (!partsTreeDirty) { return; }
+        rebuildCurrentPartsTree();
+      }
+
+      function syncTreeNodesWithPart(part) {
+        if (!part || !part.partPath) { return; }
+        const nodes = treeNodesByPath[part.partPath];
+        if (!Array.isArray(nodes)) { return; }
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          if (node) {
+            node.part = part;
+          }
+        }
+      }
+
+      function applyPartReplacement(part, index, options) {
+        if (!part || !part.partPath) { return; }
+        options = options || {};
+        let resolvedIndex = typeof index === 'number' && index >= 0 ? index : -1;
+        const partsArray = Array.isArray(state.parts) ? state.parts : null;
+        if (resolvedIndex === -1 && partsArray) {
+          resolvedIndex = findPartIndex(part.partPath);
+        }
+        if (partsArray && resolvedIndex >= 0 && resolvedIndex < partsArray.length) {
+          partsArray[resolvedIndex] = part;
+          partIndexLookup[part.partPath] = resolvedIndex;
+        }
+        registerPart(part, resolvedIndex);
+        syncTreeNodesWithPart(part);
+        if (Array.isArray(state.filteredParts)) {
+          for (let i = 0; i < state.filteredParts.length; i++) {
+            const filteredPart = state.filteredParts[i];
+            if (filteredPart && filteredPart.partPath === part.partPath) {
+              state.filteredParts[i] = part;
+            }
+          }
+        }
+        if (state.selectedPart && state.selectedPart.partPath === part.partPath) {
+          state.selectedPart = part;
+          if (options.updateEditor !== false) {
+            updateEditedPaints(part);
+          }
+        }
+
+        markPartsTreeDirty();
+      }
+
+      function hasPaintEntries(paints) {
+        if (!Array.isArray(paints)) { return false; }
+        for (let i = 0; i < paints.length; i++) {
+          const entry = paints[i];
+          if (entry && typeof entry === 'object') {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function numbersClose(a, b, epsilon) {
+        if (typeof a !== 'number' || typeof b !== 'number') { return a === b; }
+        const difference = Math.abs(a - b);
+        if (!isFinite(difference)) { return false; }
+        return difference <= (epsilon !== undefined ? epsilon : 0.0005);
+      }
+
+      function viewPaintsEqual(paintA, paintB) {
+        if (!paintA && !paintB) { return true; }
+        if (!paintA || !paintB) { return false; }
+        const viewA = createViewPaint(paintA);
+        const viewB = createViewPaint(paintB);
+        const colorA = viewA && viewA.color ? viewA.color : {};
+        const colorB = viewB && viewB.color ? viewB.color : {};
+        if (colorA.r !== colorB.r || colorA.g !== colorB.g || colorA.b !== colorB.b) { return false; }
+        if (!numbersClose(viewA.alpha, viewB.alpha)) { return false; }
+        if (!numbersClose(viewA.metallic, viewB.metallic)) { return false; }
+        if (!numbersClose(viewA.roughness, viewB.roughness)) { return false; }
+        if (!numbersClose(viewA.clearcoat, viewB.clearcoat)) { return false; }
+        if (!numbersClose(viewA.clearcoatRoughness, viewB.clearcoatRoughness)) { return false; }
+        return true;
+      }
+
+      function paintCollectionsEqual(paintsA, paintsB) {
+        const lengthA = Array.isArray(paintsA) ? paintsA.length : 0;
+        const lengthB = Array.isArray(paintsB) ? paintsB.length : 0;
+        const maxLen = Math.max(lengthA, lengthB);
+        if (maxLen === 0) { return true; }
+        for (let i = 0; i < maxLen; i++) {
+          const paintA = lengthA > i ? paintsA[i] : null;
+          const paintB = lengthB > i ? paintsB[i] : null;
+          if (!viewPaintsEqual(paintA, paintB)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function computePartHasCustomPaint(part) {
+        if (!part || typeof part !== 'object') { return false; }
+        if (hasPaintEntries(part.customPaints)) { return true; }
+        const currentPaints = Array.isArray(part.currentPaints) ? part.currentPaints : [];
+        if (!currentPaints.length) { return false; }
+        const basePaints = Array.isArray(state.basePaints) ? state.basePaints : [];
+        if (!basePaints.length) { return part.hasCustomPaint === true; }
+        return !paintCollectionsEqual(currentPaints, basePaints);
+      }
+
+      function refreshCustomBadgeVisibility() {
+        if (!Array.isArray(state.parts) || !state.parts.length) { return; }
+        let changed = false;
+        let mapChanged = false;
+        for (let i = 0; i < state.parts.length; i++) {
+          const part = state.parts[i];
+          if (!part || typeof part !== 'object') { continue; }
+          const computed = computePartHasCustomPaint(part);
+          mapChanged = setCustomPaintState(part.partPath, computed) || mapChanged;
+          if (part.hasCustomPaint !== computed) {
+            const updatedPart = Object.assign({}, part, {
+              hasCustomPaint: computed
+            });
+            applyPartReplacement(updatedPart, i);
+            changed = true;
+          }
+        }
+        if (changed || mapChanged) {
+          computeFilteredParts();
+        }
+      }
+
+      $scope.hasCustomBadge = function (part) {
+        if (!part || !part.partPath) { return false; }
+        const path = part.partPath;
+        if (Object.prototype.hasOwnProperty.call(customPaintStateByPath, path)) {
+          return !!customPaintStateByPath[path];
+        }
+        return !!part.hasCustomPaint;
+      };
+
+      if (testHooks && typeof testHooks.registerController === 'function') {
+        testHooks.registerController({
+          getState: function () { return state; },
+          getTreeNodesByPath: function () { return treeNodesByPath; },
+          refreshCustomBadges: refreshCustomBadgeVisibility,
+          computeFilteredParts: computeFilteredParts,
+          markPartsTreeDirty: markPartsTreeDirty,
+          getCustomPaintState: function () { return customPaintStateByPath; }
+        });
+      }
+
       function sendShowAllCommand() {
         bngApi.engineLua('freeroam_vehiclePartsPainting.showAllParts()');
       }
@@ -436,38 +722,37 @@ angular.module('beamng.apps')
       }
 
       function findPartByPath(partPath) {
-        if (!partPath || !Array.isArray(state.parts)) { return null; }
-        for (let i = 0; i < state.parts.length; i++) {
-          const candidate = state.parts[i];
-          if (candidate && candidate.partPath === partPath) {
-            return candidate;
-          }
-        }
-        return null;
+        const entry = getPartEntry(partPath);
+        return entry.part;
       }
 
       function updateLocalPartPaintState(partPath, paints, hasCustomPaint) {
         if (!partPath) { return false; }
-        const part = findPartByPath(partPath) || (state.selectedPart && state.selectedPart.partPath === partPath ? state.selectedPart : null);
-        if (!part) { return false; }
+        const entry = getPartEntry(partPath);
+        const originalPart = entry.part;
+        let index = entry.index;
+        if (!originalPart) { return false; }
+
+        const updatedPart = Object.assign({}, originalPart);
 
         if (hasCustomPaint) {
           const clonedPaints = clonePaints(paints);
           if (!clonedPaints.length) { return false; }
-          part.hasCustomPaint = true;
-          part.customPaints = clonedPaints;
-          part.currentPaints = clonePaints(clonedPaints);
+          updatedPart.hasCustomPaint = true;
+          updatedPart.customPaints = clonedPaints;
+          updatedPart.currentPaints = clonePaints(clonedPaints);
         } else {
-          part.hasCustomPaint = false;
-          part.customPaints = null;
+          updatedPart.hasCustomPaint = false;
+          updatedPart.customPaints = null;
           const baseClone = clonePaints(state.basePaints);
-          part.currentPaints = baseClone.length ? baseClone : [];
+          updatedPart.currentPaints = baseClone.length ? baseClone : [];
         }
 
-        if (state.selectedPart && state.selectedPart.partPath === part.partPath) {
-          state.selectedPart = part;
-          updateEditedPaints(part);
+        if (index === -1) {
+          index = findPartIndex(partPath);
         }
+
+        applyPartReplacement(updatedPart, index);
 
         return true;
       }
@@ -655,6 +940,7 @@ angular.module('beamng.apps')
       }
 
       function computeFilteredParts() {
+        ensurePartsTreeCurrent();
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
         const normalized = rawFilter.trim().toLowerCase();
         const parts = Array.isArray(state.parts) ? state.parts.slice() : [];
@@ -835,10 +1121,12 @@ angular.module('beamng.apps')
       };
 
       $scope.expandAllNodes = function () {
+        ensurePartsTreeCurrent();
         setExpansionForNodes(state.partsTree, true);
       };
 
       $scope.collapseAllNodes = function () {
+        ensurePartsTreeCurrent();
         setExpansionForNodes(state.partsTree, false);
       };
 
@@ -961,6 +1249,7 @@ angular.module('beamng.apps')
         const paints = viewToPaints($scope.editedPaints);
         if (!paints.length) { return; }
         const updatedLocally = updateLocalPartPaintState(state.selectedPartPath, paints, true);
+        refreshCustomBadgeVisibility();
         if (updatedLocally) {
           computeFilteredParts();
         }
@@ -978,17 +1267,17 @@ angular.module('beamng.apps')
         if (!state.selectedPartPath) { return; }
         const partPath = state.selectedPartPath;
         const updatedLocally = updateLocalPartPaintState(partPath, null, false);
+        refreshCustomBadgeVisibility();
         if (!updatedLocally) {
-          const part = findPartByPath(partPath);
-          if (part) {
-            part.hasCustomPaint = false;
-            part.customPaints = null;
+          const entry = getPartEntry(partPath);
+          if (entry.part) {
             const baseClone = clonePaints(state.basePaints);
-            part.currentPaints = baseClone.length ? baseClone : [];
-            if (state.selectedPart && state.selectedPart.partPath === part.partPath) {
-              state.selectedPart = part;
-              updateEditedPaints(part);
-            }
+            const updatedPart = Object.assign({}, entry.part, {
+              hasCustomPaint: false,
+              customPaints: null,
+              currentPaints: baseClone.length ? baseClone : []
+            });
+            applyPartReplacement(updatedPart, entry.index);
           }
         }
         computeFilteredParts();
@@ -1001,6 +1290,13 @@ angular.module('beamng.apps')
       };
 
       $scope.$on('$destroy', function () {
+        if (customBadgeRefreshPromise) {
+          $interval.cancel(customBadgeRefreshPromise);
+          customBadgeRefreshPromise = null;
+        }
+        resetPartLookup();
+        resetTreeNodeLookup();
+        clearCustomPaintState();
         state.hoveredPartPath = null;
         sendShowAllCommand();
       });
@@ -1017,9 +1313,13 @@ angular.module('beamng.apps')
 
           if (!state.vehicleId) {
             clearPendingReplacement();
+            clearCustomPaintState();
             state.basePaints = [];
             state.parts = [];
+            resetPartLookup();
             state.partsTree = [];
+            partsTreeDirty = false;
+            resetTreeNodeLookup();
             state.filteredTree = [];
             state.filteredParts = [];
             state.expandedNodes = {};
@@ -1033,11 +1333,13 @@ angular.module('beamng.apps')
             state.hoveredPartPath = null;
             setSelectedPart(null);
             sendShowAllCommand();
+            refreshCustomBadgeVisibility();
             return;
           }
 
           if (state.vehicleId !== previousVehicleId) {
             clearPendingReplacement();
+            clearCustomPaintState();
             state.filterText = '';
             state.expandedNodes = {};
             state.savedConfigs = [];
@@ -1053,9 +1355,15 @@ angular.module('beamng.apps')
             requestSavedConfigs();
           }
 
+          if (state.vehicleId === previousVehicleId) {
+            clearCustomPaintState();
+          }
+
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
           state.parts = Array.isArray(data.parts) ? data.parts : [];
-          state.partsTree = buildPartsTree(state.parts);
+          rebuildPartLookup();
+          rebuildCurrentPartsTree();
+          refreshCustomBadgeVisibility();
 
           computeFilteredParts();
           state.isSpawningConfig = false;
@@ -1110,6 +1418,10 @@ angular.module('beamng.apps')
       $scope.refresh();
       requestSavedConfigs();
       bngApi.engineLua('freeroam_vehiclePartsPainting.requestColorPresets()');
+      refreshCustomBadgeVisibility();
+      customBadgeRefreshPromise = $interval(function () {
+        refreshCustomBadgeVisibility();
+      }, CUSTOM_BADGE_REFRESH_INTERVAL_MS);
     }]
   };
 }]);
