@@ -773,6 +773,12 @@ local function saveColorPresetsToDisk(presets)
 
   preferences.userPaintPresets = encodedPresets
 
+  if type(preferences.cloudSettings) ~= 'table' then
+    preferences.cloudSettings = {}
+  end
+
+  preferences.cloudSettings.userPaintPresets = encodedPresets
+
   colorGroup.presets.type = 'table'
   colorGroup.presets.value = legacyEncoded
   colorGroup.presets.version = colorGroup.presets.version or 0
@@ -806,6 +812,7 @@ local function copyColorPresets()
   for i = 1, #userColorPresets do
     local sanitized = sanitizeColorPresetEntry(userColorPresets[i])
     if sanitized then
+      sanitized.storageIndex = i
       result[#result + 1] = sanitized
     end
   end
@@ -865,6 +872,32 @@ local function addColorPreset(jsonStr)
     return
   end
   addColorPresetEntry(data)
+end
+
+local function removeColorPreset(index)
+  ensureColorPresetsLoaded()
+  if type(userColorPresets) ~= 'table' then
+    return
+  end
+
+  local numericIndex = tonumber(index)
+  if not numericIndex then
+    return
+  end
+
+  numericIndex = math.floor(numericIndex)
+  if numericIndex < 1 or numericIndex > #userColorPresets then
+    return
+  end
+
+  table.remove(userColorPresets, numericIndex)
+
+  local okSave, err = saveColorPresetsToDisk(userColorPresets)
+  if not okSave then
+    log('W', logTag, string.format('Failed to save color presets after removal: %s', tostring(err)))
+  end
+
+  sendColorPresets()
 end
 
 local function requestColorPresets()
@@ -2575,6 +2608,7 @@ M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 M.saveCurrentConfiguration = saveCurrentConfiguration
 M.spawnSavedConfiguration = spawnSavedConfiguration
 M.addColorPreset = addColorPreset
+M.removeColorPreset = removeColorPreset
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted

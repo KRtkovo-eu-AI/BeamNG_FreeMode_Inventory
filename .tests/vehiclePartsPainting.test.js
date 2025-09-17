@@ -141,6 +141,36 @@ function createIntervalStub() {
   return interval;
 }
 
+function createTimeoutStub() {
+  const handles = [];
+  function timeout(callback, delay) {
+    const handle = { callback: callback, delay: delay, cancelled: false };
+    handles.push(handle);
+    return handle;
+  }
+  timeout.cancel = function cancel(handle) {
+    if (!handle) {
+      return;
+    }
+    handle.cancelled = true;
+    const index = handles.indexOf(handle);
+    if (index !== -1) {
+      handles.splice(index, 1);
+    }
+  };
+  timeout.flush = function flush() {
+    const snapshot = handles.slice();
+    handles.length = 0;
+    for (let i = 0; i < snapshot.length; i++) {
+      const handle = snapshot[i];
+      if (!handle.cancelled) {
+        handle.callback();
+      }
+    }
+  };
+  return timeout;
+}
+
 function structuredClonePaints(paints) {
   return paints.map((paint) => ({
     baseColor: paint.baseColor.slice(),
@@ -233,6 +263,7 @@ function instantiateController() {
 
   const scope = new ScopeStub();
   const interval = createIntervalStub();
+  const timeout = createTimeoutStub();
 
   const injected = controllerDeps.map((dep) => {
     if (dep === '$scope') {
@@ -240,6 +271,9 @@ function instantiateController() {
     }
     if (dep === '$interval') {
       return interval;
+    }
+    if (dep === '$timeout') {
+      return timeout;
     }
     throw new Error('Unknown controller dependency: ' + dep);
   });
@@ -254,6 +288,7 @@ function instantiateController() {
   return {
     scope: scope,
     interval: interval,
+    timeout: timeout,
     bngApiCalls: bngApiCalls,
     hooks: controllerHooks
   };
@@ -381,6 +416,37 @@ function resetPaint(scope, partPath) {
   assert(state.basePaintCollapsed === true, 'Base paint panel should collapse when toggled');
   scope.toggleBasePaintCollapsed();
   assert(state.basePaintCollapsed === false, 'Base paint panel should expand when toggled again');
+
+  scope.$$emit('VehiclePartsPaintingColorPresets', {
+    colorPresets: [{
+      name: 'Sample purple',
+      value: [0.2, 0.1, 0.8, 1],
+      paint: {
+        baseColor: [0.2, 0.1, 0.8, 1],
+        metallic: 0.4,
+        roughness: 0.5,
+        clearcoat: 0.6,
+        clearcoatRoughness: 0.2
+      },
+      storageIndex: 1
+    }]
+  });
+  scope.$digest();
+
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should sync from event payload');
+  const palettePreset = state.colorPresets[0];
+  assert.strictEqual(palettePreset.storageIndex, 1, 'Preset should retain its storage index');
+
+  scope.onPresetPressStart({}, palettePreset);
+  controller.timeout.flush();
+  assert(state.removePresetDialog.visible === true, 'Holding a preset should display removal dialog');
+  assert(state.removePresetDialog.preset && state.removePresetDialog.preset.storageIndex === 1, 'Removal dialog should target the held preset');
+
+  const commandCountBeforeRemove = bngApiCalls.length;
+  scope.confirmRemovePreset();
+  assert.strictEqual(state.removePresetDialog.visible, false, 'Removal dialog should close after confirmation');
+  assert.strictEqual(bngApiCalls.length, commandCountBeforeRemove + 1, 'Removing a preset should queue a backend command');
+  assert.strictEqual(bngApiCalls[bngApiCalls.length - 1], 'freeroam_vehiclePartsPainting.removeColorPreset(1)', 'Removal command should include preset index');
 
   console.log('All vehicle parts painting tests passed.');
 })();
