@@ -37,8 +37,6 @@ angular.module('beamng.apps')
     restrict: 'EA',
     scope: true,
     controller: ['$scope', '$interval', '$timeout', function ($scope, $interval, $timeout) {
-      const FILTER_DEBOUNCE_DELAY_MS = 150;
-      let filterRecomputePromise = null;
 
       const state = {
         vehicleId: null,
@@ -1114,7 +1112,7 @@ end)()`;
           changed = true;
         }
         if (changed) {
-          scheduleFilteredPartsRecompute({ immediate: true });
+          computeFilteredParts();
         }
       }
 
@@ -1379,7 +1377,7 @@ end)()`;
           }
         }
         if (changed || mapChanged) {
-          scheduleFilteredPartsRecompute({ immediate: true });
+          computeFilteredParts();
         }
       }
 
@@ -1790,76 +1788,10 @@ end)()`;
         }
       }
 
-      function cancelFilterRecompute() {
-        if (filterRecomputePromise) {
-          $timeout.cancel(filterRecomputePromise);
-          filterRecomputePromise = null;
-        }
-      }
-
-      function shouldRecomputeFilterImmediately(previousValue, nextValue) {
-        const previousNormalized = normalizeFilterText(previousValue);
-        const nextNormalized = normalizeFilterText(nextValue);
-        if (!nextNormalized) { return true; }
-        return nextNormalized.length < previousNormalized.length;
-      }
-
-      let lastFilterTextValue = state.filterText;
-      let filterChangeHandledByHookValue = null;
-
-      function scheduleFilteredPartsRecompute(options) {
-        options = options || {};
-        const immediate = !!options.immediate;
-        const preserveExisting = !!options.preserveExisting;
-
-        if (!preserveExisting) {
-          cancelFilterRecompute();
-        } else if (immediate && filterRecomputePromise) {
-          $timeout.cancel(filterRecomputePromise);
-          filterRecomputePromise = null;
-        }
-
-        if (immediate) {
-          computeFilteredParts();
-          return;
-        }
-
-        if (preserveExisting && filterRecomputePromise) {
-          return;
-        }
-
-        filterRecomputePromise = $timeout(function () {
-          filterRecomputePromise = null;
-          computeFilteredParts();
-        }, FILTER_DEBOUNCE_DELAY_MS);
-      }
-
       $scope.$watch(function () { return state.filterText; }, function (newValue, oldValue) {
         if (newValue === oldValue) { return; }
-        const shouldImmediate = shouldRecomputeFilterImmediately(oldValue, newValue);
-        const handledByHook = shouldImmediate && filterChangeHandledByHookValue === newValue;
-        filterChangeHandledByHookValue = null;
-        if (!handledByHook) {
-          if (shouldImmediate) {
-            scheduleFilteredPartsRecompute({ immediate: true });
-          } else {
-            scheduleFilteredPartsRecompute({ preserveExisting: true });
-          }
-        }
-        lastFilterTextValue = newValue;
+        computeFilteredParts();
       });
-
-      $scope.onFilterInputChanged = function () {
-        const previousValue = lastFilterTextValue;
-        const currentValue = state.filterText;
-        const shouldImmediate = shouldRecomputeFilterImmediately(previousValue, currentValue);
-        filterChangeHandledByHookValue = shouldImmediate ? currentValue : null;
-        if (shouldImmediate) {
-          scheduleFilteredPartsRecompute({ immediate: true });
-        } else {
-          scheduleFilteredPartsRecompute();
-        }
-      };
 
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
@@ -2200,7 +2132,7 @@ end)()`;
 
       $scope.clearFilter = function () {
         state.filterText = '';
-        scheduleFilteredPartsRecompute({ immediate: true });
+        computeFilteredParts();
       };
 
       $scope.minimizeApp = function () {
@@ -2435,7 +2367,7 @@ end)()`;
         const updatedLocally = updateLocalPartPaintState(state.selectedPartPath, paints, true);
         refreshCustomBadgeVisibility();
         if (updatedLocally) {
-          scheduleFilteredPartsRecompute({ immediate: true });
+          computeFilteredParts();
         }
         const payload = {
           partPath: state.selectedPartPath,
@@ -2464,7 +2396,7 @@ end)()`;
             applyPartReplacement(updatedPart, entry.index);
           }
         }
-        scheduleFilteredPartsRecompute({ immediate: true });
+        computeFilteredParts();
         bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
       };
 
@@ -2481,7 +2413,6 @@ end)()`;
           $interval.cancel(customBadgeRefreshPromise);
           customBadgeRefreshPromise = null;
         }
-        cancelFilterRecompute();
         resetPartLookup();
         resetTreeNodeLookup();
         clearCustomPaintState();
@@ -2563,7 +2494,7 @@ end)()`;
           rebuildCurrentPartsTree();
           refreshCustomBadgeVisibility();
 
-          scheduleFilteredPartsRecompute({ immediate: true });
+          computeFilteredParts();
           state.isSpawningConfig = false;
           state.isSavingConfig = false;
         });
