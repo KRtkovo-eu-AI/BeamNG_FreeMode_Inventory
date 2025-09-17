@@ -453,6 +453,12 @@ function triggerFilterSearch(controller, value) {
   controller.filterInput.trigger('search');
 }
 
+function triggerFilterInput(controller, value) {
+  assert(controller && controller.filterInput, 'Filter input stub not available');
+  controller.filterInput.value = value;
+  controller.filterInput.trigger('input');
+}
+
 (function runTests() {
   const controller = instantiateController();
   const scope = controller.scope;
@@ -650,6 +656,61 @@ function triggerFilterSearch(controller, value) {
   assert(doorNode && doorNode.part && doorNode.part.partPath === 'vehicle/door', 'Second search event clear should restore the door node');
   filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
   assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Second search event clear should restore the bumper node');
+
+  triggerFilterSearch(controller, 'bumper');
+  scope.$digest();
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Input handling should start from a filtered bumper node');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert.strictEqual(filteredDoor, null, 'Input handling scenario should begin with the door hidden');
+
+  triggerFilterInput(controller, '');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/root');
+  assert(node && node.part && node.part.partPath === 'vehicle/root', 'Input events should restore the root node after clearing');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Input events should restore door parts after clearing');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Input events should restore bumper parts after clearing');
+
+  triggerFilterInput(controller, 'doo');
+  scope.$digest();
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Typing after search should filter the door part');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert.strictEqual(filteredBumper, null, 'Typing after search should hide the bumper');
+
+  triggerFilterInput(controller, 'd');
+  scope.$digest();
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Broadening the input filter should keep matching door parts visible');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Broadening the input filter should restore bumper nodes that match the broader query');
+
+  triggerFilterInput(controller, '');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/root');
+  assert(node && node.part && node.part.partPath === 'vehicle/root', 'Clearing via input should restore the root part');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Clearing via input should restore door nodes');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Clearing via input should restore bumper nodes');
+
+  triggerFilterInput(controller, 'hood');
+  scope.$digest();
+  filteredHood = findNode(state.filteredTree, 'vehicle/hood');
+  assert(filteredHood && filteredHood.part && filteredHood.part.partPath === 'vehicle/hood', 'Typing after clearing should filter the hood part');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert.strictEqual(filteredDoor, null, 'Typing after clearing should hide door nodes');
+
+  triggerFilterInput(controller, '');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/root');
+  assert(node && node.part && node.part.partPath === 'vehicle/root', 'Clearing input again should restore the full tree');
+  filteredDoor = findNode(state.filteredTree, 'vehicle/door');
+  assert(filteredDoor && filteredDoor.part && filteredDoor.part.partPath === 'vehicle/door', 'Clearing input again should restore the door node');
+  filteredBumper = findNode(state.filteredTree, 'vehicle/bumper_front');
+  assert(filteredBumper && filteredBumper.part && filteredBumper.part.partPath === 'vehicle/bumper_front', 'Clearing input again should restore the bumper node');
 
   const customMap = hooks.getCustomPaintState();
   customMap['vehicle/door'] = true;

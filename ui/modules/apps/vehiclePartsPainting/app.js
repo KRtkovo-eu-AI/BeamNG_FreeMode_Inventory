@@ -125,7 +125,7 @@ angular.module('beamng.apps')
       let pendingLiveryEditorLaunch = null;
       let liverySupportRequestToken = 0;
       let liverySupportActiveRequestId = null;
-      let detachFilterSearchListener = null;
+      let detachFilterInputListeners = null;
       let filterInputElement = null;
 
       function clamp01(value) {
@@ -1795,37 +1795,45 @@ end)()`;
         computeFilteredParts();
       });
 
-      function handleFilterSearchEvent(event) {
-        const target = event && event.target ? event.target : filterInputElement;
+      function syncFilterTextFromTarget(target) {
         if (!target || typeof target.value !== 'string') { return; }
         const nextValue = target.value;
         const previousValue = state.filterText;
-        $scope.$evalAsync(function () {
+        if (previousValue === nextValue) {
+          computeFilteredParts();
+        } else {
           state.filterText = nextValue;
-          if (previousValue === nextValue) {
-            computeFilteredParts();
-          }
+        }
+      }
+
+      function handleFilterInputEvent(event) {
+        const target = event && event.target ? event.target : filterInputElement;
+        if (!target) { return; }
+        $scope.$evalAsync(function () {
+          syncFilterTextFromTarget(target);
         });
       }
 
-      function attachFilterSearchListener() {
-        if (detachFilterSearchListener || !$element || !$element[0] || typeof $element[0].querySelector !== 'function') {
+      function attachFilterInputListeners() {
+        if (detachFilterInputListeners || !$element || !$element[0] || typeof $element[0].querySelector !== 'function') {
           return;
         }
         const input = $element[0].querySelector('.filter-field input');
         if (!input || typeof input.addEventListener !== 'function') { return; }
         const listener = function (event) {
-          handleFilterSearchEvent(event);
+          handleFilterInputEvent(event);
         };
+        input.addEventListener('input', listener);
         input.addEventListener('search', listener);
         filterInputElement = input;
-        detachFilterSearchListener = function () {
+        detachFilterInputListeners = function () {
+          input.removeEventListener('input', listener);
           input.removeEventListener('search', listener);
           filterInputElement = null;
         };
       }
 
-      $scope.$evalAsync(attachFilterSearchListener);
+      $scope.$evalAsync(attachFilterInputListeners);
 
       $scope.onColorChannelChanged = function (paint) {
         sanitizeColor(paint);
@@ -2440,9 +2448,9 @@ end)()`;
       };
 
       $scope.$on('$destroy', function () {
-        if (detachFilterSearchListener) {
-          detachFilterSearchListener();
-          detachFilterSearchListener = null;
+        if (detachFilterInputListeners) {
+          detachFilterInputListeners();
+          detachFilterInputListeners = null;
         }
         cancelPresetHoldTimer();
         presetHoldTriggered = false;
