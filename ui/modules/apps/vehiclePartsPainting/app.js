@@ -77,7 +77,11 @@ angular.module('beamng.apps')
           visible: false,
           config: null,
           isDeleting: false
-        }
+        },
+        liveryEditorConfirmation: {
+          visible: false
+        },
+        liveryEditorSupported: null
       };
 
       $scope.state = state;
@@ -100,6 +104,14 @@ angular.module('beamng.apps')
 
       const globalWindow = (typeof window !== 'undefined') ? window : null;
 
+      const LIVERY_EDITOR_CONFIRMATION_TEXT = 'This is an early highly experimental preview of the Decal Editor. Please be aware that anything created with this feature may be lost in future hotfixes and updates. Do you wish to proceed?';
+      const LIVERY_EDITOR_NO_VEHICLE_MESSAGE = 'Vehicle Livery Editor requires an active player vehicle.';
+      const LIVERY_EDITOR_UNAVAILABLE_MESSAGE = 'Vehicle Livery Editor is not available in this UI.';
+      const LIVERY_EDITOR_UNSUPPORTED_MESSAGE = 'Vehicle Livery Editor is not available for this vehicle.';
+      const LIVERY_EDITOR_MESSAGE_CATEGORY = 'vehiclePartsPainting';
+
+      $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
+
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       let customBadgeRefreshPromise = null;
       let partLookup = Object.create(null);
@@ -107,6 +119,9 @@ angular.module('beamng.apps')
       let treeNodesByPath = Object.create(null);
       let partsTreeDirty = false;
       let customPaintStateByPath = Object.create(null);
+      let pendingLiveryEditorLaunch = null;
+      let liverySupportRequestToken = 0;
+      let liverySupportActiveRequestId = null;
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -555,6 +570,97 @@ angular.module('beamng.apps')
       function toLuaString(str) {
         if (str === undefined || str === null) { return 'nil'; }
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+      }
+
+      function sendUiMessage(messageText) {
+        if (messageText === undefined || messageText === null) { return; }
+        const text = String(messageText);
+        if (!text) { return; }
+        const command = 'ui_message(' + toLuaString(text) + ', 5, ' + toLuaString(LIVERY_EDITOR_MESSAGE_CATEGORY) + ')';
+        bngApi.engineLua(command);
+      }
+
+      function clearLiveryEditorConfirmation() {
+        if (state.liveryEditorConfirmation) {
+          state.liveryEditorConfirmation.visible = false;
+        }
+        pendingLiveryEditorLaunch = null;
+      }
+
+      function showLiveryEditorConfirmation(callback) {
+        pendingLiveryEditorLaunch = (typeof callback === 'function') ? callback : null;
+        if (state.liveryEditorConfirmation) {
+          state.liveryEditorConfirmation.visible = true;
+        }
+      }
+
+      function setLiveryEditorSupported(value) {
+        if (value === null || value === undefined) {
+          state.liveryEditorSupported = null;
+          return;
+        }
+        state.liveryEditorSupported = !!value;
+      }
+
+      function invalidateLiveryEditorSupport() {
+        liverySupportRequestToken++;
+        liverySupportActiveRequestId = null;
+        setLiveryEditorSupported(null);
+      }
+
+      function refreshLiveryEditorSupport() {
+        if (!state.vehicleId) {
+          invalidateLiveryEditorSupport();
+          return;
+        }
+
+        if (liverySupportActiveRequestId !== null) {
+          return;
+        }
+
+        const requestId = ++liverySupportRequestToken;
+        liverySupportActiveRequestId = requestId;
+        setLiveryEditorSupported(null);
+        requestDynamicDecalSupport(function (supported) {
+          if (liverySupportActiveRequestId !== requestId) { return; }
+          $scope.$evalAsync(function () {
+            if (liverySupportActiveRequestId !== requestId) { return; }
+            liverySupportActiveRequestId = null;
+            setLiveryEditorSupported(!!supported);
+          });
+        });
+      }
+
+      function interpretLuaBoolean(value) {
+        if (value === true) { return true; }
+        if (value === false || value === null || value === undefined) { return false; }
+        if (typeof value === 'number') { return value !== 0; }
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (!normalized || normalized === 'false' || normalized === 'nil' || normalized === '0') { return false; }
+          return true;
+        }
+        return !!value;
+      }
+
+      function requestDynamicDecalSupport(callback) {
+        const command = `(function()
+  local veh = be:getPlayerVehicle(0)
+  if veh == nil then return false end
+  local hasPart = extensions.core_vehicle_partmgmt.hasAvailablePart(veh.JBeam .. "_skin_dynamicTextures")
+  if hasPart == nil then return false end
+  return hasPart
+end)()`;
+        bngApi.engineLua(command, function (result) {
+          if (typeof callback !== 'function') { return; }
+          try {
+            callback(interpretLuaBoolean(result));
+          } catch (err) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+              globalWindow.console.error('VehiclePartsPainting: Livery support callback failed.', err);
+            }
+          }
+        });
       }
 
       function applyUserPaintPresets(presets) {
@@ -2020,6 +2126,71 @@ angular.module('beamng.apps')
         state.minimized = false;
       };
 
+      $scope.confirmLiveryEditorLaunch = function () {
+        const callback = pendingLiveryEditorLaunch;
+        clearLiveryEditorConfirmation();
+        if (typeof callback === 'function') {
+          try {
+            callback();
+          } catch (err) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+              globalWindow.console.error('VehiclePartsPainting: Livery editor launch callback failed.', err);
+            }
+          }
+        }
+      };
+
+      $scope.cancelLiveryEditorLaunch = function () {
+        clearLiveryEditorConfirmation();
+      };
+
+      $scope.openLiveryEditor = function () {
+        clearLiveryEditorConfirmation();
+        if (!state.vehicleId) {
+          sendUiMessage(LIVERY_EDITOR_NO_VEHICLE_MESSAGE);
+          return;
+        }
+
+        if (state.liveryEditorSupported === false) {
+          sendUiMessage(LIVERY_EDITOR_UNSUPPORTED_MESSAGE);
+          return;
+        }
+
+        const bngVue = globalWindow && globalWindow.bngVue;
+        const gotoGameState = bngVue && bngVue.gotoGameState;
+
+        if (typeof gotoGameState !== 'function') {
+          if (globalWindow && globalWindow.console && typeof globalWindow.console.warn === 'function') {
+            globalWindow.console.warn('VehiclePartsPainting: gotoGameState is unavailable; cannot open livery editor.');
+          }
+          sendUiMessage(LIVERY_EDITOR_UNAVAILABLE_MESSAGE);
+          return;
+        }
+
+        const vehicleIdAtRequest = state.vehicleId;
+        requestDynamicDecalSupport(function (supported) {
+          if (vehicleIdAtRequest !== state.vehicleId) { return; }
+          $scope.$evalAsync(function () {
+            const isSupported = !!supported;
+            setLiveryEditorSupported(isSupported);
+            if (!isSupported) {
+              sendUiMessage(LIVERY_EDITOR_UNSUPPORTED_MESSAGE);
+              return;
+            }
+
+            showLiveryEditorConfirmation(function () {
+              try {
+                gotoGameState.call(bngVue, 'livery-manager');
+              } catch (err) {
+                if (globalWindow && globalWindow.console && typeof globalWindow.console.error === 'function') {
+                  globalWindow.console.error('VehiclePartsPainting: Failed to open livery editor.', err);
+                }
+              }
+            });
+          });
+        });
+      };
+
       $scope.toggleBasePaintCollapsed = function () {
         state.basePaintCollapsed = !state.basePaintCollapsed;
       };
@@ -2236,12 +2407,14 @@ angular.module('beamng.apps')
         $scope.$evalAsync(function () {
           const previousVehicleId = state.vehicleId;
           state.vehicleId = data.vehicleId || null;
+          const vehicleChanged = state.vehicleId !== previousVehicleId;
 
           if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
             updateColorPresets(data.colorPresets, { preserveExistingOnEmpty: true });
           }
 
           if (!state.vehicleId) {
+            invalidateLiveryEditorSupport();
             clearPendingReplacement();
             clearCustomPaintState();
             state.basePaints = [];
@@ -2269,7 +2442,11 @@ angular.module('beamng.apps')
             return;
           }
 
-          if (state.vehicleId !== previousVehicleId) {
+          if (vehicleChanged || state.liveryEditorSupported === null) {
+            refreshLiveryEditorSupport();
+          }
+
+          if (vehicleChanged) {
             clearPendingReplacement();
             clearCustomPaintState();
             state.filterText = '';
@@ -2288,7 +2465,7 @@ angular.module('beamng.apps')
             requestSavedConfigs();
           }
 
-          if (state.vehicleId === previousVehicleId) {
+          if (!vehicleChanged) {
             clearCustomPaintState();
           }
 
