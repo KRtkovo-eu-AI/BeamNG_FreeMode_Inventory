@@ -1154,13 +1154,38 @@ local function deleteSavedConfiguration(configPath)
   end
 
   local targetDir = (userVehiclesDir .. modelFolder .. '/'):gsub('\\', '/')
+  local relativeConfigPath = normalized
   local configFilePath = targetDir .. baseName .. '.pc'
-  local removedConfig = removeFileIfExists(configFilePath)
+  local removalTargets = { configFilePath, relativeConfigPath }
+  local seenTargets = {}
+  local removedConfig = false
+  for _, candidate in ipairs(removalTargets) do
+    if candidate and candidate ~= '' then
+      local key = candidate
+      if not seenTargets[key] then
+        seenTargets[key] = true
+        if removeFileIfExists(candidate) then
+          removedConfig = true
+        end
+      end
+    end
+  end
+
   local removedPreview = false
+  local previewSeen = {}
   for _, extension in ipairs(previewImageExtensions) do
-    local previewPath = targetDir .. baseName .. extension
-    if removeFileIfExists(previewPath) then
-      removedPreview = true
+    local previewRelative = string.format('vehicles/%s/%s%s', modelFolder, baseName, extension)
+    local previewAbsolute = targetDir .. baseName .. extension
+    local previewTargets = { previewAbsolute, previewRelative }
+    for _, candidate in ipairs(previewTargets) do
+      if candidate and candidate ~= '' then
+        if not previewSeen[candidate] then
+          previewSeen[candidate] = true
+          if removeFileIfExists(candidate) then
+            removedPreview = true
+          end
+        end
+      end
     end
   end
 
