@@ -245,12 +245,14 @@ local function getEditorPreferencesCandidates()
     table.insert(candidates, normalized)
   end
 
+  addCandidate('settings/cloud/settings.json')
   addCandidate('settings/editor/preferences.json')
 
   if FS and FS.getUserPath then
     local okUser, userPath = safePcall(FS.getUserPath, FS)
     if okUser and userPath and userPath ~= '' then
       local normalized = tostring(userPath):gsub('\\', '/'):gsub('/+$', '')
+      addCandidate(joinPaths(normalized, 'settings/cloud/settings.json'))
       addCandidate(joinPaths(normalized, 'settings/editor/preferences.json'))
     end
   end
@@ -259,6 +261,8 @@ local function getEditorPreferencesCandidates()
   if localAppData and localAppData ~= '' then
     local normalized = tostring(localAppData):gsub('\\', '/'):gsub('/+$', '')
     normalized = normalized:gsub('/Roaming$', '/Local')
+    addCandidate(joinPaths(normalized, 'BeamNG/BeamNG.drive/current/settings/cloud/settings.json'))
+    addCandidate(joinPaths(normalized, 'BeamNG.drive/current/settings/cloud/settings.json'))
     addCandidate(joinPaths(normalized, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
     addCandidate(joinPaths(normalized, 'BeamNG.drive/current/settings/editor/preferences.json'))
   end
@@ -267,6 +271,8 @@ local function getEditorPreferencesCandidates()
   if appData and appData ~= '' then
     local normalized = tostring(appData):gsub('\\', '/'):gsub('/+$', '')
     local candidateBase = normalized:gsub('/Roaming$', '/Local')
+    addCandidate(joinPaths(candidateBase, 'BeamNG/BeamNG.drive/current/settings/cloud/settings.json'))
+    addCandidate(joinPaths(candidateBase, 'BeamNG.drive/current/settings/cloud/settings.json'))
     addCandidate(joinPaths(candidateBase, 'BeamNG/BeamNG.drive/current/settings/editor/preferences.json'))
     addCandidate(joinPaths(candidateBase, 'BeamNG.drive/current/settings/editor/preferences.json'))
   end
@@ -363,26 +369,78 @@ local function quoteJsonString(value)
   return '"' .. str .. '"'
 end
 
+local function encodeFraction(value)
+  local component = clampFraction01(value)
+  local str = string.format('%.6f', component)
+  str = str:gsub('0+$', '')
+  str = str:gsub('%.$', '')
+  if str == '' then
+    str = '0'
+  end
+  return str
+end
+
+local function encodePresetEntryForStorage(entry)
+  local sanitized = sanitizeColorPresetEntry(entry)
+  if not sanitized or type(sanitized.paint) ~= 'table' then
+    return nil
+  end
+
+  local paint = sanitized.paint
+  local base = paint.baseColor or sanitized.value or {}
+  local components = {}
+  for j = 1, 4 do
+    local component = base[j]
+    if component == nil then
+      component = 1
+    end
+    components[j] = encodeFraction(component)
+  end
+
+  local items = {
+    string.format('"baseColor":[%s,%s,%s,%s]', components[1], components[2], components[3], components[4]),
+    string.format('"metallic":%s', encodeFraction(paint.metallic)),
+    string.format('"roughness":%s', encodeFraction(paint.roughness)),
+    string.format('"clearcoat":%s', encodeFraction(paint.clearcoat)),
+    string.format('"clearcoatRoughness":%s', encodeFraction(paint.clearcoatRoughness))
+  }
+
+  if sanitized.name and sanitized.name ~= '' then
+    items[#items + 1] = '"name":' .. quoteJsonString(sanitized.name)
+  end
+
+  return '{' .. table.concat(items, ',') .. '}'
+end
+
 local function encodeColorPresetsForStorage(presets)
   if type(presets) ~= 'table' then
     return '[]'
   end
   local items = {}
   for i = 1, #presets do
-    local preset = presets[i]
-    if type(preset) == 'table' then
-      local name = quoteJsonString(preset.name or '')
-      local value = preset.value
-      if type(value) ~= 'table' then
-        value = {}
-      end
-      local components = {}
+    local encoded = encodePresetEntryForStorage(presets[i])
+    if encoded then
+      items[#items + 1] = encoded
+    end
+  end
+  return '[' .. table.concat(items, ',') .. ']'
+end
+
+local function encodeLegacyColorPresetsForStorage(presets)
+  if type(presets) ~= 'table' then
+    return '[]'
+  end
+  local items = {}
+  for i = 1, #presets do
+    local sanitized = sanitizeColorPresetEntry(presets[i])
+    if sanitized then
+      local components = sanitized.value or {}
+      local encodedComponents = {}
       for j = 1, 4 do
-        local component = clampFraction01(value[j])
-        components[j] = string.format('%.6f', component)
+        encodedComponents[j] = encodeFraction(components[j])
       end
-      local valueStr = '[' .. table.concat(components, ',') .. ']'
-      items[#items + 1] = string.format('{"name":%s,"value":%s}', name, valueStr)
+      local name = quoteJsonString(sanitized.name or '')
+      items[#items + 1] = string.format('{"name":%s,"value":[%s,%s,%s,%s]}', name, encodedComponents[1], encodedComponents[2], encodedComponents[3], encodedComponents[4])
     end
   end
   return '[' .. table.concat(items, ',') .. ']'
@@ -461,6 +519,55 @@ local function buildPresetNameFromValue(value)
   return string.format('#%02X%02X%02X', r, g, b)
 end
 
+local function sanitizePresetPaint(paint)
+  if type(paint) ~= 'table' then
+    return nil
+  end
+
+  local source = paint.baseColor
+  if type(source) ~= 'table' then
+    source = {}
+  end
+
+  local function resolveComponent(index, keyA, keyB)
+    if source[index] ~= nil then
+      return source[index]
+    end
+    if keyA and source[keyA] ~= nil then
+      return source[keyA]
+    end
+    if keyB and source[keyB] ~= nil then
+      return source[keyB]
+    end
+    return nil
+  end
+
+  local r = resolveComponent(1, 'x', 'r')
+  local g = resolveComponent(2, 'y', 'g')
+  local b = resolveComponent(3, 'z', 'b')
+  local a = resolveComponent(4, 'w', 'a')
+  if a == nil and source.alpha ~= nil then
+    a = source.alpha
+  end
+
+  local baseColor = {
+    clampFraction01(r ~= nil and r or 1),
+    clampFraction01(g ~= nil and g or 1),
+    clampFraction01(b ~= nil and b or 1),
+    clampFraction01(a ~= nil and a or 1)
+  }
+
+  local sanitized = {
+    baseColor = baseColor,
+    metallic = clampFraction01(paint.metallic),
+    roughness = clampFraction01(paint.roughness),
+    clearcoat = clampFraction01(paint.clearcoat),
+    clearcoatRoughness = clampFraction01(paint.clearcoatRoughness)
+  }
+
+  return sanitized
+end
+
 local function sanitizeColorPresetEntry(entry)
   if type(entry) ~= 'table' then
     return nil
@@ -477,46 +584,140 @@ local function sanitizeColorPresetEntry(entry)
     rawName = nil
   end
 
+  local paintSource = nil
+  if type(entry.paint) == 'table' then
+    paintSource = entry.paint
+  elseif type(entry.baseColor) == 'table' or entry.metallic ~= nil or entry.roughness ~= nil
+      or entry.clearcoat ~= nil or entry.clearcoatRoughness ~= nil then
+    paintSource = entry
+  end
+
   local rawValue = entry.value
-  if type(rawValue) ~= 'table' then
+  local value = nil
+  local paint = nil
+
+  if paintSource then
+    paint = sanitizePresetPaint(paintSource)
+  end
+
+  if paint and type(paint.baseColor) == 'table' then
+    value = {
+      clampFraction01(paint.baseColor[1] or 1),
+      clampFraction01(paint.baseColor[2] or 1),
+      clampFraction01(paint.baseColor[3] or 1),
+      clampFraction01(paint.baseColor[4] ~= nil and paint.baseColor[4] or 1)
+    }
+  elseif type(rawValue) == 'table' then
+    local r = rawValue[1]
+    local g = rawValue[2]
+    local b = rawValue[3]
+    local a = rawValue[4]
+
+    if r == nil and rawValue.r ~= nil then r = rawValue.r end
+    if g == nil and rawValue.g ~= nil then g = rawValue.g end
+    if b == nil and rawValue.b ~= nil then b = rawValue.b end
+    if a == nil then
+      if rawValue.a ~= nil then
+        a = rawValue.a
+      elseif rawValue.alpha ~= nil then
+        a = rawValue.alpha
+      end
+    end
+
+    value = {
+      clampFraction01(r),
+      clampFraction01(g),
+      clampFraction01(b),
+      clampFraction01(a)
+    }
+  else
     return nil
   end
 
-  local r = rawValue[1]
-  local g = rawValue[2]
-  local b = rawValue[3]
-  local a = rawValue[4]
-
-  if r == nil and rawValue.r ~= nil then r = rawValue.r end
-  if g == nil and rawValue.g ~= nil then g = rawValue.g end
-  if b == nil and rawValue.b ~= nil then b = rawValue.b end
-  if a == nil then
-    if rawValue.a ~= nil then
-      a = rawValue.a
-    elseif rawValue.alpha ~= nil then
-      a = rawValue.alpha
-    end
+  if not paint then
+    paint = sanitizePresetPaint({
+      baseColor = value,
+      metallic = entry.metallic,
+      roughness = entry.roughness,
+      clearcoat = entry.clearcoat,
+      clearcoatRoughness = entry.clearcoatRoughness
+    })
   end
 
-  r = clampFraction01(r)
-  g = clampFraction01(g)
-  b = clampFraction01(b)
-  a = clampFraction01(a)
+  if type(paint) ~= 'table' then
+    paint = sanitizePresetPaint({ baseColor = value })
+  end
 
-  local value = {r, g, b, a}
+  if type(paint) == 'table' then
+    paint.baseColor = {
+      clampFraction01(value[1]),
+      clampFraction01(value[2]),
+      clampFraction01(value[3]),
+      clampFraction01(value[4] ~= nil and value[4] or 1)
+    }
+  end
 
   local sanitized = {
     name = rawName or buildPresetNameFromValue(value),
-    value = value
+    value = {
+      clampFraction01(value[1]),
+      clampFraction01(value[2]),
+      clampFraction01(value[3]),
+      clampFraction01(value[4] ~= nil and value[4] or 1)
+    },
+    paint = paint
   }
 
   return sanitized
+end
+
+local function decodePresetArray(rawValue)
+  if type(rawValue) == 'string' then
+    local trimmed = tostring(rawValue):gsub('^%s+', ''):gsub('%s+$', '')
+    if trimmed == '' then
+      return {}
+    end
+    local okDecode, decodedValue = pcall(jsonDecode, trimmed)
+    if okDecode and type(decodedValue) == 'table' then
+      return decodedValue
+    end
+    return nil
+  elseif type(rawValue) == 'table' then
+    return rawValue
+  end
+  return nil
+end
+
+local function appendSanitizedPresets(list, result)
+  local added = false
+  if type(list) ~= 'table' then
+    return added
+  end
+  for i = 1, #list do
+    local sanitized = sanitizeColorPresetEntry(list[i])
+    if sanitized then
+      result[#result + 1] = sanitized
+      added = true
+    end
+  end
+  return added
 end
 
 local function extractColorPresets(preferences)
   local result = {}
   if type(preferences) ~= 'table' then
     return result
+  end
+
+  if appendSanitizedPresets(decodePresetArray(preferences.userPaintPresets), result) then
+    return result
+  end
+
+  local cloudSettings = preferences.cloudSettings
+  if type(cloudSettings) == 'table' then
+    if appendSanitizedPresets(decodePresetArray(cloudSettings.userPaintPresets), result) then
+      return result
+    end
   end
 
   local dynamicTool = preferences.dynamicDecalsTool
@@ -531,26 +732,12 @@ local function extractColorPresets(preferences)
 
   local presetsEntry = colorGroup.presets or colorGroup
   local rawValue = presetsEntry and presetsEntry.value or nil
-  local decoded
-  if type(rawValue) == 'string' then
-    local okDecode, decodedValue = pcall(jsonDecode, rawValue)
-    if okDecode and type(decodedValue) == 'table' then
-      decoded = decodedValue
-    end
-  elseif type(rawValue) == 'table' then
-    decoded = rawValue
-  end
-
+  local decoded = decodePresetArray(rawValue)
   if type(decoded) ~= 'table' then
     return result
   end
 
-  for i = 1, #decoded do
-    local sanitized = sanitizeColorPresetEntry(decoded[i])
-    if sanitized then
-      result[#result + 1] = sanitized
-    end
-  end
+  appendSanitizedPresets(decoded, result)
 
   return result
 end
@@ -581,8 +768,13 @@ local function saveColorPresetsToDisk(presets)
     colorGroup.presets = {}
   end
 
+  local encodedPresets = encodeColorPresetsForStorage(presets)
+  local legacyEncoded = encodeLegacyColorPresetsForStorage(presets)
+
+  preferences.userPaintPresets = encodedPresets
+
   colorGroup.presets.type = 'table'
-  colorGroup.presets.value = encodeColorPresetsForStorage(presets)
+  colorGroup.presets.value = legacyEncoded
   colorGroup.presets.version = colorGroup.presets.version or 0
 
   local okWrite, err = writeEditorPreferences(preferences)
@@ -612,21 +804,9 @@ local function copyColorPresets()
     return result
   end
   for i = 1, #userColorPresets do
-    local preset = userColorPresets[i]
-    if type(preset) == 'table' then
-      local entry = { name = preset.name }
-      local value = preset.value
-      if type(value) == 'table' then
-        entry.value = {
-          clampFraction01(value[1]),
-          clampFraction01(value[2]),
-          clampFraction01(value[3]),
-          clampFraction01(value[4] ~= nil and value[4] or 1)
-        }
-      else
-        entry.value = {0, 0, 0, 1}
-      end
-      result[#result + 1] = entry
+    local sanitized = sanitizeColorPresetEntry(userColorPresets[i])
+    if sanitized then
+      result[#result + 1] = sanitized
     end
   end
   return result

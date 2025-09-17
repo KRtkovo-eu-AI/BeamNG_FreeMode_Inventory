@@ -51,7 +51,7 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
-        basePaintCollapsed: true,
+        basePaintCollapsed: false,
         configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
@@ -160,18 +160,47 @@ angular.module('beamng.apps')
         const rawName = typeof preset.name === 'string' ? preset.name.trim() : '';
         const valueArray = Array.isArray(preset.value) ? preset.value : [];
         const valueObject = preset.value && typeof preset.value === 'object' ? preset.value : {};
-        const rawR = valueArray[0] !== undefined ? valueArray[0] : valueObject.r;
-        const rawG = valueArray[1] !== undefined ? valueArray[1] : valueObject.g;
-        const rawB = valueArray[2] !== undefined ? valueArray[2] : valueObject.b;
-        const alphaSource = valueArray[3] !== undefined ? valueArray[3] : (valueObject.a !== undefined ? valueObject.a : valueObject.alpha);
+        const paintSource = preset.paint && typeof preset.paint === 'object' ? preset.paint : {};
+        const paintBase = Array.isArray(paintSource.baseColor) ? paintSource.baseColor : (Array.isArray(preset.baseColor) ? preset.baseColor : null);
+
+        const rawR = paintBase && paintBase[0] !== undefined ? paintBase[0] : (valueArray[0] !== undefined ? valueArray[0] : valueObject.r);
+        const rawG = paintBase && paintBase[1] !== undefined ? paintBase[1] : (valueArray[1] !== undefined ? valueArray[1] : valueObject.g);
+        const rawB = paintBase && paintBase[2] !== undefined ? paintBase[2] : (valueArray[2] !== undefined ? valueArray[2] : valueObject.b);
+        let rawA;
+        if (paintBase && paintBase[3] !== undefined) {
+          rawA = paintBase[3];
+        } else if (valueArray[3] !== undefined) {
+          rawA = valueArray[3];
+        } else if (valueObject.a !== undefined) {
+          rawA = valueObject.a;
+        } else if (valueObject.alpha !== undefined) {
+          rawA = valueObject.alpha;
+        }
+
         const r = clamp01(rawR);
         const g = clamp01(rawG);
         const b = clamp01(rawB);
-        const a = clamp01(alphaSource !== undefined ? alphaSource : 1);
+        const a = clamp01(rawA !== undefined ? rawA : 1);
         const hex = rgbToHex(r, g, b);
+
+        function resolveNumeric(primary, fallback) {
+          if (typeof primary === 'number' && isFinite(primary)) { return clamp01(primary); }
+          if (typeof fallback === 'number' && isFinite(fallback)) { return clamp01(fallback); }
+          return 0;
+        }
+
+        const paint = {
+          baseColor: [r, g, b, a],
+          metallic: resolveNumeric(paintSource.metallic, preset.metallic),
+          roughness: resolveNumeric(paintSource.roughness, preset.roughness),
+          clearcoat: resolveNumeric(paintSource.clearcoat, preset.clearcoat),
+          clearcoatRoughness: resolveNumeric(paintSource.clearcoatRoughness, preset.clearcoatRoughness)
+        };
+
         return {
           name: rawName || hex,
-          value: [r, g, b, a],
+          value: paint.baseColor.slice(),
+          paint: paint,
           cssColor: 'rgba(' + Math.round(r * 255) + ',' + Math.round(g * 255) + ',' + Math.round(b * 255) + ',' + a + ')',
           title: rawName ? (rawName + ' (' + hex + ')') : hex
         };
@@ -205,13 +234,39 @@ angular.module('beamng.apps')
       }
 
       function applyPresetToPaint(paint, preset) {
-        if (!paint || !preset || !Array.isArray(preset.value)) { return; }
-        const value = preset.value;
+        if (!paint || !preset) { return; }
+        const presetPaint = preset.paint && typeof preset.paint === 'object' ? preset.paint : null;
+        const base = presetPaint && Array.isArray(presetPaint.baseColor) ? presetPaint.baseColor : (Array.isArray(preset.value) ? preset.value : null);
+        if (!Array.isArray(base)) { return; }
+
         const color = ensureColorObject(paint);
-        color.r = Math.round(clamp01(value[0]) * 255);
-        color.g = Math.round(clamp01(value[1]) * 255);
-        color.b = Math.round(clamp01(value[2]) * 255);
-        paint.alpha = clamp01(value[3] !== undefined ? value[3] : paint.alpha);
+        color.r = Math.round(clamp01(base[0]) * 255);
+        color.g = Math.round(clamp01(base[1]) * 255);
+        color.b = Math.round(clamp01(base[2]) * 255);
+
+        const alphaSource = base[3] !== undefined ? base[3] : paint.alpha;
+        paint.alpha = clamp01(alphaSource !== undefined ? alphaSource : 1);
+
+        function applyNumericField(targetKey, primary, fallback) {
+          if (typeof primary === 'number' && isFinite(primary)) {
+            paint[targetKey] = clamp01(primary);
+          } else if (typeof fallback === 'number' && isFinite(fallback)) {
+            paint[targetKey] = clamp01(fallback);
+          }
+        }
+
+        if (presetPaint) {
+          applyNumericField('metallic', presetPaint.metallic, preset.metallic);
+          applyNumericField('roughness', presetPaint.roughness, preset.roughness);
+          applyNumericField('clearcoat', presetPaint.clearcoat, preset.clearcoat);
+          applyNumericField('clearcoatRoughness', presetPaint.clearcoatRoughness, preset.clearcoatRoughness);
+        } else {
+          applyNumericField('metallic', preset.metallic, paint.metallic);
+          applyNumericField('roughness', preset.roughness, paint.roughness);
+          applyNumericField('clearcoat', preset.clearcoat, paint.clearcoat);
+          applyNumericField('clearcoatRoughness', preset.clearcoatRoughness, paint.clearcoatRoughness);
+        }
+
         syncHtmlColor(paint);
       }
 
@@ -1119,13 +1174,21 @@ angular.module('beamng.apps')
       $scope.addColorPreset = function (paint) {
         if (!paint) { return; }
         const color = ensureColorObject(paint);
+        const baseColor = [
+          clamp01(color.r / 255),
+          clamp01(color.g / 255),
+          clamp01(color.b / 255),
+          clamp01(typeof paint.alpha === 'number' ? paint.alpha : 1)
+        ];
         const payload = {
-          value: [
-            clamp01(color.r / 255),
-            clamp01(color.g / 255),
-            clamp01(color.b / 255),
-            clamp01(typeof paint.alpha === 'number' ? paint.alpha : 1)
-          ]
+          value: baseColor.slice(),
+          paint: {
+            baseColor: baseColor.slice(),
+            metallic: clamp01(typeof paint.metallic === 'number' ? paint.metallic : 0),
+            roughness: clamp01(typeof paint.roughness === 'number' ? paint.roughness : 0),
+            clearcoat: clamp01(typeof paint.clearcoat === 'number' ? paint.clearcoat : 0),
+            clearcoatRoughness: clamp01(typeof paint.clearcoatRoughness === 'number' ? paint.clearcoatRoughness : 0)
+          }
         };
         const defaultName = rgbToHex(payload.value[0], payload.value[1], payload.value[2]);
         let chosenName = defaultName;
