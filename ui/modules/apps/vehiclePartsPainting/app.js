@@ -33,7 +33,7 @@ angular.module('beamng.apps')
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', function ($scope) {
+    controller: ['$scope', '$interval', function ($scope, $interval) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -64,6 +64,9 @@ angular.module('beamng.apps')
 
       $scope.state = state;
       $scope.editedPaints = [];
+
+      const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
+      let customBadgeRefreshPromise = null;
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -355,6 +358,82 @@ angular.module('beamng.apps')
           }
         }
         return result;
+      }
+
+      function hasPaintEntries(paints) {
+        if (!Array.isArray(paints)) { return false; }
+        for (let i = 0; i < paints.length; i++) {
+          const entry = paints[i];
+          if (entry && typeof entry === 'object') {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function numbersClose(a, b, epsilon) {
+        if (typeof a !== 'number' || typeof b !== 'number') { return a === b; }
+        const difference = Math.abs(a - b);
+        if (!isFinite(difference)) { return false; }
+        return difference <= (epsilon !== undefined ? epsilon : 0.0005);
+      }
+
+      function viewPaintsEqual(paintA, paintB) {
+        if (!paintA && !paintB) { return true; }
+        if (!paintA || !paintB) { return false; }
+        const viewA = createViewPaint(paintA);
+        const viewB = createViewPaint(paintB);
+        const colorA = viewA && viewA.color ? viewA.color : {};
+        const colorB = viewB && viewB.color ? viewB.color : {};
+        if (colorA.r !== colorB.r || colorA.g !== colorB.g || colorA.b !== colorB.b) { return false; }
+        if (!numbersClose(viewA.alpha, viewB.alpha)) { return false; }
+        if (!numbersClose(viewA.metallic, viewB.metallic)) { return false; }
+        if (!numbersClose(viewA.roughness, viewB.roughness)) { return false; }
+        if (!numbersClose(viewA.clearcoat, viewB.clearcoat)) { return false; }
+        if (!numbersClose(viewA.clearcoatRoughness, viewB.clearcoatRoughness)) { return false; }
+        return true;
+      }
+
+      function paintCollectionsEqual(paintsA, paintsB) {
+        const lengthA = Array.isArray(paintsA) ? paintsA.length : 0;
+        const lengthB = Array.isArray(paintsB) ? paintsB.length : 0;
+        const maxLen = Math.max(lengthA, lengthB);
+        if (maxLen === 0) { return true; }
+        for (let i = 0; i < maxLen; i++) {
+          const paintA = lengthA > i ? paintsA[i] : null;
+          const paintB = lengthB > i ? paintsB[i] : null;
+          if (!viewPaintsEqual(paintA, paintB)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function computePartHasCustomPaint(part) {
+        if (!part || typeof part !== 'object') { return false; }
+        if (hasPaintEntries(part.customPaints)) { return true; }
+        const currentPaints = Array.isArray(part.currentPaints) ? part.currentPaints : [];
+        if (!currentPaints.length) { return false; }
+        const basePaints = Array.isArray(state.basePaints) ? state.basePaints : [];
+        if (!basePaints.length) { return part.hasCustomPaint === true; }
+        return !paintCollectionsEqual(currentPaints, basePaints);
+      }
+
+      function refreshCustomBadgeVisibility() {
+        if (!Array.isArray(state.parts) || !state.parts.length) { return; }
+        let changed = false;
+        for (let i = 0; i < state.parts.length; i++) {
+          const part = state.parts[i];
+          if (!part || typeof part !== 'object') { continue; }
+          const computed = computePartHasCustomPaint(part);
+          if (part.hasCustomPaint !== computed) {
+            part.hasCustomPaint = computed;
+            changed = true;
+          }
+        }
+        if (changed && state.filteredTree === state.partsTree) {
+          state.filteredTree = state.partsTree;
+        }
       }
 
       function sendShowAllCommand() {
@@ -961,6 +1040,7 @@ angular.module('beamng.apps')
         const paints = viewToPaints($scope.editedPaints);
         if (!paints.length) { return; }
         const updatedLocally = updateLocalPartPaintState(state.selectedPartPath, paints, true);
+        refreshCustomBadgeVisibility();
         if (updatedLocally) {
           computeFilteredParts();
         }
@@ -978,6 +1058,7 @@ angular.module('beamng.apps')
         if (!state.selectedPartPath) { return; }
         const partPath = state.selectedPartPath;
         const updatedLocally = updateLocalPartPaintState(partPath, null, false);
+        refreshCustomBadgeVisibility();
         if (!updatedLocally) {
           const part = findPartByPath(partPath);
           if (part) {
@@ -1001,6 +1082,10 @@ angular.module('beamng.apps')
       };
 
       $scope.$on('$destroy', function () {
+        if (customBadgeRefreshPromise) {
+          $interval.cancel(customBadgeRefreshPromise);
+          customBadgeRefreshPromise = null;
+        }
         state.hoveredPartPath = null;
         sendShowAllCommand();
       });
@@ -1033,6 +1118,7 @@ angular.module('beamng.apps')
             state.hoveredPartPath = null;
             setSelectedPart(null);
             sendShowAllCommand();
+            refreshCustomBadgeVisibility();
             return;
           }
 
@@ -1055,6 +1141,7 @@ angular.module('beamng.apps')
 
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
           state.parts = Array.isArray(data.parts) ? data.parts : [];
+          refreshCustomBadgeVisibility();
           state.partsTree = buildPartsTree(state.parts);
 
           computeFilteredParts();
@@ -1110,6 +1197,10 @@ angular.module('beamng.apps')
       $scope.refresh();
       requestSavedConfigs();
       bngApi.engineLua('freeroam_vehiclePartsPainting.requestColorPresets()');
+      refreshCustomBadgeVisibility();
+      customBadgeRefreshPromise = $interval(function () {
+        refreshCustomBadgeVisibility();
+      }, CUSTOM_BADGE_REFRESH_INTERVAL_MS);
     }]
   };
 }]);
