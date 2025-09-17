@@ -53,16 +53,20 @@ local function ensureTopBarHelperLoaded()
     end
   end
 
-  if isLoaded(TOPBAR_HELPER_EXTENSION) or isLoaded(TOPBAR_HELPER_EXTENSION_ALIAS) then
-    return
+  if not (isLoaded(TOPBAR_HELPER_EXTENSION) or isLoaded(TOPBAR_HELPER_EXTENSION_ALIAS)) then
+    tryLoad(TOPBAR_HELPER_EXTENSION)
+    if not isLoaded(TOPBAR_HELPER_EXTENSION) then
+      tryLoad(TOPBAR_HELPER_EXTENSION_ALIAS)
+    end
   end
 
-  tryLoad(TOPBAR_HELPER_EXTENSION)
-  if isLoaded(TOPBAR_HELPER_EXTENSION) then
-    return
+  local helper = getLoadedExtension(TOPBAR_HELPER_EXTENSION) or getLoadedExtension(TOPBAR_HELPER_EXTENSION_ALIAS)
+  if type(helper) == 'table' and type(helper.ensureRegistered) == 'function' then
+    local ok, err = pcall(helper.ensureRegistered)
+    if not ok and err then
+      log('W', logTag, 'Failed to register top bar helper: '..tostring(err))
+    end
   end
-
-  tryLoad(TOPBAR_HELPER_EXTENSION_ALIAS)
 end
 
 local sanitizeColorPresetEntry

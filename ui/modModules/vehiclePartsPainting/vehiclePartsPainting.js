@@ -49,6 +49,11 @@ function ensureTopBarHelperLoaded(api) {
 
     ensure('${TOPBAR_EXTENSION}')
     ensure('${TOPBAR_EXTENSION_ALIAS}')
+
+    local helper = manager['${TOPBAR_EXTENSION}'] or manager['${TOPBAR_EXTENSION_ALIAS}']
+    if type(helper) == 'table' and type(helper.ensureRegistered) == 'function' then
+      pcall(helper.ensureRegistered)
+    end
   `
 
   runLua(api, script)
@@ -71,7 +76,27 @@ function ensureFreeroamExtensionLoaded(api) {
 }
 
 function setTopBarActive(api) {
-  runLua(api, `ui_topBar.setActiveItem("${TOPBAR_ITEM_ID}")`)
+  const script = `
+    local manager = extensions
+    if type(manager) == 'table' then
+      local helper = manager['${TOPBAR_EXTENSION}'] or manager['${TOPBAR_EXTENSION_ALIAS}']
+      if type(helper) == 'table' and type(helper.ensureRegistered) == 'function' then
+        pcall(helper.ensureRegistered)
+      end
+
+      local topBar = manager['ui_topBar']
+      if type(topBar) == 'table' and type(topBar.setActiveItem) == 'function' then
+        pcall(topBar.setActiveItem, topBar, '${TOPBAR_ITEM_ID}')
+        return
+      end
+    end
+
+    if ui_topBar and type(ui_topBar.setActiveItem) == 'function' then
+      pcall(ui_topBar.setActiveItem, ui_topBar, '${TOPBAR_ITEM_ID}')
+    end
+  `
+
+  runLua(api, script)
 }
 
 angular.module(MODULE_NAME, [])
