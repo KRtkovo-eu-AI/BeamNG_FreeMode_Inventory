@@ -513,6 +513,42 @@ function resetPaint(scope, partPath) {
   };
   assert(scope.canDeleteSavedConfig(originUserConfig), 'Configurations marked with a user origin should be deletable');
 
+  const numericUserFlagConfig = {
+    relativePath: 'vehicles/example/config_e.pc',
+    displayName: 'Config Epsilon',
+    isUserConfig: 1
+  };
+  assert(scope.canDeleteSavedConfig(numericUserFlagConfig), 'Numeric truthy isUserConfig values should be interpreted as deletable user configs');
+
+  const stringUserFlagConfig = {
+    relativePath: 'vehicles/example/config_f.pc',
+    displayName: 'Config Zeta',
+    userConfig: 'TRUE'
+  };
+  assert(scope.canDeleteSavedConfig(stringUserFlagConfig), 'String truthy userConfig values should allow deletion');
+
+  const localPathConfig = {
+    relativePath: 'vehicles/example/config_g.pc',
+    displayName: 'Config Eta',
+    absolutePath: '/local/vehicles/example/config_g.pc'
+  };
+  assert(scope.canDeleteSavedConfig(localPathConfig), 'Configs stored under the /local namespace should be deletable');
+
+  const appDataPathConfig = {
+    relativePath: 'vehicles/example/config_h.pc',
+    displayName: 'Config Theta',
+    absolutePath: 'C:/Users/ok/AppData/Local/BeamNG.drive/current/vehicles/example/config_h.pc'
+  };
+  assert(scope.canDeleteSavedConfig(appDataPathConfig), 'Configs stored under the AppData BeamNG.drive directory should be deletable');
+
+  const explicitNonUserConfig = {
+    relativePath: 'vehicles/example/config_i.pc',
+    displayName: 'Config Iota',
+    isUserConfig: 'false',
+    allowDelete: 'false'
+  };
+  assert(!scope.canDeleteSavedConfig(explicitNonUserConfig), 'Explicit non-user flags should prevent deletion');
+
   scope.promptDeleteSavedConfig(stockConfig);
   assert.strictEqual(state.deleteConfigDialog.visible, false, 'Delete dialog should ignore non-deletable configurations');
 

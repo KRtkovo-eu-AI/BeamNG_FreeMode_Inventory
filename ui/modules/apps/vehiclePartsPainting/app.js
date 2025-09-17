@@ -745,6 +745,37 @@ angular.module('beamng.apps')
         state.deleteConfigDialog.isDeleting = false;
       }
 
+      function coerceBooleanFlag(value, truthyAliases, falsyAliases) {
+        if (value === true) { return true; }
+        if (value === false) { return false; }
+
+        if (typeof value === 'number') {
+          if (!isFinite(value)) { return null; }
+          if (value === 0) { return false; }
+          return true;
+        }
+
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (!normalized) { return null; }
+          if (truthyAliases && truthyAliases.indexOf(normalized) !== -1) { return true; }
+          if (falsyAliases && falsyAliases.indexOf(normalized) !== -1) { return false; }
+          if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'y' || normalized === 'on') {
+            return true;
+          }
+          if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'n' || normalized === 'off') {
+            return false;
+          }
+        }
+
+        return null;
+      }
+
+      function normalizePathCandidate(value) {
+        if (typeof value !== 'string') { return ''; }
+        return value.replace(/\\+/g, '/').trim().toLowerCase();
+      }
+
       function buildConfigPreviewSrc(path) {
         if (typeof path !== 'string') { return null; }
         let normalized = path.trim();
@@ -777,18 +808,56 @@ angular.module('beamng.apps')
       function isConfigDeletable(config) {
         if (!config || typeof config !== 'object') { return false; }
 
-        const userFilePath = (typeof config.userFilePath === 'string') ? config.userFilePath.trim() : '';
+        const userFilePathRaw = (typeof config.userFilePath === 'string') ? config.userFilePath.trim() : '';
+        const absolutePathRaw = (typeof config.absolutePath === 'string') ? config.absolutePath.trim() : '';
+        const relativePathRaw = (typeof config.relativePath === 'string') ? config.relativePath.trim() : '';
         const origin = (typeof config.origin === 'string') ? config.origin.trim().toLowerCase() : '';
         const source = (typeof config.source === 'string') ? config.source.trim().toLowerCase() : '';
         const fileSource = (typeof config.fileSource === 'string') ? config.fileSource.trim().toLowerCase() : '';
-        const isExplicitUser = config.isUserConfig === true || config.userConfig === true || config.local === true;
-        const isUserByOrigin = origin === 'user' || source === 'user' || fileSource === 'user';
-        if (isExplicitUser || isUserByOrigin || userFilePath) { return true; }
+        const pathType = (typeof config.pathType === 'string') ? config.pathType.trim().toLowerCase() : '';
+        const location = (typeof config.location === 'string') ? config.location.trim().toLowerCase() : '';
+        const storage = (typeof config.storage === 'string') ? config.storage.trim().toLowerCase() : '';
+        const root = (typeof config.root === 'string') ? config.root.trim().toLowerCase() : '';
 
-        if (config.allowDelete === false) { return false; }
-        if (config.isDeletable === false) { return false; }
-        if (config.isUserConfig === false || config.userConfig === false || config.local === false) { return false; }
-        if (config.allowDelete === true || config.isDeletable === true) { return true; }
+        const allowDeleteFlag = coerceBooleanFlag(config.allowDelete);
+        const deletableFlag = coerceBooleanFlag(config.isDeletable);
+
+        const userFlag = coerceBooleanFlag(config.isUserConfig, ['user', 'local']);
+        const legacyUserFlag = coerceBooleanFlag(config.userConfig, ['user', 'local']);
+        const localFlag = coerceBooleanFlag(config.local, ['user', 'local']);
+        const userPropertyFlag = coerceBooleanFlag(config.user, ['user']);
+
+        const isExplicitUser = [userFlag, legacyUserFlag, localFlag, userPropertyFlag]
+          .some(function (value) { return value === true; });
+        const isExplicitNonUser = [userFlag, legacyUserFlag, localFlag, userPropertyFlag]
+          .some(function (value) { return value === false; });
+
+        const isUserByOrigin = [origin, source, fileSource, pathType, location, storage, root]
+          .some(function (value) { return value === 'user' || value === 'local'; });
+
+        const normalizedPaths = [userFilePathRaw, absolutePathRaw, relativePathRaw]
+          .map(function (value) { return normalizePathCandidate(value); })
+          .filter(function (value) { return !!value; });
+
+        const isUserByPath = normalizedPaths.some(function (path) {
+          if (path.indexOf('/local/') === 0) { return true; }
+          if (path.indexOf('beamng.drive/') !== -1) { return true; }
+          if (path.indexOf('/appdata/') !== -1) { return true; }
+          if (path.indexOf('/users/') !== -1) { return true; }
+          return false;
+        });
+
+        if (userFilePathRaw || isExplicitUser || isUserByOrigin || isUserByPath) {
+          return true;
+        }
+
+        if (allowDeleteFlag === false || deletableFlag === false || isExplicitNonUser) {
+          return false;
+        }
+
+        if (allowDeleteFlag === true || deletableFlag === true) {
+          return true;
+        }
 
         return false;
       }
