@@ -1083,6 +1083,28 @@ local function saveCurrentUserConfig(configName)
           else
             log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(fileName), tostring(saveEntryPointName)))
           end
+
+          local screenshotExtensionName = 'util_screenshotCreator'
+          if not extensions or type(extensions.load) ~= 'function' then
+            log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": extensions.load unavailable', tostring(displayName or sanitizedBaseName)))
+          else
+            local okLoad, loadErr = safePcall(function()
+              return extensions.load(screenshotExtensionName)
+            end)
+            if not okLoad then
+              log('W', logTag, string.format('Unable to load %s extension for "%s": %s', screenshotExtensionName, tostring(displayName or sanitizedBaseName), tostring(loadErr)))
+            end
+
+            local screenshotExtension = getLoadedExtension(screenshotExtensionName)
+            if screenshotExtension and type(screenshotExtension.startWork) == 'function' then
+              local okStart, startErr = safePcall(screenshotExtension.startWork, { selection = sanitizedBaseName })
+              if not okStart then
+                log('W', logTag, string.format('Failed to start %s for "%s": %s', screenshotExtensionName, tostring(displayName or sanitizedBaseName), tostring(startErr)))
+              end
+            else
+              log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": %s extension unavailable or missing startWork', tostring(displayName or sanitizedBaseName), screenshotExtensionName))
+            end
+          end
         else
           local errorMessage
           if not okSave then
