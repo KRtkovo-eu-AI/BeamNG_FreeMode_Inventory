@@ -323,6 +323,35 @@ angular.module('beamng.apps')
         return [];
       }
 
+      function convertPresetTableToArray(value) {
+        if (!value || typeof value !== 'object') { return null; }
+        if (Array.isArray(value)) { return value; }
+        const keys = Object.keys(value);
+        if (!keys.length) { return []; }
+        const array = [];
+        let hasNumericKey = false;
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          if (key === 'length' || key === 'n') { continue; }
+          if (!/^[0-9]+$/.test(key)) { continue; }
+          const index = parseInt(key, 10);
+          if (!isFinite(index) || index < 1) { continue; }
+          array[index - 1] = value[key];
+          hasNumericKey = true;
+        }
+        if (!hasNumericKey) {
+          const length = typeof value.length === 'number' ? value.length : null;
+          const nValue = typeof value.n === 'number' ? value.n : null;
+          if ((length !== null && length <= 0) || (nValue !== null && nValue <= 0)) { return []; }
+          return null;
+        }
+        for (let i = array.length - 1; i >= 0; i--) {
+          if (array[i] !== undefined) { break; }
+          array.pop();
+        }
+        return array;
+      }
+
       function cloneSanitizedPresets(presets) {
         const sanitizedList = [];
         if (!Array.isArray(presets)) { return sanitizedList; }
@@ -399,6 +428,12 @@ angular.module('beamng.apps')
       function updateColorPresets(rawPresets) {
         if (typeof rawPresets === 'string') {
           rawPresets = decodeSettingsPresetArray(rawPresets);
+        }
+        if (!Array.isArray(rawPresets)) {
+          const converted = convertPresetTableToArray(rawPresets);
+          if (Array.isArray(converted)) {
+            rawPresets = converted;
+          }
         }
         if (!Array.isArray(rawPresets)) {
           state.colorPresets = [];
