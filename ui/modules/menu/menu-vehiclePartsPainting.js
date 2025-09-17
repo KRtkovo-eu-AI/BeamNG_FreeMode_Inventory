@@ -64,7 +64,10 @@
     }])
     .run(['$rootScope', 'bngApi', function ($rootScope, bngApi) {
       if (bngApi && typeof bngApi.engineLua === 'function') {
-        bngApi.engineLua('extensions.load("ui_topBar_vehiclePartsPainting")');
+        bngApi.engineLua([
+          'extensions.load("ui_topBar_vehiclePartsPainting")',
+          'ui_topBar_vehiclePartsPainting.ensureRegistered()'
+        ].join('; '));
       }
 
       const events = getBridgeEvents();
@@ -96,8 +99,14 @@
       }
 
       if (bngApi && typeof bngApi.engineLua === 'function') {
-        bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
-        bngApi.engineLua('freeroam_vehiclePartsPainting.onMenuOpened()');
+        bngApi.engineLua([
+          'extensions.load("ui_topBar_vehiclePartsPainting")',
+          'ui_topBar_vehiclePartsPainting.ensureRegistered()'
+        ].join('; '));
+        bngApi.engineLua([
+          'extensions.load("freeroam_vehiclePartsPainting")',
+          'freeroam_vehiclePartsPainting.onMenuOpened()'
+        ].join('; '));
       }
 
       $scope.$on('$destroy', function () {

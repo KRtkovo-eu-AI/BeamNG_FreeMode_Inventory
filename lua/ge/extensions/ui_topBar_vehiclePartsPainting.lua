@@ -23,6 +23,11 @@ local itemDefinition = {
 }
 
 local registered = false
+local retryDelay = 0
+local retryTimer = 0
+local minRetryDelay = 0.5
+local maxRetryDelay = 5
+local registrationFailureLogged = false
 
 local function deepCopy(value)
   if type(value) ~= 'table' then
@@ -104,6 +109,28 @@ local function triggerVisibleItems()
   guihooks.trigger('ui_topBar_visibleItemsChanged', {})
 end
 
+local function resetRetryState()
+  retryDelay = 0
+  retryTimer = 0
+  registrationFailureLogged = false
+end
+
+local function scheduleRetry()
+  if retryDelay <= 0 then
+    retryDelay = minRetryDelay
+  else
+    retryDelay = math.min(retryDelay * 2, maxRetryDelay)
+  end
+  retryTimer = retryDelay
+end
+
+local function finalizeRegistration()
+  registered = true
+  resetRetryState()
+  triggerVisibleItems()
+  return true
+end
+
 local function tryRegisterThroughApi()
   local topBar = getTopBarExtension()
   if not topBar then
@@ -166,32 +193,28 @@ local function registerItem()
     return true
   end
 
-  local success = tryRegisterThroughApi()
-  if success then
-    registered = true
+  if tryRegisterThroughApi() then
     refreshEntriesFromTopBar()
-    triggerVisibleItems()
-    return true
+    return finalizeRegistration()
   end
 
   -- Fallback: request entries and append our item through the UI bridge
   if refreshEntriesFromTopBar() then
-    registered = true
-    triggerVisibleItems()
-    return true
+    return finalizeRegistration()
   end
 
-  registered = true
-  triggerVisibleItems()
-  log('W', logTag, 'Failed to request ui_topBar entries while registering vehiclePartsPainting button')
+  if not registrationFailureLogged then
+    log('W', logTag, 'ui_topBar not ready; will retry registering vehiclePartsPainting button')
+    registrationFailureLogged = true
+  end
+
+  scheduleRetry()
   return false
 end
 
 local function unregisterItem()
-  if not registered then
-    return
-  end
   registered = false
+  resetRetryState()
 
   local topBar = getTopBarExtension()
   if topBar then
@@ -220,6 +243,7 @@ local function unregisterItem()
 end
 
 local function onExtensionLoaded()
+  resetRetryState()
   registerItem()
 end
 
@@ -227,7 +251,24 @@ local function onExtensionUnloaded()
   unregisterItem()
 end
 
+local function onUpdate(dt)
+  if registered or retryTimer <= 0 then
+    return
+  end
+
+  retryTimer = retryTimer - (tonumber(dt) or 0)
+  if retryTimer <= 0 then
+    registerItem()
+  end
+end
+
+local function ensureRegistered()
+  registerItem()
+end
+
 M.onExtensionLoaded = onExtensionLoaded
 M.onExtensionUnloaded = onExtensionUnloaded
+M.onUpdate = onUpdate
+M.ensureRegistered = ensureRegistered
 
 return M
