@@ -2,8 +2,9 @@ angular.module('beamng.apps')
 .directive('vehiclePartsPaintingFilterInput', [function () {
   return {
     restrict: 'A',
-    link: function (scope, element) {
-      if (!element || typeof element.on !== 'function') { return; }
+    require: 'ngModel',
+    link: function (scope, element, attrs, ngModelCtrl) {
+      if (!element || typeof element.on !== 'function' || !ngModelCtrl) { return; }
 
       function sanitizeValue(value) {
         if (typeof value === 'string') { return value; }
@@ -11,24 +12,56 @@ angular.module('beamng.apps')
         return String(value);
       }
 
-      function emitChange() {
+      function dispatchFilter(value) {
         if (!scope) { return; }
         const handler = scope.handleFilterInput;
         if (typeof handler !== 'function') { return; }
-        const rawValue = typeof element.val === 'function' ? element.val() : element.value;
-        scope.$evalAsync(function () {
-          handler(sanitizeValue(rawValue));
+        if (typeof scope.$evalAsync === 'function') {
+          scope.$evalAsync(function () {
+            handler(sanitizeValue(value));
+          });
+        } else {
+          handler(sanitizeValue(value));
+        }
+      }
+
+      function readElementValue() {
+        if (typeof element.val === 'function') { return element.val(); }
+        if (element && element[0] && 'value' in element[0]) {
+          return element[0].value;
+        }
+        if (element && 'value' in element) {
+          return element.value;
+        }
+        return '';
+      }
+
+      if (Array.isArray(ngModelCtrl.$viewChangeListeners)) {
+        ngModelCtrl.$viewChangeListeners.push(function () {
+          dispatchFilter(ngModelCtrl.$viewValue);
         });
       }
 
-      element.on('input', emitChange);
-      element.on('search', emitChange);
-      element.on('change', emitChange);
+      function handleSearchEvent() {
+        const sanitizedValue = sanitizeValue(readElementValue());
+        const currentViewValue = ngModelCtrl.$viewValue;
+        scope.$evalAsync(function () {
+          if (typeof ngModelCtrl.$setViewValue === 'function') {
+            ngModelCtrl.$setViewValue(sanitizedValue);
+          }
+          if (typeof ngModelCtrl.$render === 'function') {
+            ngModelCtrl.$render();
+          }
+          if (sanitizedValue === currentViewValue) {
+            dispatchFilter(sanitizedValue);
+          }
+        });
+      }
+
+      element.on('search', handleSearchEvent);
 
       scope.$on('$destroy', function () {
-        element.off('input', emitChange);
-        element.off('search', emitChange);
-        element.off('change', emitChange);
+        element.off('search', handleSearchEvent);
       });
     }
   };
