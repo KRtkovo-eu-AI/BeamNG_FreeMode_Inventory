@@ -758,7 +758,7 @@
           <div class="node-content">
             <div class="name">{{node.part.displayName || node.part.partName}}</div>
             <div class="slot" ng-if="node.part.slotName">{{node.part.slotName}}</div>
-            <span class="custom-tag" ng-if="node.part.hasCustomPaint">CUSTOM</span>
+            <span class="custom-tag" ng-if="hasCustomBadge(node.part)">CUSTOM</span>
           </div>
         </div>
         <ul class="parts-children" ng-if="node.children && node.children.length && isNodeExpanded(node.part)">

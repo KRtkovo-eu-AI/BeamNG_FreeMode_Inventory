@@ -27,6 +27,9 @@ angular.module('beamng.apps')
   }
 
   const bngApi = resolveBngApi();
+  const testHooks = (typeof window !== 'undefined' && window.__vehiclePartsPaintingTestHooks)
+    ? window.__vehiclePartsPaintingTestHooks
+    : null;
 
   return {
     templateUrl: '/ui/modules/apps/vehiclePartsPainting/app.html',
@@ -71,6 +74,7 @@ angular.module('beamng.apps')
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
       let partsTreeDirty = false;
+      let customPaintStateByPath = Object.create(null);
 
       function clamp01(value) {
         value = parseFloat(value);
@@ -427,6 +431,25 @@ angular.module('beamng.apps')
         return { part: part, index: index };
       }
 
+      function clearCustomPaintState() {
+        customPaintStateByPath = Object.create(null);
+      }
+
+      function setCustomPaintState(path, value) {
+        if (!path) { return false; }
+        const normalized = !!value;
+        if (customPaintStateByPath[path] === normalized) { return false; }
+        customPaintStateByPath[path] = normalized;
+        return true;
+      }
+
+      function getCustomPaintState(path) {
+        if (!path) { return false; }
+        const value = customPaintStateByPath[path];
+        if (value === undefined) { return false; }
+        return !!value;
+      }
+
       function resetTreeNodeLookup() {
         treeNodesByPath = Object.create(null);
       }
@@ -581,10 +604,12 @@ angular.module('beamng.apps')
       function refreshCustomBadgeVisibility() {
         if (!Array.isArray(state.parts) || !state.parts.length) { return; }
         let changed = false;
+        let mapChanged = false;
         for (let i = 0; i < state.parts.length; i++) {
           const part = state.parts[i];
           if (!part || typeof part !== 'object') { continue; }
           const computed = computePartHasCustomPaint(part);
+          mapChanged = setCustomPaintState(part.partPath, computed) || mapChanged;
           if (part.hasCustomPaint !== computed) {
             const updatedPart = Object.assign({}, part, {
               hasCustomPaint: computed
@@ -593,9 +618,29 @@ angular.module('beamng.apps')
             changed = true;
           }
         }
-        if (changed) {
+        if (changed || mapChanged) {
           computeFilteredParts();
         }
+      }
+
+      $scope.hasCustomBadge = function (part) {
+        if (!part || !part.partPath) { return false; }
+        const path = part.partPath;
+        if (Object.prototype.hasOwnProperty.call(customPaintStateByPath, path)) {
+          return !!customPaintStateByPath[path];
+        }
+        return !!part.hasCustomPaint;
+      };
+
+      if (testHooks && typeof testHooks.registerController === 'function') {
+        testHooks.registerController({
+          getState: function () { return state; },
+          getTreeNodesByPath: function () { return treeNodesByPath; },
+          refreshCustomBadges: refreshCustomBadgeVisibility,
+          computeFilteredParts: computeFilteredParts,
+          markPartsTreeDirty: markPartsTreeDirty,
+          getCustomPaintState: function () { return customPaintStateByPath; }
+        });
       }
 
       function sendShowAllCommand() {
@@ -1251,6 +1296,7 @@ angular.module('beamng.apps')
         }
         resetPartLookup();
         resetTreeNodeLookup();
+        clearCustomPaintState();
         state.hoveredPartPath = null;
         sendShowAllCommand();
       });
@@ -1267,6 +1313,7 @@ angular.module('beamng.apps')
 
           if (!state.vehicleId) {
             clearPendingReplacement();
+            clearCustomPaintState();
             state.basePaints = [];
             state.parts = [];
             resetPartLookup();
@@ -1292,6 +1339,7 @@ angular.module('beamng.apps')
 
           if (state.vehicleId !== previousVehicleId) {
             clearPendingReplacement();
+            clearCustomPaintState();
             state.filterText = '';
             state.expandedNodes = {};
             state.savedConfigs = [];
@@ -1305,6 +1353,10 @@ angular.module('beamng.apps')
             setSelectedPart(null);
             sendShowAllCommand();
             requestSavedConfigs();
+          }
+
+          if (state.vehicleId === previousVehicleId) {
+            clearCustomPaintState();
           }
 
           state.basePaints = Array.isArray(data.basePaints) ? data.basePaints : [];
