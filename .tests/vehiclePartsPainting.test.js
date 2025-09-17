@@ -498,6 +498,21 @@ function resetPaint(scope, partPath) {
   assert(scope.canDeleteSavedConfig(userConfig), 'User configuration should be deletable');
   assert(!scope.canDeleteSavedConfig(stockConfig), 'Non-user configuration should not expose deletion');
 
+  const userPathConfig = {
+    relativePath: 'vehicles/example/config_c.pc',
+    displayName: 'Config Gamma',
+    allowDelete: false,
+    userFilePath: 'C:/Users/test/AppData/Local/BeamNG.drive/latest/vehicles/example/config_c.pc'
+  };
+  assert(scope.canDeleteSavedConfig(userPathConfig), 'User configuration with a user file path should be deletable even if flagged otherwise');
+
+  const originUserConfig = {
+    relativePath: 'vehicles/example/config_d.pc',
+    displayName: 'Config Delta',
+    origin: 'USER'
+  };
+  assert(scope.canDeleteSavedConfig(originUserConfig), 'Configurations marked with a user origin should be deletable');
+
   scope.promptDeleteSavedConfig(stockConfig);
   assert.strictEqual(state.deleteConfigDialog.visible, false, 'Delete dialog should ignore non-deletable configurations');
 

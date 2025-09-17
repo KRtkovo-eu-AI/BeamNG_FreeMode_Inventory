@@ -765,6 +765,7 @@ local function gatherSavedConfigsFromDisk(modelFolder)
       visitedRoots[root] = true
       local okFind, files = safePcall(FS.findFiles, FS, root, '*.pc', 0, false, true)
       if okFind and type(files) == 'table' then
+        local isUserRoot = (targetDir ~= nil and root == targetDir)
         for _, filePath in ipairs(files) do
           if type(filePath) == 'string' and filePath ~= '' then
             local normalizedPath = filePath:gsub('\\', '/')
@@ -780,7 +781,11 @@ local function gatherSavedConfigsFromDisk(modelFolder)
                 local isAbsolute = normalizedPath:match('^%a:/') or normalizedPath:sub(1, 1) == '/'
                 local userFilePath = nil
                 local userFileExists = false
-                if targetDir then
+
+                if isUserRoot then
+                  userFileExists = true
+                  userFilePath = normalizedPath
+                elseif targetDir then
                   local candidate = targetDir .. fileName .. '.pc'
                   local okUser, hasUser = safePcall(FS.fileExists, FS, candidate)
                   if okUser and hasUser then
@@ -806,6 +811,8 @@ local function gatherSavedConfigsFromDisk(modelFolder)
 
                 if userFileExists and userFilePath then
                   entry.userFilePath = userFilePath
+                  entry.allowDelete = true
+                  entry.isDeletable = true
                 end
 
                 local previewRelative = nil

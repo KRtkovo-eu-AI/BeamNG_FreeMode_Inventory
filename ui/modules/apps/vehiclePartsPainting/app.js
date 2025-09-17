@@ -776,11 +776,20 @@ angular.module('beamng.apps')
 
       function isConfigDeletable(config) {
         if (!config || typeof config !== 'object') { return false; }
+
+        const userFilePath = (typeof config.userFilePath === 'string') ? config.userFilePath.trim() : '';
+        const origin = (typeof config.origin === 'string') ? config.origin.trim().toLowerCase() : '';
+        const source = (typeof config.source === 'string') ? config.source.trim().toLowerCase() : '';
+        const fileSource = (typeof config.fileSource === 'string') ? config.fileSource.trim().toLowerCase() : '';
+        const isExplicitUser = config.isUserConfig === true || config.userConfig === true || config.local === true;
+        const isUserByOrigin = origin === 'user' || source === 'user' || fileSource === 'user';
+        if (isExplicitUser || isUserByOrigin || userFilePath) { return true; }
+
         if (config.allowDelete === false) { return false; }
-        if (config.isUserConfig === false) { return false; }
         if (config.isDeletable === false) { return false; }
-        if (config.isUserConfig === true || config.isDeletable === true) { return true; }
-        if (config.userFilePath && typeof config.userFilePath === 'string' && config.userFilePath.trim()) { return true; }
+        if (config.isUserConfig === false || config.userConfig === false || config.local === false) { return false; }
+        if (config.allowDelete === true || config.isDeletable === true) { return true; }
+
         return false;
       }
 
