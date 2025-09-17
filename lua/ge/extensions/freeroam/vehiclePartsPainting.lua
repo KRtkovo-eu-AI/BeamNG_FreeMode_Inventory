@@ -2347,6 +2347,16 @@ local function onExtensionUnloaded()
   clearHighlight()
 end
 
+local function open()
+  requestState()
+  requestSavedConfigs()
+  showAllParts()
+end
+
+local function close()
+  clearHighlight()
+end
+
 M.requestState = requestState
 M.requestSavedConfigs = requestSavedConfigs
 M.applyPartPaintJson = applyPartPaintJson
@@ -2362,6 +2372,9 @@ M.saveCurrentConfiguration = saveCurrentConfiguration
 M.spawnSavedConfiguration = spawnSavedConfiguration
 M.addColorPreset = addColorPreset
 M.removeColorPreset = removeColorPreset
+
+M.open = open
+M.close = close
 
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
