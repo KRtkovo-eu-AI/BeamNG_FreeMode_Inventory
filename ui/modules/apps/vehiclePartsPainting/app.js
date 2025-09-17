@@ -332,6 +332,7 @@ angular.module('beamng.apps')
         let hasNumericKey = false;
         for (let i = 0; i < keys.length; i++) {
           const key = keys[i];
+          if (!Object.prototype.hasOwnProperty.call(value, key)) { continue; }
           if (key === 'length' || key === 'n') { continue; }
           if (!/^[0-9]+$/.test(key)) { continue; }
           const index = parseInt(key, 10);
@@ -342,13 +343,26 @@ angular.module('beamng.apps')
         if (!hasNumericKey) {
           const length = typeof value.length === 'number' ? value.length : null;
           const nValue = typeof value.n === 'number' ? value.n : null;
-          if ((length !== null && length <= 0) || (nValue !== null && nValue <= 0)) { return []; }
-          return null;
+          const maxIndex = Math.max(length || 0, nValue || 0);
+          if (maxIndex > 0) {
+            for (let i = 1; i <= maxIndex; i++) {
+              const candidate = value[i] !== undefined ? value[i] : value[String(i)];
+              if (candidate !== undefined) {
+                array[i - 1] = candidate;
+                hasNumericKey = true;
+              }
+            }
+          }
+          if (!hasNumericKey) {
+            if ((length !== null && length <= 0) || (nValue !== null && nValue <= 0)) { return []; }
+            return null;
+          }
         }
-        for (let i = array.length - 1; i >= 0; i--) {
-          if (array[i] !== undefined) { break; }
-          array.pop();
+        let lastDefinedIndex = array.length - 1;
+        while (lastDefinedIndex >= 0 && array[lastDefinedIndex] === undefined) {
+          lastDefinedIndex--;
         }
+        array.length = lastDefinedIndex + 1;
         return array;
       }
 
@@ -426,6 +440,14 @@ angular.module('beamng.apps')
       }
 
       function updateColorPresets(rawPresets) {
+        if (rawPresets === undefined) { return; }
+        if (rawPresets === null) {
+          state.colorPresets = [];
+          if (state.removePresetDialog.visible) {
+            closeRemovePresetDialog();
+          }
+          return;
+        }
         if (typeof rawPresets === 'string') {
           rawPresets = decodeSettingsPresetArray(rawPresets);
         }
@@ -433,6 +455,11 @@ angular.module('beamng.apps')
           const converted = convertPresetTableToArray(rawPresets);
           if (Array.isArray(converted)) {
             rawPresets = converted;
+          } else if (converted === null) {
+            if (globalWindow && globalWindow.console && typeof globalWindow.console.warn === 'function') {
+              globalWindow.console.warn('VehiclePartsPainting: Ignoring colorPresets payload with unexpected structure.');
+            }
+            return;
           }
         }
         if (!Array.isArray(rawPresets)) {

@@ -219,6 +219,17 @@ function structuredClonePaints(paints) {
   }));
 }
 
+function cloneStateForEvent(scope) {
+  const state = scope.state || {};
+  const basePaints = Array.isArray(state.basePaints) ? structuredClonePaints(state.basePaints) : [];
+  const partsClone = Array.isArray(state.parts) ? JSON.parse(JSON.stringify(state.parts)) : [];
+  return {
+    vehicleId: state.vehicleId,
+    basePaints: basePaints,
+    parts: partsClone
+  };
+}
+
 function createPart(partPath, slotPath, basePaints) {
   return {
     partPath: partPath,
@@ -496,8 +507,32 @@ function resetPaint(scope, partPath) {
   scope.$digest();
 
   assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should sync from event payload');
-  const palettePreset = state.colorPresets[0];
+  let palettePreset = state.colorPresets[0];
   assert.strictEqual(palettePreset.storageIndex, 1, 'Preset should retain its storage index');
+
+  const invalidPalettePayload = cloneStateForEvent(scope);
+  invalidPalettePayload.colorPresets = { length: 1, n: 1 };
+  emitState(scope, invalidPalettePayload);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when payload lacks numeric entries');
+
+  const luaStylePalette = cloneStateForEvent(scope);
+  luaStylePalette.colorPresets = {
+    length: 1,
+    n: 1,
+    1: {
+      name: 'Lua style swatch',
+      value: { r: 0.3, g: 0.4, b: 0.5, a: 0.75 },
+      metallic: 0.1,
+      roughness: 0.2,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.4
+    }
+  };
+  emitState(scope, luaStylePalette);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should parse Lua-style tables');
+  palettePreset = state.colorPresets[0];
+  assert.strictEqual(palettePreset.name, 'Lua style swatch', 'Lua-style payload should preserve preset names');
+  assert(Math.abs(palettePreset.paint.metallic - 0.1) < 1e-6, 'Lua-style payload should preserve numeric fields');
 
   scope.onPresetPressStart({}, palettePreset);
   controller.timeout.flush();
