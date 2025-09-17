@@ -771,11 +771,6 @@ angular.module('beamng.apps')
         return null;
       }
 
-      function normalizePathCandidate(value) {
-        if (typeof value !== 'string') { return ''; }
-        return value.replace(/\\+/g, '/').trim().toLowerCase();
-      }
-
       function buildConfigPreviewSrc(path) {
         if (typeof path !== 'string') { return null; }
         let normalized = path.trim();
@@ -808,55 +803,42 @@ angular.module('beamng.apps')
       function isConfigDeletable(config) {
         if (!config || typeof config !== 'object') { return false; }
 
-        const userFilePathRaw = (typeof config.userFilePath === 'string') ? config.userFilePath.trim() : '';
-        const absolutePathRaw = (typeof config.absolutePath === 'string') ? config.absolutePath.trim() : '';
-        const relativePathRaw = (typeof config.relativePath === 'string') ? config.relativePath.trim() : '';
-        const origin = (typeof config.origin === 'string') ? config.origin.trim().toLowerCase() : '';
-        const source = (typeof config.source === 'string') ? config.source.trim().toLowerCase() : '';
-        const fileSource = (typeof config.fileSource === 'string') ? config.fileSource.trim().toLowerCase() : '';
-        const pathType = (typeof config.pathType === 'string') ? config.pathType.trim().toLowerCase() : '';
-        const location = (typeof config.location === 'string') ? config.location.trim().toLowerCase() : '';
-        const storage = (typeof config.storage === 'string') ? config.storage.trim().toLowerCase() : '';
-        const root = (typeof config.root === 'string') ? config.root.trim().toLowerCase() : '';
-
         const allowDeleteFlag = coerceBooleanFlag(config.allowDelete);
         const deletableFlag = coerceBooleanFlag(config.isDeletable);
-
-        const userFlag = coerceBooleanFlag(config.isUserConfig, ['user', 'local']);
-        const legacyUserFlag = coerceBooleanFlag(config.userConfig, ['user', 'local']);
-        const localFlag = coerceBooleanFlag(config.local, ['user', 'local']);
-        const userPropertyFlag = coerceBooleanFlag(config.user, ['user']);
-
-        const isExplicitUser = [userFlag, legacyUserFlag, localFlag, userPropertyFlag]
-          .some(function (value) { return value === true; });
-        const isExplicitNonUser = [userFlag, legacyUserFlag, localFlag, userPropertyFlag]
-          .some(function (value) { return value === false; });
-
-        const isUserByOrigin = [origin, source, fileSource, pathType, location, storage, root]
-          .some(function (value) { return value === 'user' || value === 'local'; });
-
-        const normalizedPaths = [userFilePathRaw, absolutePathRaw, relativePathRaw]
-          .map(function (value) { return normalizePathCandidate(value); })
-          .filter(function (value) { return !!value; });
-
-        const isUserByPath = normalizedPaths.some(function (path) {
-          if (path.indexOf('/local/') === 0) { return true; }
-          if (path.indexOf('beamng.drive/') !== -1) { return true; }
-          if (path.indexOf('/appdata/') !== -1) { return true; }
-          if (path.indexOf('/users/') !== -1) { return true; }
-          return false;
-        });
-
-        if (userFilePathRaw || isExplicitUser || isUserByOrigin || isUserByPath) {
-          return true;
-        }
-
-        if (allowDeleteFlag === false || deletableFlag === false || isExplicitNonUser) {
+        if (allowDeleteFlag === false || deletableFlag === false) {
           return false;
         }
 
-        if (allowDeleteFlag === true || deletableFlag === true) {
+        const playerFlag = coerceBooleanFlag(config.player, ['player', 'user', 'local']);
+        if (playerFlag === true) {
           return true;
+        }
+        if (playerFlag === false) {
+          return false;
+        }
+
+        const userFlag = coerceBooleanFlag(config.isUserConfig, ['player', 'user', 'local']);
+        if (userFlag === true) {
+          return true;
+        }
+        if (userFlag === false) {
+          return false;
+        }
+
+        const legacyUserFlag = coerceBooleanFlag(config.userConfig, ['player', 'user', 'local']);
+        if (legacyUserFlag === true) {
+          return true;
+        }
+        if (legacyUserFlag === false) {
+          return false;
+        }
+
+        const userPropertyFlag = coerceBooleanFlag(config.user, ['player', 'user', 'local']);
+        if (userPropertyFlag === true) {
+          return true;
+        }
+        if (userPropertyFlag === false) {
+          return false;
         }
 
         return false;

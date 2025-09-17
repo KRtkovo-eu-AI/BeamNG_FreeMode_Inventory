@@ -467,12 +467,14 @@ function resetPaint(scope, partPath) {
         relativePath: 'vehicles/example/config_a.pc',
         displayName: 'Config Alpha',
         previewImage: 'vehicles/example/config_a.png',
+        player: true,
         isUserConfig: true
       },
       {
         relativePath: 'vehicles/example/config_b.pc',
         displayName: 'Config Beta',
         previewImage: '',
+        player: false,
         isUserConfig: false
       }
     ]
@@ -483,7 +485,7 @@ function resetPaint(scope, partPath) {
   assert.strictEqual(state.savedConfigs.length, 2, 'Saved configuration list should contain two entries');
   let userConfig = state.savedConfigs[0];
   let stockConfig = state.savedConfigs[1];
-  if (!userConfig.isUserConfig) {
+  if (!scope.canDeleteSavedConfig(userConfig)) {
     // Sorting may change order depending on locale; ensure user config reference is correct.
     const swapped = userConfig;
     userConfig = stockConfig;
@@ -498,56 +500,54 @@ function resetPaint(scope, partPath) {
   assert(scope.canDeleteSavedConfig(userConfig), 'User configuration should be deletable');
   assert(!scope.canDeleteSavedConfig(stockConfig), 'Non-user configuration should not expose deletion');
 
-  const userPathConfig = {
+  const playerFlagConfig = {
     relativePath: 'vehicles/example/config_c.pc',
     displayName: 'Config Gamma',
-    allowDelete: false,
-    userFilePath: 'C:/Users/test/AppData/Local/BeamNG.drive/latest/vehicles/example/config_c.pc'
+    player: true
   };
-  assert(scope.canDeleteSavedConfig(userPathConfig), 'User configuration with a user file path should be deletable even if flagged otherwise');
+  assert(scope.canDeleteSavedConfig(playerFlagConfig), 'Player flag should enable deletion');
 
-  const originUserConfig = {
+  const nonPlayerFlagConfig = {
     relativePath: 'vehicles/example/config_d.pc',
     displayName: 'Config Delta',
-    origin: 'USER'
+    player: false
   };
-  assert(scope.canDeleteSavedConfig(originUserConfig), 'Configurations marked with a user origin should be deletable');
+  assert(!scope.canDeleteSavedConfig(nonPlayerFlagConfig), 'Non-player flag should prevent deletion');
 
-  const numericUserFlagConfig = {
+  const numericPlayerFlagConfig = {
     relativePath: 'vehicles/example/config_e.pc',
     displayName: 'Config Epsilon',
-    isUserConfig: 1
+    player: 1
   };
-  assert(scope.canDeleteSavedConfig(numericUserFlagConfig), 'Numeric truthy isUserConfig values should be interpreted as deletable user configs');
+  assert(scope.canDeleteSavedConfig(numericPlayerFlagConfig), 'Numeric player flags should be treated as truthy');
 
-  const stringUserFlagConfig = {
+  const stringPlayerFlagConfig = {
     relativePath: 'vehicles/example/config_f.pc',
     displayName: 'Config Zeta',
-    userConfig: 'TRUE'
+    player: 'yes'
   };
-  assert(scope.canDeleteSavedConfig(stringUserFlagConfig), 'String truthy userConfig values should allow deletion');
+  assert(scope.canDeleteSavedConfig(stringPlayerFlagConfig), 'String player flags should be treated as truthy');
 
-  const localPathConfig = {
+  const legacyUserFlagConfig = {
     relativePath: 'vehicles/example/config_g.pc',
     displayName: 'Config Eta',
-    absolutePath: '/local/vehicles/example/config_g.pc'
+    isUserConfig: 1
   };
-  assert(scope.canDeleteSavedConfig(localPathConfig), 'Configs stored under the /local namespace should be deletable');
+  assert(scope.canDeleteSavedConfig(legacyUserFlagConfig), 'Legacy user flags should still allow deletion');
 
-  const appDataPathConfig = {
+  const explicitDisableConfig = {
     relativePath: 'vehicles/example/config_h.pc',
     displayName: 'Config Theta',
-    absolutePath: 'C:/Users/ok/AppData/Local/BeamNG.drive/current/vehicles/example/config_h.pc'
+    player: true,
+    allowDelete: false
   };
-  assert(scope.canDeleteSavedConfig(appDataPathConfig), 'Configs stored under the AppData BeamNG.drive directory should be deletable');
+  assert(!scope.canDeleteSavedConfig(explicitDisableConfig), 'Explicit deletion disable should override player flag');
 
-  const explicitNonUserConfig = {
+  const ambiguousConfig = {
     relativePath: 'vehicles/example/config_i.pc',
-    displayName: 'Config Iota',
-    isUserConfig: 'false',
-    allowDelete: 'false'
+    displayName: 'Config Iota'
   };
-  assert(!scope.canDeleteSavedConfig(explicitNonUserConfig), 'Explicit non-user flags should prevent deletion');
+  assert(!scope.canDeleteSavedConfig(ambiguousConfig), 'Ambiguous configuration should default to non-deletable');
 
   scope.promptDeleteSavedConfig(stockConfig);
   assert.strictEqual(state.deleteConfigDialog.visible, false, 'Delete dialog should ignore non-deletable configurations');

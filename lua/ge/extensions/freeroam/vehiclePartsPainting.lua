@@ -196,6 +196,116 @@ local function ensureDirectory(path)
   safePcall(FS.createDirectory, FS, normalized)
 end
 
+local function normalizePath(path)
+  if not path or path == '' then
+    return nil
+  end
+  return tostring(path):gsub('\\', '/')
+end
+
+local function ensureTrailingSlash(path)
+  if not path or path == '' then
+    return path
+  end
+  if path:sub(-1) ~= '/' then
+    return path .. '/'
+  end
+  return path
+end
+
+local function resolveUserVehiclesRoot()
+  if not FS or not FS.getUserPath then
+    return nil
+  end
+  local okUser, userPath = safePcall(FS.getUserPath, FS)
+  if not okUser or not userPath or userPath == '' then
+    return nil
+  end
+  local normalized = ensureTrailingSlash(normalizePath(userPath))
+  if not normalized then
+    return nil
+  end
+  return (normalized .. 'vehicles/'):lower()
+end
+
+local function getGamePath()
+  if not FS or not FS.getGamePath then
+    return nil
+  end
+  local okGame, gamePath = safePcall(FS.getGamePath, FS)
+  if not okGame or not gamePath or gamePath == '' then
+    return nil
+  end
+  return normalizePath(gamePath)
+end
+
+local function isPlayerConfigPath(vpath, userFilePath)
+  if type(vpath) ~= 'string' or vpath == '' then
+    return false
+  end
+
+  local normalizedVPath = normalizePath(vpath)
+  if not normalizedVPath or normalizedVPath == '' then
+    return false
+  end
+
+  local globalIsPlayer = rawget(_G, 'isPlayerVehConfig')
+  if type(globalIsPlayer) == 'function' then
+    local okGlobal, result = safePcall(globalIsPlayer, normalizedVPath)
+    if okGlobal then
+      if result == true then
+        return true
+      end
+      if result == false then
+        return false
+      end
+    end
+  end
+
+  if not normalizedVPath:lower():match('%.pc$') then
+    return false
+  end
+
+  if not shipping_build then
+    local gamePath = getGamePath()
+    local okUser, userPath = safePcall(FS.getUserPath, FS)
+    if okUser and userPath and userPath ~= '' then
+      local normalizedUser = normalizePath(userPath)
+      if normalizedUser and gamePath and normalizedUser == gamePath then
+        return false
+      end
+    end
+  end
+
+  local resolvedPath = nil
+  if FS and FS.getFileRealPath then
+    local okReal, realPath = safePcall(FS.getFileRealPath, FS, normalizedVPath)
+    if okReal and realPath and realPath ~= '' then
+      resolvedPath = normalizePath(realPath)
+    end
+  end
+
+  if not resolvedPath and userFilePath and userFilePath ~= '' then
+    resolvedPath = normalizePath(userFilePath)
+  end
+
+  if not resolvedPath or resolvedPath == '' then
+    return false
+  end
+
+  local userVehiclesRoot = resolveUserVehiclesRoot()
+  if not userVehiclesRoot or userVehiclesRoot == '' then
+    return false
+  end
+
+  local normalizedResolved = resolvedPath:lower()
+  if normalizedResolved:sub(1, #userVehiclesRoot) == userVehiclesRoot then
+    return true
+  end
+
+  return false
+end
+
 local function removeFileIfExists(path)
   if not path or path == '' then
     return false
@@ -801,18 +911,32 @@ local function gatherSavedConfigsFromDisk(modelFolder)
                   absolutePath = targetDir .. fileName .. '.pc'
                 end
 
+                absolutePath = normalizePath(absolutePath)
+
                 local entry = {
                   fileName = fileName,
                   modelFolder = modelFolder,
                   relativePath = relativePath,
-                  absolutePath = absolutePath,
-                  isUserConfig = userFileExists
+                  absolutePath = absolutePath
                 }
 
-                if userFileExists and userFilePath then
-                  entry.userFilePath = userFilePath
+                if userFilePath and userFilePath ~= '' then
+                  entry.userFilePath = normalizePath(userFilePath)
+                end
+
+                local isPlayerConfig = isPlayerConfigPath(relativePath, entry.userFilePath)
+                if not isPlayerConfig and userFileExists then
+                  isPlayerConfig = true
+                end
+
+                if isPlayerConfig then
+                  entry.player = true
+                  entry.isUserConfig = true
                   entry.allowDelete = true
                   entry.isDeletable = true
+                else
+                  entry.player = false
+                  entry.isUserConfig = false
                 end
 
                 local previewRelative = nil

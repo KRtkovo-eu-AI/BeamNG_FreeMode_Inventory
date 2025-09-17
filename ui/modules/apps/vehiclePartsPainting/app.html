@@ -1557,11 +1557,11 @@
                   <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
                   <div class="saved-meta">{{config.relativePath}}</div>
                 </div>
-                <div class="saved-actions">
+                <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
                   <button type="button"
                           class="delete-button"
                           ng-click="promptDeleteSavedConfig(config); $event.stopPropagation();"
-                          ng-disabled="!canDeleteSavedConfig(config) || (state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath)">
+                          ng-disabled="state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath">
                     Delete
                   </button>
                 </div>
