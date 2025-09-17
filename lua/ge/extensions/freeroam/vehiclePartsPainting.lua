@@ -1038,81 +1038,60 @@ local function saveCurrentUserConfig(configName)
     return
   end
 
-  local coreVehiclesExtension = getLoadedExtension('core_vehicles')
-  if not coreVehiclesExtension then
-    log('E', logTag, 'Unable to save vehicle configuration: core_vehicles extension unavailable')
+  local partmgmtExtension = getLoadedExtension('core_vehicle_partmgmt')
+  if not partmgmtExtension then
+    log('E', logTag, 'Unable to save vehicle configuration: core_vehicle_partmgmt extension unavailable')
   else
     local displayName = sanitizeConfigDisplayName(configName) or nil
-    local candidateNames = {}
+    local sanitizedBaseName = nil
     if displayName and displayName ~= '' then
-      candidateNames[#candidateNames + 1] = displayName
-      local sanitizedFileName = sanitizeFileName(displayName)
-      if sanitizedFileName and sanitizedFileName ~= '' and sanitizedFileName ~= displayName then
-        candidateNames[#candidateNames + 1] = sanitizedFileName
-      end
-    else
-      local fallback = sanitizeFileName(configName)
-      if fallback and fallback ~= '' then
-        candidateNames[#candidateNames + 1] = fallback
-      end
+      sanitizedBaseName = sanitizeFileName(displayName)
+    end
+    if (not sanitizedBaseName or sanitizedBaseName == '') and configName and configName ~= '' then
+      sanitizedBaseName = sanitizeFileName(configName)
     end
 
-    if #candidateNames == 0 then
+    if not sanitizedBaseName or sanitizedBaseName == '' then
       log('W', logTag, string.format('Unable to save vehicle configuration: invalid name %s', tostring(configName)))
     else
-      local saveSucceeded = false
-      local usedMethod = nil
-      local lastError = nil
+      local saveEntryPoint = nil
+      local saveEntryPointName = nil
+      if type(partmgmtExtension.saveLocal) == 'function' then
+        saveEntryPoint = partmgmtExtension.saveLocal
+        saveEntryPointName = 'saveLocal'
+      elseif type(partmgmtExtension.save) == 'function' then
+        saveEntryPoint = partmgmtExtension.save
+        saveEntryPointName = 'save'
+      end
 
-      local function trySave(candidate)
-        local attempts = {
-          { name = 'saveConfig', fn = coreVehiclesExtension.saveConfig },
-          { name = 'saveCurrentConfig', fn = coreVehiclesExtension.saveCurrentConfig },
-          { name = 'saveCurrentVehicleConfig', fn = coreVehiclesExtension.saveCurrentVehicleConfig }
-        }
-        local attemptedAny = false
-        local attemptError = nil
+      if not saveEntryPoint then
+        log('E', logTag, 'Unable to save vehicle configuration: no save entry point available on core_vehicle_partmgmt')
+      else
+        local fileName = sanitizedBaseName
+        if not string.lower(fileName):match('%.pc$') then
+          fileName = fileName .. '.pc'
+        end
 
-        for _, attempt in ipairs(attempts) do
-          if type(attempt.fn) == 'function' then
-            attemptedAny = true
-            local ok, resultOrErr = safePcall(attempt.fn, candidate)
-            if ok then
-              if resultOrErr ~= false then
-                return true, attempt.name
-              end
-              attemptError = string.format('%s returned false', attempt.name)
+        local okSave, resultOrErr = safePcall(saveEntryPoint, fileName)
+        if okSave and resultOrErr ~= false then
+          if displayName and displayName ~= '' then
+            if displayName ~= sanitizedBaseName then
+              log('I', logTag, string.format('Saved vehicle configuration "%s" to "%s" via core_vehicle_partmgmt.%s', tostring(displayName), tostring(fileName), tostring(saveEntryPointName)))
             else
-              attemptError = string.format('%s: %s', attempt.name, tostring(resultOrErr))
+              log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(displayName), tostring(saveEntryPointName)))
             end
-          end
-        end
-
-        if not attemptedAny then
-          return false, 'no_save_function_available'
-        end
-
-        return false, attemptError or 'unknown_error'
-      end
-
-      for _, candidate in ipairs(candidateNames) do
-        local ok, result = trySave(candidate)
-        if ok then
-          saveSucceeded = true
-          usedMethod = result
-          if candidate ~= displayName and displayName and displayName ~= '' then
-            log('I', logTag, string.format('Saved vehicle configuration "%s" using fallback name "%s" via core_vehicles.%s', tostring(displayName), tostring(candidate), tostring(usedMethod)))
           else
-            log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicles.%s', tostring(candidate), tostring(usedMethod)))
+            log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(fileName), tostring(saveEntryPointName)))
           end
-          break
         else
-          lastError = result
+          local errorMessage
+          if not okSave then
+            errorMessage = tostring(resultOrErr)
+          else
+            errorMessage = 'save entry point returned false'
+          end
+          log('E', logTag, string.format('Failed to save vehicle configuration "%s": %s', tostring(displayName or configName), tostring(errorMessage or 'unknown_error')))
         end
-      end
-
-      if not saveSucceeded then
-        log('E', logTag, string.format('Failed to save vehicle configuration "%s": %s', tostring(displayName or configName), tostring(lastError or 'unknown_error')))
       end
     end
   end
