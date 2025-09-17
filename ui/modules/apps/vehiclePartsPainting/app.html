@@ -833,7 +833,7 @@
                     autocomplete="off" value="Save directly in Vehicle Configuration tab">
             <button type="button"
                     ng-click="saveCurrentConfiguration()"
-                    ng-disabled="true">Save Configuration</button>
+                    ng-disabled="false">Save Configuration</button>
           </div>
           <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
           <div class="saved-configs" ng-if="hasSavedConfigs()">
