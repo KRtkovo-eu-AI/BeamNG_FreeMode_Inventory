@@ -510,6 +510,16 @@ function resetPaint(scope, partPath) {
   let palettePreset = state.colorPresets[0];
   assert.strictEqual(palettePreset.storageIndex, 1, 'Preset should retain its storage index');
 
+  scope.basePaintEditors[0].color.r = 32;
+  scope.basePaintEditors[0].color.g = 64;
+  scope.applyBasePaints();
+  scope.$digest();
+
+  const repaintState = cloneStateForEvent(scope);
+  repaintState.colorPresets = null;
+  emitState(scope, repaintState);
+  assert(Array.isArray(state.colorPresets) && state.colorPresets.length === 1, 'Color presets should persist when payload omits presets via null placeholder');
+
   const invalidPalettePayload = cloneStateForEvent(scope);
   invalidPalettePayload.colorPresets = { length: 1, n: 1 };
   emitState(scope, invalidPalettePayload);

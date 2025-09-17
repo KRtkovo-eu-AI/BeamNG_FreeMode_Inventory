@@ -442,10 +442,9 @@ angular.module('beamng.apps')
       function updateColorPresets(rawPresets) {
         if (rawPresets === undefined) { return; }
         if (rawPresets === null) {
-          state.colorPresets = [];
-          if (state.removePresetDialog.visible) {
-            closeRemovePresetDialog();
-          }
+          // Some state refresh payloads omit preset data by sending null. Keep the
+          // existing palette in that case so previously loaded swatches remain
+          // available to the user until a concrete update arrives.
           return;
         }
         if (typeof rawPresets === 'string') {
