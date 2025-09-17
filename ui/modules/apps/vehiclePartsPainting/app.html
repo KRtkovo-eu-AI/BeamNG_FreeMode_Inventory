@@ -816,6 +816,98 @@
           </div>
         </div>
       </div>-->
+      <div class="editor-panel base-paint-panel" ng-if="state.vehicleId">
+        <div class="part-summary">
+          <h3>Vehicle base paint</h3>
+          <div class="meta">Used for the vehicle paint and parts without custom colors.</div>
+        </div>
+        <div class="paint-editors">
+          <div class="paint-card" ng-repeat="paint in basePaintEditors track by $index">
+            <div class="card-header">
+              <h4>Paint {{$index + 1}}</h4>
+            </div>
+            <div class="field color-field">
+              <label>Color</label>
+              <div class="color-preview" ng-style="getColorPreviewStyle(paint)"></div>
+              <div class="html-color-input">
+                <label for="vehicleBasePaintHtmlColor{{$index}}">HTML color code</label>
+                <input id="vehicleBasePaintHtmlColor{{$index}}"
+                        type="text"
+                        ng-model="paint.htmlColor"
+                        ng-change="onHtmlColorInputChanged(paint)"
+                        ng-blur="onHtmlColorInputBlur(paint)"
+                        placeholder="#RRGGBB"
+                        maxlength="7"
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false">
+              </div>
+              <div class="color-presets">
+                <div class="preset-list" ng-if="state.colorPresets.length">
+                  <button type="button"
+                          class="preset-swatch"
+                          ng-repeat="preset in state.colorPresets track by $index"
+                          ng-style="getColorPresetStyle(preset)"
+                          ng-attr-title="{{getColorPresetTitle(preset)}}"
+                          ng-click="applyColorPreset(paint, preset)"></button>
+                </div>
+              </div>
+              <div class="color-presets-empty" ng-if="!state.colorPresets.length">No saved colors yet.</div>
+              <div class="color-channels">
+                <div class="color-channel">
+                  <span>R</span>
+                  <input type="range" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
+                  <input type="number" min="0" max="255" step="1" ng-model="paint.color.r" ng-change="onColorChannelChanged(paint)">
+                </div>
+                <div class="color-channel">
+                  <span>G</span>
+                  <input type="range" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
+                  <input type="number" min="0" max="255" step="1" ng-model="paint.color.g" ng-change="onColorChannelChanged(paint)">
+                </div>
+                <div class="color-channel">
+                  <span>B</span>
+                  <input type="range" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
+                  <input type="number" min="0" max="255" step="1" ng-model="paint.color.b" ng-change="onColorChannelChanged(paint)">
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Metallic</label>
+              <div class="field-row">
+                <input type="range" min="0" max="1" step="0.01" ng-model="paint.metallic">
+                <input type="number" min="0" max="1" step="0.01" ng-model="paint.metallic">
+              </div>
+            </div>
+            <div class="field">
+              <label>Roughness</label>
+              <div class="field-row">
+                <input type="range" min="0" max="1" step="0.01" ng-model="paint.roughness">
+                <input type="number" min="0" max="1" step="0.01" ng-model="paint.roughness">
+              </div>
+            </div>
+            <div class="field">
+              <label>Clearcoat</label>
+              <div class="field-row">
+                <input type="range" min="0" max="1" step="0.01" ng-model="paint.clearcoat">
+                <input type="number" min="0" max="1" step="0.01" ng-model="paint.clearcoat">
+              </div>
+            </div>
+            <div class="field">
+              <label>Clearcoat Roughness</label>
+              <div class="field-row">
+                <input type="range" min="0" max="1" step="0.01" ng-model="paint.clearcoatRoughness">
+                <input type="number" min="0" max="1" step="0.01" ng-model="paint.clearcoatRoughness">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="editor-actions">
+          <button type="button" class="primary" ng-click="applyBasePaints()" ng-disabled="!basePaintEditors.length || !hasBasePaintChanges()">Apply base paint</button>
+          <button type="button" class="secondary" ng-click="resetBasePaintEditors()" ng-disabled="!basePaintEditors.length || !hasBasePaintChanges()">Revert changes</button>
+        </div>
+      </div>
+
       <div class="editor-panel" ng-if="state.selectedPart">
         <div class="part-summary">
           <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
