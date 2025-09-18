@@ -421,6 +421,11 @@
       width: 90%;
       height: 90%;
     }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:disabled {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.3);
+    }
     .vehicle-parts-painting .filter-field {
       padding: 8px 10px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -457,6 +462,80 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+    }
+    .vehicle-parts-painting .filtered-results {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part:first-child {
+      border-top: none;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part.selected {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name-text {
+      display: inline-flex;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name-word {
+      display: inline-flex;
+      gap: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .filtered-slot-text {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .filtered-slot-word {
+      display: inline-flex;
+      gap: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot,
+    .vehicle-parts-painting .filtered-results .filtered-identifier {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-size: 11px;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .label,
+    .vehicle-parts-painting .filtered-results .filtered-identifier .label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.75;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .value,
+    .vehicle-parts-painting .filtered-results .filtered-identifier .value {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0;
     }
     .vehicle-parts-painting .parts-list .parts-tree,
     .vehicle-parts-painting .parts-list .parts-tree ul {
@@ -540,6 +619,10 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-top: 2px;
+    }
+    .vehicle-parts-painting .filter-highlight {
+      font-weight: 700;
+      color: #ff6600;
     }
     .vehicle-parts-painting .parts-list .empty,
     .vehicle-parts-painting .parts-list .no-results {
@@ -1538,7 +1621,7 @@
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1-dev | made by KRtekTM</span></h2>
+      <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1 | made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1562,8 +1645,12 @@
       <div class="panel-header">
         <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
-          <button type="button" ng-click="collapseAllNodes()">Collapse all</button>
-          <button type="button" ng-click="expandAllNodes()">Expand all</button>
+          <button type="button"
+                  ng-click="collapseAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()">Collapse all</button>
+          <button type="button"
+                  ng-click="expandAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()">Expand all</button>
           <button type="button" ng-click="showAllParts()" class="orange">
             <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
               <path d="M0 0h24v24H0z" fill="none"/>
@@ -1572,7 +1659,7 @@
           </button>
         </div>
       </div>
-      <!--<div class="filter-field">
+      <div class="filter-field">
         <input type="search"
                 placeholder="Search parts..."
                 ng-model="state.filterText"
@@ -1585,14 +1672,58 @@
                 aria-label="Clear search">
           &times;
         </button>
-      </div>-->
+      </div>
       <div class="parts-list">
-        <ul class="parts-tree" ng-if="state.filteredTree.length">
+        <ul class="parts-tree" ng-if="!state.filteringActive && state.filteredTree.length">
           <li class="tree-node"
               ng-repeat="node in state.filteredTree track by node.part.partPath"
               ng-include="'vehiclePartsPaintingTreeNode.html'"></li>
         </ul>
-        <div class="no-results" ng-if="state.parts.length && !state.filteredParts.length">No parts match your search.</div>
+        <div class="filtered-results" ng-if="state.filteringActive && state.filteredParts.length">
+          <div class="filtered-part"
+               ng-repeat="result in state.filterResults track by result.part.partPath"
+               ng-class="{selected: result.part.partPath === state.selectedPartPath}"
+               ng-click="selectPart(result.part)"
+               ng-mouseenter="onPartMouseEnter(result.part)"
+               ng-mouseleave="onPartMouseLeave(result.part)">
+            <div class="filtered-name">
+              <span class="filtered-name-text">
+                <span class="filtered-name-word"
+                      ng-repeat="word in result.nameWordSegments track by $index">
+                  <span ng-repeat="segment in word.segments track by $index"
+                        ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                </span>
+                <span ng-if="!result.nameWordSegments.length"
+                      ng-repeat="segment in result.nameSegments track by $index"
+                      ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+              </span>
+              <span class="custom-tag" ng-if="hasCustomBadge(result.part)">CUSTOM PAINT</span>
+            </div>
+            <div class="filtered-slot" ng-if="result.slotSegments.length">
+              <span class="label">Slot:</span>
+              <span class="value">
+                <span class="filtered-slot-text">
+                  <span class="filtered-slot-word"
+                        ng-repeat="word in result.slotWordSegments track by $index">
+                    <span ng-repeat="segment in word.segments track by $index"
+                          ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                  </span>
+                  <span ng-if="!result.slotWordSegments.length"
+                        ng-repeat="segment in result.slotSegments track by $index"
+                        ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                </span>
+              </span>
+            </div>
+            <div class="filtered-identifier" ng-if="result.identifierSegments.length">
+              <span class="label">Identifier:</span>
+              <span class="value">
+                <span ng-repeat="segment in result.identifierSegments track by $index"
+                      ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="no-results" ng-if="state.filteringActive && state.parts.length && !state.filteredParts.length">No parts match your search.</div>
         <div class="empty" ng-if="!state.parts.length">No paintable parts detected.</div>
       </div>
       <script type="text/ng-template" id="vehiclePartsPaintingTreeNode.html">
