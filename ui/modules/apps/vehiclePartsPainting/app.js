@@ -1928,8 +1928,8 @@ end)()`;
 
       $scope.applyFilterText = applyFilterText;
 
-      $scope.onFilterTextChanged = function () {
-        applyFilterText(state.filterText);
+      $scope.handleFilterInput = function (value) {
+        applyFilterText(value);
       };
 
       $scope.$watch(function () { return state.filterText; }, function (newValue) {
@@ -2727,3 +2727,54 @@ end)()`;
     }]
   };
 }]);
+
+angular.module('beamng.apps')
+  .directive('vehiclePartsPaintingFilterInput', [function () {
+    return {
+      restrict: 'A',
+      require: 'ngModel',
+      link: function (scope, element, attrs, ngModelCtrl) {
+        const handlerExpr = attrs.vehiclePartsPaintingFilterInput;
+        if (!handlerExpr) { return; }
+
+        function evaluate(value) {
+          scope.$evalAsync(function () {
+            scope.$eval(handlerExpr, { $value: value });
+          });
+        }
+
+        function getCurrentValue() {
+          const value = element.val();
+          if (value !== undefined) {
+            return value;
+          }
+          if (ngModelCtrl && ngModelCtrl.$viewValue !== undefined) {
+            return ngModelCtrl.$viewValue;
+          }
+          return '';
+        }
+
+        function handleDomEvent() {
+          evaluate(getCurrentValue());
+        }
+
+        element.on('input', handleDomEvent);
+        element.on('change', handleDomEvent);
+        element.on('search', handleDomEvent);
+
+        scope.$on('$destroy', function () {
+          element.off('input', handleDomEvent);
+          element.off('change', handleDomEvent);
+          element.off('search', handleDomEvent);
+        });
+
+        const originalRender = ngModelCtrl.$render;
+        ngModelCtrl.$render = function () {
+          if (typeof originalRender === 'function') {
+            originalRender();
+          }
+          evaluate(getCurrentValue());
+        };
+      }
+    };
+  }]);

@@ -486,6 +486,14 @@ function resetPaint(scope, partPath) {
   node = findNode(state.filteredTree, 'vehicle/root');
   assert(node, 'Root node should be present after reapplying empty filter value');
 
+  hooks.applyFilterText('hood');
+  scope.$digest();
+  state.filteredTree = [];
+  hooks.handleFilterInput('hood');
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/hood');
+  assert(node && state.filteredParts.length === 1, 'Directive-driven filter input should reapply matching results for identical values');
+
   hooks.applyFilterText('slot:body');
   scope.$digest();
   node = findNode(state.filteredTree, 'vehicle/root');

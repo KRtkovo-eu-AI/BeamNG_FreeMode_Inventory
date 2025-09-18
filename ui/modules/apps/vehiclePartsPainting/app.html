@@ -1529,7 +1529,7 @@
                 placeholder="Search parts..."
                 ng-model="state.filterText"
                 ng-model-options="{ updateOn: 'input blur', debounce: { 'input': 0 } }"
-                ng-change="onFilterTextChanged()"
+                vehicle-parts-painting-filter-input="handleFilterInput($value)"
                 autocomplete="off">
         <button type="button"
                 class="clear-filter"
