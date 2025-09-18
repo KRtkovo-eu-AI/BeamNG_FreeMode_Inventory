@@ -232,8 +232,8 @@ function cloneStateForEvent(scope) {
   };
 }
 
-function createPart(partPath, slotPath, basePaints) {
-  return {
+function createPart(partPath, slotPath, basePaints, overrides) {
+  const part = {
     partPath: partPath,
     slotPath: slotPath,
     partName: partPath.split('/').pop(),
@@ -244,6 +244,65 @@ function createPart(partPath, slotPath, basePaints) {
     customPaints: null,
     paints: structuredClonePaints(basePaints)
   };
+  if (overrides && typeof overrides === 'object') {
+    Object.assign(part, overrides);
+  }
+  return part;
+}
+
+function partMatchesQuery(part, query) {
+  if (!query) {
+    return true;
+  }
+  if (!part) {
+    return false;
+  }
+  const lowered = query.toLowerCase();
+  const fields = [];
+  if (part.displayName) { fields.push(part.displayName); }
+  if (part.partName) { fields.push(part.partName); }
+  if (part.slotName) { fields.push(part.slotName); }
+  if (part.slotLabel) { fields.push(part.slotLabel); }
+  if (part.partPath) { fields.push(part.partPath); }
+  if (part.slotPath) { fields.push(part.slotPath); }
+  for (let i = 0; i < fields.length; i++) {
+    const value = fields[i];
+    if (typeof value === 'string' && value.toLowerCase().indexOf(lowered) !== -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function collectWordText(word) {
+  if (!word || !Array.isArray(word.segments)) {
+    return '';
+  }
+  let text = '';
+  for (let i = 0; i < word.segments.length; i++) {
+    const segment = word.segments[i];
+    if (!segment || segment.text === undefined || segment.text === null) {
+      continue;
+    }
+    text += String(segment.text);
+  }
+  return text;
+}
+
+function getNormalizedPartName(part) {
+  if (!part) {
+    return '';
+  }
+  const source = part.displayName || part.partName || part.partPath || '';
+  return String(source).trim().replace(/\s+/g, ' ');
+}
+
+function getNormalizedSlotLabel(part) {
+  if (!part) {
+    return '';
+  }
+  const source = part.slotLabel || part.slotName || part.slotPath || '';
+  return String(source).trim().replace(/\s+/g, ' ');
 }
 
 function findNode(nodes, partPath) {
@@ -288,10 +347,30 @@ function instantiateController() {
     }
   };
 
+  let elementRect = { left: 0, top: 0, width: 0, height: 0 };
+  const elementStub = [{
+    getBoundingClientRect: function () {
+      return {
+        left: elementRect.left,
+        top: elementRect.top,
+        width: elementRect.width,
+        height: elementRect.height,
+        right: elementRect.left + elementRect.width,
+        bottom: elementRect.top + elementRect.height
+      };
+    }
+  }];
+  elementStub.length = 1;
+
   global.window = {
     bngApi: bngApiStub,
     console: console,
     bngVue: bngVueStub,
+    innerWidth: 1920,
+    document: {
+      documentElement: { clientWidth: 1920 },
+      body: { clientWidth: 1920 }
+    },
     __vehiclePartsPaintingTestHooks: {
       registerController: function (hooks) {
         controllerHooks = hooks;
@@ -332,6 +411,9 @@ function instantiateController() {
     if (dep === '$scope') {
       return scope;
     }
+    if (dep === '$element') {
+      return elementStub;
+    }
     if (dep === '$interval') {
       return interval;
     }
@@ -356,7 +438,11 @@ function instantiateController() {
     hooks: controllerHooks,
     engineLuaCallbacks: engineLuaCallbacks,
     gotoGameStateCalls: gotoGameStateCalls,
-    window: global.window
+    window: global.window,
+    setElementBoundingRect: function (rect) {
+      if (!rect || typeof rect !== 'object') { return; }
+      elementRect = Object.assign({}, elementRect, rect);
+    }
   };
 }
 
@@ -418,7 +504,19 @@ function resetPaint(scope, partPath) {
   const parts = [
     createPart('vehicle/root', 'body', basePaints),
     createPart('vehicle/hood', 'body/hood', basePaints),
-    createPart('vehicle/door', 'body/door', basePaints)
+    createPart('vehicle/door', 'body/door', basePaints),
+    createPart('vehicle/front_bumper', 'body/front_bumper', basePaints, {
+      displayName: 'Front Bumper',
+      slotLabel: 'Front Bumper'
+    }),
+    createPart('vehicle/rear_bumper', 'body/rear_bumper', basePaints, {
+      displayName: 'Rear Bumper',
+      slotLabel: 'Rear Bumper'
+    }),
+    createPart('vehicle/steering_wheel', 'interior/steering_wheel', basePaints, {
+      displayName: 'Steering Wheel',
+      slotLabel: 'Steering Wheel'
+    })
   ];
 
   emitState(scope, {
@@ -428,11 +526,189 @@ function resetPaint(scope, partPath) {
   });
 
   const state = scope.state;
-  assert.strictEqual(state.filteredTree.length, 1, 'Expected a single root node for body slot');
+  assert(state.filteredTree.length >= 1, 'Parts tree should contain root nodes after initialization');
   const nodesByPath = hooks.getTreeNodesByPath();
   assert(nodesByPath['vehicle/root'] && nodesByPath['vehicle/root'].length, 'Root node should be indexed');
   assert(nodesByPath['vehicle/hood'] && nodesByPath['vehicle/hood'].length, 'Hood node should be indexed');
   assert(nodesByPath['vehicle/door'] && nodesByPath['vehicle/door'].length, 'Door node should be indexed');
+  assert(nodesByPath['vehicle/steering_wheel'] && nodesByPath['vehicle/steering_wheel'].length, 'Steering wheel node should be indexed');
+
+  const initialTreeSnapshot = JSON.stringify(state.filteredTree);
+  assert.strictEqual(state.filteringActive, false, 'Filtering should be inactive by default');
+  assert(Array.isArray(state.filterResults) && state.filterResults.length === 0, 'Initial filter results should be empty');
+  assert.strictEqual(typeof scope.areTreeControlsDisabled, 'function', 'Tree control helper should be exposed on scope');
+  assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Tree controls should start enabled before filtering');
+
+  scope.state.filterText = 'b';
+  scope.$digest();
+
+  let expectedMatches = scope.state.parts.filter(function (part) { return partMatchesQuery(part, 'b'); });
+  assert.strictEqual(state.filteringActive, true, 'Typing a single letter should activate filtering');
+  assert.strictEqual(expectedMatches.length, 5, 'Single-letter search should find five matching parts for b');
+  assert.strictEqual(state.filteredParts.length, expectedMatches.length, 'Single-letter search should include expected matches');
+  assert.strictEqual(state.filterResults.length, expectedMatches.length, 'Filtered list should mirror filtered parts count');
+  assert.strictEqual(scope.areTreeControlsDisabled(), true, 'Tree controls should disable while filtering is active');
+
+  const rootFilteredEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/root'; });
+  assert(rootFilteredEntry && rootFilteredEntry.slotSegments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === 'b';
+  }), 'Body slot entry should highlight the matching letter when filtering by b');
+  assert(rootFilteredEntry && Array.isArray(rootFilteredEntry.slotWordSegments),
+    'Body slot entry should expose grouped slot segments');
+  const rootSlotWordTexts = rootFilteredEntry ? rootFilteredEntry.slotWordSegments.map(collectWordText) : [];
+  const normalizedRootSlotLabel = getNormalizedSlotLabel(rootFilteredEntry ? rootFilteredEntry.part : null);
+  if (normalizedRootSlotLabel) {
+    assert.strictEqual(rootSlotWordTexts.join(' '), normalizedRootSlotLabel,
+      'Grouped slot segments should reconstruct the normalized slot label');
+  } else {
+    assert.strictEqual(rootSlotWordTexts.length, 0,
+      'Grouped slot segments should be empty when no slot label is present');
+  }
+
+  const frontBumperEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/front_bumper'; });
+  assert(frontBumperEntry && frontBumperEntry.nameSegments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === 'b';
+  }), 'Bumper name should highlight the matching letter in filtered results');
+
+  let bumperLastWord = '';
+  let bumperSlotLastWord = '';
+
+  scope.state.filterText = 'bumper';
+  scope.$digest();
+
+  expectedMatches = scope.state.parts.filter(function (part) { return partMatchesQuery(part, 'bumper'); });
+  assert.strictEqual(expectedMatches.length, 2, 'Bumper search should return two matching parts');
+  assert.strictEqual(state.filteredParts.length, expectedMatches.length, 'Bumper search results should match expected count');
+  assert.strictEqual(state.filterResults.length, expectedMatches.length, 'Filtered list should rebuild for bumper search');
+  const bumperFullEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/front_bumper'; });
+  assert(bumperFullEntry && bumperFullEntry.nameSegments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === 'bumper';
+  }), 'Full bumper query should highlight the entire search term in part names');
+  assert(bumperFullEntry && Array.isArray(bumperFullEntry.nameWordSegments) && bumperFullEntry.nameWordSegments.length,
+    'Filtered bumper entry should expose grouped name segments');
+  const bumperWordTexts = bumperFullEntry.nameWordSegments.map(collectWordText);
+  const normalizedBumperName = getNormalizedPartName(bumperFullEntry.part);
+  assert.strictEqual(bumperWordTexts.join(' '), normalizedBumperName,
+    'Grouped name segments should reconstruct the normalized part name');
+  const bumperTerminalWord = bumperFullEntry.nameWordSegments[bumperFullEntry.nameWordSegments.length - 1];
+  const bumperTerminalText = collectWordText(bumperTerminalWord);
+  bumperLastWord = bumperTerminalText;
+  assert(bumperTerminalWord.segments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === bumperTerminalText.toLowerCase();
+  }), 'Full bumper query should highlight the last word within grouped segments');
+  assert(bumperFullEntry && Array.isArray(bumperFullEntry.slotWordSegments) && bumperFullEntry.slotWordSegments.length,
+    'Filtered bumper entry should expose grouped slot segments');
+  const bumperSlotWordTexts = bumperFullEntry.slotWordSegments.map(collectWordText);
+  const normalizedBumperSlotLabel = getNormalizedSlotLabel(bumperFullEntry.part);
+  assert.strictEqual(bumperSlotWordTexts.join(' '), normalizedBumperSlotLabel,
+    'Grouped slot segments should reconstruct the normalized slot label');
+  const bumperSlotTerminalWord = bumperFullEntry.slotWordSegments[bumperFullEntry.slotWordSegments.length - 1];
+  const bumperSlotTerminalText = collectWordText(bumperSlotTerminalWord);
+  bumperSlotLastWord = bumperSlotTerminalText;
+  assert(bumperSlotTerminalWord.segments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === bumperSlotTerminalText.toLowerCase();
+  }), 'Full bumper query should highlight the last word within grouped slot segments');
+
+  ['bumpe', 'bump', 'bum', 'bu', 'b', ''].forEach(function (term) {
+    scope.state.filterText = term;
+    scope.$digest();
+    const expectedLength = term ? scope.state.parts.filter(function (part) { return partMatchesQuery(part, term); }).length : scope.state.parts.length;
+    if (term) {
+      assert.strictEqual(state.filteringActive, true, 'Partial query "' + term + '" should keep filtering active');
+      assert.strictEqual(state.filterResults.length, expectedLength, 'Filtered list should refresh for "' + term + '"');
+      assert.strictEqual(scope.areTreeControlsDisabled(), true, 'Tree controls should stay disabled during query "' + term + '"');
+      if (term === 'bum' && bumperLastWord) {
+        const bumperEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/front_bumper'; });
+        assert(bumperEntry && Array.isArray(bumperEntry.nameWordSegments) && bumperEntry.nameWordSegments.length,
+          'Partial bumper query should preserve grouped word segments');
+        const bumperWord = bumperEntry.nameWordSegments[bumperEntry.nameWordSegments.length - 1];
+        const bumperWordText = collectWordText(bumperWord);
+        assert.strictEqual(bumperWordText, bumperLastWord,
+          'Partial bumper query should leave the final word intact without removing spacing');
+        assert(bumperWord.segments.some(function (segment) {
+          return segment.match && segment.text.toLowerCase() === term;
+        }), 'Partial bumper query should highlight only the matching portion of the word');
+        const remainder = bumperLastWord.length > term.length ? bumperLastWord.substring(term.length).toLowerCase() : '';
+        if (remainder) {
+          assert(bumperWord.segments.some(function (segment) {
+            return !segment.match && segment.text.toLowerCase() === remainder;
+          }), 'Partial bumper query should leave the remaining letters as non-highlighted segments');
+        }
+        if (bumperSlotLastWord) {
+          assert(bumperEntry && Array.isArray(bumperEntry.slotWordSegments) && bumperEntry.slotWordSegments.length,
+            'Partial bumper query should preserve grouped slot segments');
+          const bumperSlotWord = bumperEntry.slotWordSegments[bumperEntry.slotWordSegments.length - 1];
+          const bumperSlotWordText = collectWordText(bumperSlotWord);
+          assert.strictEqual(bumperSlotWordText, bumperSlotLastWord,
+            'Partial bumper query should leave the final slot word intact without removing spacing');
+          assert(bumperSlotWord.segments.some(function (segment) {
+            return segment.match && segment.text.toLowerCase() === term;
+          }), 'Partial bumper query should highlight only the matching portion of the slot word');
+          const slotRemainder = bumperSlotLastWord.length > term.length ?
+            bumperSlotLastWord.substring(term.length).toLowerCase() : '';
+          if (slotRemainder) {
+            assert(bumperSlotWord.segments.some(function (segment) {
+              return !segment.match && segment.text.toLowerCase() === slotRemainder;
+            }), 'Partial bumper query should leave the remaining slot letters as non-highlighted segments');
+          }
+        }
+      }
+    } else {
+      assert.strictEqual(state.filteringActive, false, 'Clearing the search should disable filtering');
+      assert.strictEqual(state.filterResults.length, 0, 'Clearing the search should hide the filtered list');
+      assert.strictEqual(state.filteredParts.length, scope.state.parts.length, 'Clearing the search should restore the full part list');
+      assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Tree controls should re-enable once the search is cleared');
+    }
+  });
+
+  const treeAfterClear = JSON.stringify(state.filteredTree);
+  assert.strictEqual(treeAfterClear, initialTreeSnapshot, 'Clearing the filter should leave the tree structure unchanged');
+  assert(findNode(state.filteredTree, 'vehicle/front_bumper'), 'Filtered clearing should preserve bumper nodes in the tree');
+
+  scope.state.filterText = 'steering wheel';
+  scope.$digest();
+
+  expectedMatches = scope.state.parts.filter(function (part) { return partMatchesQuery(part, 'steering wheel'); });
+  assert.strictEqual(expectedMatches.length, 1, 'Steering wheel query should return exactly one part');
+  assert.strictEqual(state.filteredParts.length, expectedMatches.length, 'Steering wheel search should update filtered parts');
+  assert.strictEqual(state.filterResults.length, expectedMatches.length, 'Steering wheel results should populate the filtered list');
+  const steeringEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/steering_wheel'; });
+  assert(steeringEntry && steeringEntry.nameSegments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === 'steering wheel';
+  }), 'Steering wheel search should highlight the full query in the part name');
+  assert(steeringEntry && Array.isArray(steeringEntry.nameWordSegments) && steeringEntry.nameWordSegments.length,
+    'Steering wheel entry should expose grouped name word segments');
+  const steeringWordTexts = steeringEntry.nameWordSegments.map(collectWordText);
+  const normalizedSteeringName = getNormalizedPartName(steeringEntry.part);
+  assert.strictEqual(steeringWordTexts.join(' '), normalizedSteeringName,
+    'Steering wheel grouped segments should reconstruct the normalized part name without collapsing spacing');
+  assert(steeringEntry && Array.isArray(steeringEntry.slotWordSegments) && steeringEntry.slotWordSegments.length,
+    'Steering wheel entry should expose grouped slot segments');
+  const steeringSlotTexts = steeringEntry.slotWordSegments.map(collectWordText);
+  const normalizedSteeringSlot = getNormalizedSlotLabel(steeringEntry.part);
+  assert.strictEqual(steeringSlotTexts.join(' '), normalizedSteeringSlot,
+    'Steering wheel grouped slot segments should reconstruct the normalized slot label without collapsing spacing');
+
+  scope.state.filterText = 'vehicle/rear_bumper';
+  scope.$digest();
+
+  expectedMatches = scope.state.parts.filter(function (part) { return partMatchesQuery(part, 'vehicle/rear_bumper'); });
+  assert.strictEqual(expectedMatches.length, 1, 'Identifier query should isolate the matching bumper');
+  assert.strictEqual(state.filteredParts.length, expectedMatches.length, 'Identifier search should update filtered parts list');
+  assert.strictEqual(state.filterResults.length, expectedMatches.length, 'Identifier search should render filtered results');
+  const rearBumperEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/rear_bumper'; });
+  assert(rearBumperEntry && rearBumperEntry.identifierSegments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === 'vehicle/rear_bumper';
+  }), 'Identifier search should highlight matching portion of the identifier');
+
+  scope.state.filterText = '';
+  scope.$digest();
+  assert.strictEqual(state.filteringActive, false, 'Clearing identifier filter should restore tree view');
+  assert.strictEqual(state.filterResults.length, 0, 'Clearing identifier filter should clear filtered list data');
+  assert.strictEqual(state.filteredParts.length, scope.state.parts.length, 'Clearing identifier filter should restore all parts');
+  assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Tree controls should enable after clearing identifier filter');
+  const treeAfterIdentifierClear = JSON.stringify(state.filteredTree);
+  assert.strictEqual(treeAfterIdentifierClear, initialTreeSnapshot, 'Tree should remain unchanged after identifier filtering');
 
   applyCustomPaint(scope, 'vehicle/root', { g: 200 });
   let node = findNode(state.filteredTree, 'vehicle/root');
@@ -448,6 +724,7 @@ function resetPaint(scope, partPath) {
   scope.clearFilter();
   scope.$digest();
   node = findNode(state.filteredTree, 'vehicle/root');
+  assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Clearing filter helper should leave tree controls enabled');
   assert(node && scope.hasCustomBadge(node.part), 'Part 1 should retain custom paint after updating another part');
   node = findNode(state.filteredTree, 'vehicle/hood');
   assert(node && scope.hasCustomBadge(node.part), 'Part 2 should show custom paint after apply');
@@ -750,6 +1027,26 @@ function resetPaint(scope, partPath) {
   const removeCommand = bngApiCalls[bngApiCalls.length - 1];
   const remainingPresets = parseSettingsSetStateCommand(removeCommand);
   assert(Array.isArray(remainingPresets) && remainingPresets.length === 0, 'Removing a preset should clear stored presets');
+
+  controller.setElementBoundingRect({ left: 1200, width: 400 });
+  scope.minimizeApp();
+  scope.$digest();
+  assert.strictEqual(state.minimized, true, 'Minimize action should set minimized state flag');
+  assert.strictEqual(state.minimizedAlignment, 'right', 'Widgets on the right half should align the minimized icon to the right');
+  assert(state.minimizedInlineStyle && state.minimizedInlineStyle.transform === 'translateX(352px)', 'Right aligned minimize should translate by the width difference');
+  scope.restoreApp();
+  scope.$digest();
+  assert.strictEqual(state.minimized, false, 'Restore action should clear minimized state flag');
+  assert.deepStrictEqual(state.minimizedInlineStyle, {}, 'Restore action should remove minimized inline transform');
+  assert.strictEqual(state.minimizedAlignment, 'left', 'Restore action should reset minimized alignment state');
+
+  controller.setElementBoundingRect({ left: 300, width: 400 });
+  scope.minimizeApp();
+  scope.$digest();
+  assert.strictEqual(state.minimizedAlignment, 'left', 'Widgets on the left half should keep minimized alignment on the left');
+  assert.deepStrictEqual(state.minimizedInlineStyle, {}, 'Left aligned minimize should not apply an inline transform');
+  scope.restoreApp();
+  scope.$digest();
 
   const gotoCalls = controller.gotoGameStateCalls;
   const engineLuaCallbacks = controller.engineLuaCallbacks;

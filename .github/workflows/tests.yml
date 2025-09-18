@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  pull_request:
+
+permissions:
+  checks: write
+
+jobs:
+  test:
+    name: Node Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Run test suite
+        run: npm test
+        continue-on-error: true
+
+      - name: Report test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Node.js Test Results
+          path: .reports/junit.xml
+          reporter: java-junit

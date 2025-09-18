@@ -36,7 +36,7 @@ angular.module('beamng.apps')
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', '$interval', '$timeout', function ($scope, $interval, $timeout) {
+    controller: ['$scope', '$element', '$interval', '$timeout', function ($scope, $element, $interval, $timeout) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -50,8 +50,12 @@ angular.module('beamng.apps')
         hasUserSelectedPart: false,
         filterText: '',
         filteredParts: [],
+        filteringActive: false,
+        filterResults: [],
         expandedNodes: {},
         minimized: false,
+        minimizedAlignment: 'left',
+        minimizedInlineStyle: {},
         basePaintCollapsed: false,
         partPaintCollapsed: false,
         configToolsCollapsed: true,
@@ -104,6 +108,46 @@ angular.module('beamng.apps')
       $scope.colorPickerState = colorPickerState;
 
       const globalWindow = (typeof window !== 'undefined') ? window : null;
+      const MINIMIZED_ICON_SIZE = 48;
+
+      function getViewportWidth() {
+        if (!globalWindow) { return 0; }
+        const doc = globalWindow.document || null;
+        const docEl = doc && doc.documentElement ? doc.documentElement : null;
+        const body = doc ? doc.body : null;
+        const innerWidth = globalWindow.innerWidth || 0;
+        const docWidth = docEl && docEl.clientWidth ? docEl.clientWidth : 0;
+        const bodyWidth = body && body.clientWidth ? body.clientWidth : 0;
+        return Math.max(innerWidth, docWidth, bodyWidth);
+      }
+
+      function computeMinimizedPresentation() {
+        const result = {
+          alignment: 'left',
+          style: {}
+        };
+
+        const element = ($element && $element[0]) ? $element[0] : null;
+        if (!element || typeof element.getBoundingClientRect !== 'function') { return result; }
+
+        const viewportWidth = getViewportWidth();
+        if (!viewportWidth) { return result; }
+
+        const rect = element.getBoundingClientRect();
+        if (!rect || !isFinite(rect.width) || rect.width <= 0) { return result; }
+
+        const elementCenter = rect.left + (rect.width / 2);
+        const viewportMid = viewportWidth / 2;
+        if (elementCenter > viewportMid) {
+          result.alignment = 'right';
+          const offset = Math.max(0, rect.width - MINIMIZED_ICON_SIZE);
+          result.style = {
+            transform: 'translateX(' + offset + 'px)'
+          };
+        }
+
+        return result;
+      }
 
       const LIVERY_EDITOR_CONFIRMATION_TEXT = 'This is an early highly experimental preview of the Decal Editor. Please be aware that anything created with this feature may be lost in future hotfixes and updates. Do you wish to proceed?';
       const LIVERY_EDITOR_NO_VEHICLE_MESSAGE = 'Vehicle Livery Editor requires an active player vehicle.';
@@ -241,6 +285,14 @@ angular.module('beamng.apps')
         color.g = clampColorByte(color.g);
         color.b = clampColorByte(color.b);
         return color;
+      }
+
+      function sanitizeFinishProperty(paint, key) {
+        if (!paint || !key) { return; }
+        const normalized = Math.round(clamp01(paint[key]) * 100) / 100;
+        if (paint[key] !== normalized) {
+          paint[key] = normalized;
+        }
       }
 
       function createPickerWorkingPaint(paint) {
@@ -1557,6 +1609,8 @@ end)()`;
         if (part.partName) { fields.push(part.partName); }
         if (part.slotName) { fields.push(part.slotName); }
         if (part.slotLabel) { fields.push(part.slotLabel); }
+        if (part.partPath) { fields.push(part.partPath); }
+        if (part.slotPath) { fields.push(part.slotPath); }
         for (let i = 0; i < fields.length; i++) {
           const value = fields[i];
           if (typeof value === 'string' && value.toLowerCase().indexOf(lowered) !== -1) {
@@ -1564,6 +1618,109 @@ end)()`;
           }
         }
         return false;
+      }
+
+      function buildHighlightSegments(value, loweredFilter, filterLength) {
+        const text = (value === undefined || value === null) ? '' : String(value);
+        if (!text) { return []; }
+        if (!loweredFilter || !filterLength) {
+          return [{ text: text, match: false }];
+        }
+        const loweredText = text.toLowerCase();
+        const segments = [];
+        let searchIndex = 0;
+        let matchIndex = loweredText.indexOf(loweredFilter, searchIndex);
+        while (matchIndex !== -1) {
+          if (matchIndex > searchIndex) {
+            segments.push({ text: text.substring(searchIndex, matchIndex), match: false });
+          }
+          const endIndex = matchIndex + filterLength;
+          segments.push({ text: text.substring(matchIndex, endIndex), match: true });
+          searchIndex = endIndex;
+          matchIndex = loweredText.indexOf(loweredFilter, searchIndex);
+        }
+        if (searchIndex < text.length) {
+          segments.push({ text: text.substring(searchIndex), match: false });
+        }
+        if (!segments.length) {
+          segments.push({ text: text, match: false });
+        }
+        return segments;
+      }
+
+      function isWhitespaceChar(ch) {
+        if (ch === undefined || ch === null) { return true; }
+        return String(ch).trim() === '';
+      }
+
+      function mergeSegmentIntoWord(currentWord, match, piece) {
+        if (!piece) { return currentWord; }
+        if (!currentWord) {
+          currentWord = { segments: [] };
+        }
+        const segments = currentWord.segments;
+        const lastSegment = segments.length ? segments[segments.length - 1] : null;
+        if (lastSegment && lastSegment.match === match) {
+          lastSegment.text += piece;
+        } else {
+          segments.push({ text: piece, match: match });
+        }
+        return currentWord;
+      }
+
+      function groupSegmentsIntoWords(segments) {
+        if (!segments || !segments.length) { return []; }
+        const words = [];
+        let currentWord = null;
+
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+          if (!segment || segment.text === undefined || segment.text === null) { continue; }
+          const text = String(segment.text);
+          if (!text) { continue; }
+
+          let lastIndex = 0;
+          for (let j = 0; j < text.length; j++) {
+            if (isWhitespaceChar(text.charAt(j))) {
+              if (lastIndex < j) {
+                currentWord = mergeSegmentIntoWord(currentWord, segment.match, text.substring(lastIndex, j));
+              }
+              if (currentWord && currentWord.segments.length) {
+                words.push(currentWord);
+                currentWord = null;
+              }
+              lastIndex = j + 1;
+            }
+          }
+
+          if (lastIndex < text.length) {
+            currentWord = mergeSegmentIntoWord(currentWord, segment.match, text.substring(lastIndex));
+          }
+        }
+
+        if (currentWord && currentWord.segments.length) {
+          words.push(currentWord);
+        }
+
+        return words;
+      }
+
+      function createFilterResult(part, loweredFilter) {
+        const filterLength = loweredFilter ? loweredFilter.length : 0;
+        const displayName = part && (part.displayName || part.partName || part.partPath || '');
+        const slotLabel = part && (part.slotLabel || part.slotName || '');
+        const identifier = part && (part.partPath || part.partName || '');
+        const nameSegments = buildHighlightSegments(displayName, loweredFilter, filterLength);
+        const slotSegments = buildHighlightSegments(slotLabel, loweredFilter, filterLength);
+        const identifierSegments = buildHighlightSegments(identifier, loweredFilter, filterLength);
+        return {
+          part: part,
+          nameSegments: nameSegments,
+          nameWordSegments: groupSegmentsIntoWords(nameSegments),
+          slotSegments: slotSegments,
+          slotWordSegments: groupSegmentsIntoWords(slotSegments),
+          identifierSegments: identifierSegments
+        };
       }
 
       function normalizeSlotPath(slotPath) {
@@ -1601,20 +1758,6 @@ end)()`;
         const pathA = a.part && a.part.partPath ? String(a.part.partPath) : '';
         const pathB = b.part && b.part.partPath ? String(b.part.partPath) : '';
         return pathA < pathB ? -1 : (pathA > pathB ? 1 : 0);
-      }
-
-      function cloneTreeNodes(nodes) {
-        if (!Array.isArray(nodes)) { return []; }
-        const result = [];
-        for (let i = 0; i < nodes.length; i++) {
-          const node = nodes[i];
-          if (!node || !node.part) { continue; }
-          result.push({
-            part: node.part,
-            children: cloneTreeNodes(Array.isArray(node.children) ? node.children : [])
-          });
-        }
-        return result;
       }
 
       function buildPartsTree(parts) {
@@ -1682,43 +1825,6 @@ end)()`;
         return roots;
       }
 
-      function filterTreeNodes(nodes, filter) {
-        if (!Array.isArray(nodes)) { return []; }
-        const result = [];
-        for (let i = 0; i < nodes.length; i++) {
-          const node = nodes[i];
-          if (!node || !node.part) { continue; }
-          const matchesSelf = matchesFilter(node.part, filter);
-          let children = [];
-          if (matchesSelf) {
-            children = cloneTreeNodes(Array.isArray(node.children) ? node.children : []);
-          } else {
-            children = filterTreeNodes(Array.isArray(node.children) ? node.children : [], filter);
-          }
-          if (matchesSelf || children.length) {
-            result.push({
-              part: node.part,
-              children: children
-            });
-          }
-        }
-        return result;
-      }
-
-      function expandFilteredNodes(nodes) {
-        if (!Array.isArray(nodes)) { return; }
-        for (let i = 0; i < nodes.length; i++) {
-          const node = nodes[i];
-          if (!node || !node.part) { continue; }
-          if (node.part.partPath) {
-            state.expandedNodes[node.part.partPath] = true;
-          }
-          if (node.children && node.children.length) {
-            expandFilteredNodes(node.children);
-          }
-        }
-      }
-
       function setExpansionForNodes(nodes, expanded) {
         if (!Array.isArray(nodes)) { return; }
         for (let i = 0; i < nodes.length; i++) {
@@ -1734,7 +1840,8 @@ end)()`;
       function computeFilteredParts() {
         ensurePartsTreeCurrent();
         const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
-        const normalized = rawFilter.trim().toLowerCase();
+        const trimmedFilter = rawFilter.trim();
+        const normalized = trimmedFilter.toLowerCase();
         const parts = Array.isArray(state.parts) ? state.parts.slice() : [];
         let filtered = parts;
         if (normalized) {
@@ -1743,14 +1850,15 @@ end)()`;
           });
         }
         state.filteredParts = filtered;
-
-        if (!normalized) {
-          state.filteredTree = state.partsTree;
+        state.filteringActive = !!normalized;
+        if (state.filteringActive) {
+          state.filterResults = filtered.map(function (part) {
+            return createFilterResult(part, normalized);
+          });
         } else {
-          const tree = filterTreeNodes(state.partsTree, normalized);
-          state.filteredTree = tree;
-          expandFilteredNodes(tree);
+          state.filterResults = [];
         }
+        state.filteredTree = state.partsTree;
 
         const hoveredPath = state.hoveredPartPath;
         if (hoveredPath && !filtered.some(function (part) { return part.partPath === hoveredPath; })) {
@@ -1801,6 +1909,10 @@ end)()`;
         if (colorPickerState.working === paint) {
           syncActiveHsvFromWorking();
         }
+      };
+
+      $scope.onFinishValueChanged = function (paint, key) {
+        sanitizeFinishProperty(paint, key);
       };
 
       $scope.onHtmlColorInputChanged = function (paint) {
@@ -2132,16 +2244,25 @@ end)()`;
         setExpansionForNodes(state.partsTree, false);
       };
 
+      $scope.areTreeControlsDisabled = function () {
+        return !!state.filteringActive;
+      };
+
       $scope.clearFilter = function () {
         state.filterText = '';
       };
 
       $scope.minimizeApp = function () {
+        const presentation = computeMinimizedPresentation();
+        state.minimizedAlignment = presentation.alignment;
+        state.minimizedInlineStyle = presentation.style;
         state.minimized = true;
       };
 
       $scope.restoreApp = function () {
         state.minimized = false;
+        state.minimizedAlignment = 'left';
+        state.minimizedInlineStyle = {};
       };
 
       $scope.confirmLiveryEditorLaunch = function () {
@@ -2446,6 +2567,8 @@ end)()`;
             resetTreeNodeLookup();
             state.filteredTree = [];
             state.filteredParts = [];
+            state.filterResults = [];
+            state.filteringActive = false;
             state.expandedNodes = {};
             state.savedConfigs = [];
             state.selectedSavedConfig = null;
@@ -2470,6 +2593,8 @@ end)()`;
             clearPendingReplacement();
             clearCustomPaintState();
             state.filterText = '';
+            state.filterResults = [];
+            state.filteringActive = false;
             state.expandedNodes = {};
             state.savedConfigs = [];
             state.selectedSavedConfig = null;

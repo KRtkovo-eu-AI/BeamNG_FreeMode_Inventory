@@ -1,7 +1,7 @@
 {
   "name": "~ Vehicle Parts Painting ~",
   "author": "KRtekTM",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Customize paint for individual vehicle parts while in Freeroam.",
   "directive": "vehiclePartsPainting",
   "domElement": "<vehicle-parts-painting></vehicle-parts-painting>",

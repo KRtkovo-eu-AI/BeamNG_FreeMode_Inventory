@@ -1,4 +1,6 @@
-<div class="vehicle-parts-painting" ng-class="{'is-minimized': state.minimized}">
+<div class="vehicle-parts-painting"
+     ng-class="{'is-minimized': state.minimized, 'is-minimized-align-right': state.minimized && state.minimizedAlignment === 'right'}"
+     ng-style="state.minimizedInlineStyle">
   <style>
     .vehicle-parts-painting {
       width: 100%;
@@ -419,6 +421,11 @@
       width: 90%;
       height: 90%;
     }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:disabled {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.3);
+    }
     .vehicle-parts-painting .filter-field {
       padding: 8px 10px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -455,6 +462,80 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+    }
+    .vehicle-parts-painting .filtered-results {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part:first-child {
+      border-top: none;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .vehicle-parts-painting .filtered-results .filtered-part.selected {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name-text {
+      display: inline-flex;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name-word {
+      display: inline-flex;
+      gap: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .filtered-slot-text {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .filtered-slot-word {
+      display: inline-flex;
+      gap: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot,
+    .vehicle-parts-painting .filtered-results .filtered-identifier {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-size: 11px;
+      opacity: 0.85;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .label,
+    .vehicle-parts-painting .filtered-results .filtered-identifier .label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.75;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .value,
+    .vehicle-parts-painting .filtered-results .filtered-identifier .value {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0;
     }
     .vehicle-parts-painting .parts-list .parts-tree,
     .vehicle-parts-painting .parts-list .parts-tree ul {
@@ -538,6 +619,10 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-top: 2px;
+    }
+    .vehicle-parts-painting .filter-highlight {
+      font-weight: 700;
+      color: #ff6600;
     }
     .vehicle-parts-painting .parts-list .empty,
     .vehicle-parts-painting .parts-list .no-results {
@@ -826,7 +911,13 @@
       padding: 4px 6px;
     }
     .vehicle-parts-painting .paint-card .card-header button.black {
-      color: #000000;
+      background: none;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    .vehicle-parts-painting .paint-card .card-header button.black:hover {
+      border: 1px solid rgba(255, 255, 255, 0.6);
     }
     .vehicle-parts-painting .paint-card .field label {
       display: block;
@@ -1402,29 +1493,69 @@
               <div class="finish-field">
                 <label>Metallic</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.metallic"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'metallic')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.metallic"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'metallic')">
                 </div>
               </div>
               <div class="finish-field">
                 <label>Roughness</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.roughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'roughness')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.roughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'roughness')">
                 </div>
               </div>
               <div class="finish-field">
                 <label>Clearcoat</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoat"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoat')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoat"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoat')">
                 </div>
               </div>
               <div class="finish-field">
                 <label>Clearcoat Roughness</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoatRoughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoatRoughness')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoatRoughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoatRoughness')">
                 </div>
               </div>
             </div>
@@ -1485,12 +1616,12 @@
             class="restore-button"
             ng-click="restoreApp()"
             aria-label="Restore Vehicle Parts Painting">
-      <img src="/ui/modules/apps/vehiclePartsPainting/icon.svg" alt="">
+      <img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="">
     </button>
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.0 | made by KRtekTM</span></h2>
+      <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1 | made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1501,7 +1632,7 @@
                 ng-if="state.vehicleId && state.liveryEditorSupported !== null"
                 ng-click="state.liveryEditorSupported && openLiveryEditor()"
                 ng-disabled="!state.liveryEditorSupported">
-          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle Livery Editor is not available for this vehicle' }}
+          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle does not support Decals' }}
         </button>
         <button type="button" ng-click="minimizeApp()">Minimize</button>
       </div>
@@ -1514,17 +1645,21 @@
       <div class="panel-header">
         <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
-          <button type="button" ng-click="collapseAllNodes()">Collapse all</button>
-          <button type="button" ng-click="expandAllNodes()">Expand all</button>
+          <button type="button"
+                  ng-click="collapseAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()">Collapse all</button>
+          <button type="button"
+                  ng-click="expandAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()">Expand all</button>
           <button type="button" ng-click="showAllParts()" class="orange">
             <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
               <path d="M0 0h24v24H0z" fill="none"/>
-              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#ff6600"/>
+              <path style="opacity:0.5;" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#fff"/>
             </svg>
           </button>
         </div>
       </div>
-      <!--<div class="filter-field">
+      <div class="filter-field">
         <input type="search"
                 placeholder="Search parts..."
                 ng-model="state.filterText"
@@ -1537,14 +1672,58 @@
                 aria-label="Clear search">
           &times;
         </button>
-      </div>-->
+      </div>
       <div class="parts-list">
-        <ul class="parts-tree" ng-if="state.filteredTree.length">
+        <ul class="parts-tree" ng-if="!state.filteringActive && state.filteredTree.length">
           <li class="tree-node"
               ng-repeat="node in state.filteredTree track by node.part.partPath"
               ng-include="'vehiclePartsPaintingTreeNode.html'"></li>
         </ul>
-        <div class="no-results" ng-if="state.parts.length && !state.filteredParts.length">No parts match your search.</div>
+        <div class="filtered-results" ng-if="state.filteringActive && state.filteredParts.length">
+          <div class="filtered-part"
+               ng-repeat="result in state.filterResults track by result.part.partPath"
+               ng-class="{selected: result.part.partPath === state.selectedPartPath}"
+               ng-click="selectPart(result.part)"
+               ng-mouseenter="onPartMouseEnter(result.part)"
+               ng-mouseleave="onPartMouseLeave(result.part)">
+            <div class="filtered-name">
+              <span class="filtered-name-text">
+                <span class="filtered-name-word"
+                      ng-repeat="word in result.nameWordSegments track by $index">
+                  <span ng-repeat="segment in word.segments track by $index"
+                        ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                </span>
+                <span ng-if="!result.nameWordSegments.length"
+                      ng-repeat="segment in result.nameSegments track by $index"
+                      ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+              </span>
+              <span class="custom-tag" ng-if="hasCustomBadge(result.part)">CUSTOM PAINT</span>
+            </div>
+            <div class="filtered-slot" ng-if="result.slotSegments.length">
+              <span class="label">Slot:</span>
+              <span class="value">
+                <span class="filtered-slot-text">
+                  <span class="filtered-slot-word"
+                        ng-repeat="word in result.slotWordSegments track by $index">
+                    <span ng-repeat="segment in word.segments track by $index"
+                          ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                  </span>
+                  <span ng-if="!result.slotWordSegments.length"
+                        ng-repeat="segment in result.slotSegments track by $index"
+                        ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                </span>
+              </span>
+            </div>
+            <div class="filtered-identifier" ng-if="result.identifierSegments.length">
+              <span class="label">Identifier:</span>
+              <span class="value">
+                <span ng-repeat="segment in result.identifierSegments track by $index"
+                      ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="no-results" ng-if="state.filteringActive && state.parts.length && !state.filteredParts.length">No parts match your search.</div>
         <div class="empty" ng-if="!state.parts.length">No paintable parts detected.</div>
       </div>
       <script type="text/ng-template" id="vehiclePartsPaintingTreeNode.html">
@@ -1562,7 +1741,7 @@
           <div class="node-content">
             <div class="name">{{node.part.displayName || node.part.partName}}</div>
             <div class="slot" ng-if="node.part.slotName || node.part.slotLabel">{{node.part.slotLabel || node.part.slotName}}</div>
-            <span class="custom-tag" ng-if="hasCustomBadge(node.part)">CUSTOM</span>
+            <span class="custom-tag" ng-if="hasCustomBadge(node.part)">CUSTOM PAINT</span>
           </div>
         </div>
         <ul class="parts-children" ng-if="node.children && node.children.length && isNodeExpanded(node.part)">
@@ -1645,7 +1824,7 @@
             <div class="paint-editors">
               <div class="paint-card" ng-repeat="paint in basePaintEditors track by $index">
                 <div class="card-header">
-                  <h4>Paint {{$index + 1}}</h4>
+                  <h4>Base Paint slot #{{$index + 1}}</h4>
                 </div>
                 <div class="field color-field">
                   <label>Color</label>
@@ -1694,8 +1873,8 @@
             <div class="paint-editors">
               <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
                 <div class="card-header">
-                  <h4>Paint {{$index + 1}}</h4>
-                  <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
+                  <h4>Paint slot #{{$index + 1}}</h4>
+                  <button type="button" class="black" ng-click="copyFromVehicle($index)">Copy base paint {{$index + 1}}</button>
                 </div>
                 <div class="field color-field">
                   <label>Color</label>
