@@ -10,6 +10,8 @@ local vehManager = extensions.core_vehicle_manager
 local jbeamIO = require('jbeam/io')
 
 local storedPartPaintsByVeh = {}
+local basePaintStateByVeh = {}
+local basePaintWorkaroundStateByVeh = {}
 local highlightedParts = {}
 local highlightFadeAlpha = 0.18
 local validPartPathsByVeh = {}
@@ -22,6 +24,34 @@ local lastKnownPlayerVehicleId = nil
 
 local sanitizeColorPresetEntry
 local previewImageExtensions = { '.png', '.jpg', '.jpeg', '.webp' }
+
+local function createBasePaintWorkaroundState()
+  return {
+    phase = 'await_base',
+    basePaints = nil,
+    pendingPart = nil
+  }
+end
+
+local function resetBasePaintWorkaroundState(vehId)
+  if not vehId then return end
+  basePaintWorkaroundStateByVeh[vehId] = createBasePaintWorkaroundState()
+end
+
+local function clearBasePaintWorkaroundState(vehId)
+  if not vehId then return end
+  basePaintWorkaroundStateByVeh[vehId] = nil
+end
+
+local function getBasePaintWorkaroundState(vehId, create)
+  if not vehId then return nil end
+  local state = basePaintWorkaroundStateByVeh[vehId]
+  if not state and create then
+    state = createBasePaintWorkaroundState()
+    basePaintWorkaroundStateByVeh[vehId] = state
+  end
+  return state
+end
 
 local function isLikelyPlayerVehicleId(vehId)
   if not vehId or vehId == -1 then
@@ -1484,6 +1514,23 @@ end
   vehObj:queueLuaCommand(command)
 end
 
+local function queueBasePartWorkaroundExecution(vehObj)
+  if not vehObj or type(vehObj.queueLuaCommand) ~= 'function' then return false end
+
+  local command = [[
+local vehId = nil
+if obj and obj.getID then
+  vehId = obj:getID()
+end
+if vehId and obj and obj.queueGameEngineLua then
+  obj:queueGameEngineLua(string.format('freeroam_vehiclePartsPainting.executeBasePartWorkaround(%d)', vehId))
+end
+]]
+
+  vehObj:queueLuaCommand(command)
+  return true
+end
+
 local function queueApplyBasePaintsToAllParts(vehObj, paints)
   if not vehObj or not paints then return end
   if type(vehObj.queueLuaCommand) ~= 'function' then return end
@@ -1825,6 +1872,8 @@ end
 
 local sendState
 local applyStoredPaints
+local getBasePaintState
+local getVehicleBasePaints
 
 local function setVehicleBasePaints(paints)
   local vehObj = getPlayerVehicle(0)
@@ -1840,6 +1889,8 @@ local function setVehicleBasePaints(paints)
     return
   end
 
+  local previousBase = getVehicleBasePaints(vehId, vehData, vehObj)
+
   local sanitized = sanitizePaints(paints)
   if not sanitized then
     log('W', logTag, 'Invalid base paint data received; ignoring request')
@@ -1850,6 +1901,23 @@ local function setVehicleBasePaints(paints)
 
   vehData.config = vehData.config or {}
   vehData.config.paints = copyPaints(sanitized)
+
+  local state = getBasePaintState(vehId, true)
+  if not state.original or tableIsEmpty(state.original) then
+    state.original = copyPaints(previousBase)
+  end
+  state.current = copyPaints(sanitized)
+
+  if vehId and vehId ~= -1 then
+    local workaroundState = getBasePaintWorkaroundState(vehId, true)
+    if workaroundState then
+      workaroundState.basePaints = copyPaints(sanitized)
+      local phase = workaroundState.phase
+      if phase == 'await_base' or phase == 'await_part' then
+        workaroundState.phase = 'await_part'
+      end
+    end
+  end
 
   ensureVehiclePartConditionInitialized(vehObj, vehId)
 
@@ -1872,7 +1940,22 @@ local function setVehicleBasePaintsJson(jsonStr)
   setVehicleBasePaints(paints)
 end
 
-local function getVehicleBasePaints(vehData, vehObj)
+getBasePaintState = function(vehId, create)
+  if not vehId then return nil end
+  local state = basePaintStateByVeh[vehId]
+  if not state and create then
+    state = {}
+    basePaintStateByVeh[vehId] = state
+  end
+  return state
+end
+
+getVehicleBasePaints = function(vehId, vehData, vehObj)
+  local state = getBasePaintState(vehId, false)
+  if state and type(state.current) == 'table' and not tableIsEmpty(state.current) then
+    return copyPaints(state.current)
+  end
+
   local basePaints = {}
   if vehData and vehData.config and type(vehData.config.paints) == 'table' then
     basePaints = copyPaints(vehData.config.paints)
@@ -1893,6 +1976,15 @@ local function getVehicleBasePaints(vehData, vehObj)
   end
   if not basePaints[2] then basePaints[2] = copyPaint(basePaints[1]) end
   if not basePaints[3] then basePaints[3] = copyPaint(basePaints[2]) end
+
+  if vehId then
+    state = getBasePaintState(vehId, true)
+    if not state.original or tableIsEmpty(state.original) then
+      state.original = copyPaints(basePaints)
+    end
+    state.current = copyPaints(basePaints)
+  end
+
   return basePaints
 end
 
@@ -2052,7 +2144,7 @@ sendState = function(targetVehId)
 
   syncStateWithConfig(vehId, vehData)
 
-  local basePaints = getVehicleBasePaints(vehData, vehObj)
+  local basePaints = getVehicleBasePaints(vehId, vehData, vehObj)
   local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
   local parts = {}
   local validPaths = {}
@@ -2100,10 +2192,19 @@ sendState = function(targetVehId)
     return tostring(a.displayName) < tostring(b.displayName)
   end)
 
+  local originalBasePaints = {}
+  local baseState = basePaintStateByVeh[vehId]
+  if baseState and type(baseState.original) == 'table' and not tableIsEmpty(baseState.original) then
+    originalBasePaints = copyPaints(baseState.original)
+  else
+    originalBasePaints = copyPaints(basePaints)
+  end
+
   local data = {
     vehicleId = vehId,
     parts = parts,
     basePaints = copyPaints(basePaints),
+    originalBasePaints = originalBasePaints,
     colorPresets = copyColorPresets()
   }
 
@@ -2211,7 +2312,7 @@ local function setPartPaint(partPath, paints, partName, slotPath)
   local previousPaints = previousEntry and previousEntry.paints or nil
   local previousSource = 'storedCustom'
   if not previousPaints then
-    previousPaints = getVehicleBasePaints(vehData, vehObj)
+    previousPaints = getVehicleBasePaints(vehId, vehData, vehObj)
     previousSource = 'vehicleBase'
   end
 
@@ -2242,7 +2343,118 @@ local function setPartPaint(partPath, paints, partName, slotPath)
   }
   setConfigPaintsEntry(vehData, partPath, sanitizedPaints)
 
+  local workaroundState = getBasePaintWorkaroundState(vehId, false)
+  if workaroundState and workaroundState.phase == 'await_part' then
+    local basePaints = workaroundState.basePaints
+    if type(basePaints) == 'table' and not tableIsEmpty(basePaints) then
+      if type(sanitizedPaints) == 'table' and not tableIsEmpty(sanitizedPaints) then
+        local identifierCopyForWorkaround = {}
+        for i = 1, #identifierCopy do
+          identifierCopyForWorkaround[i] = identifierCopy[i]
+        end
+        workaroundState.pendingPart = {
+          partPath = partPath,
+          partName = resolvedName,
+          slotPath = slotForCommand,
+          identifiers = identifierCopyForWorkaround,
+          paints = copyPaints(sanitizedPaints)
+        }
+        if queueBasePartWorkaroundExecution(vehObj) then
+          workaroundState.phase = 'scheduled'
+          log('I', logTag, string.format(
+            'Scheduled base paint workaround for vehicle %s part=%s (name=%s slot=%s)',
+            tostring(vehId),
+            tostring(partPath),
+            tostring(resolvedName),
+            tostring(slotForCommand)
+          ))
+        else
+          log('W', logTag, string.format(
+            'Unable to queue base paint workaround for vehicle %s; queueLuaCommand unavailable',
+            tostring(vehId)
+          ))
+          workaroundState.pendingPart = nil
+          workaroundState.phase = 'complete'
+        end
+      end
+    end
+  end
+
   sendState(vehId)
+end
+
+local function executeBasePartWorkaround(vehId)
+  if not vehId then return end
+
+  local state = basePaintWorkaroundStateByVeh[vehId]
+  if not state then return end
+
+  local phase = state.phase
+  if phase ~= 'scheduled' and phase ~= 'running' then
+    return
+  end
+
+  local basePaints = state.basePaints
+  local pending = state.pendingPart
+  if type(basePaints) ~= 'table' or tableIsEmpty(basePaints) or type(pending) ~= 'table' then
+    state.pendingPart = nil
+    state.phase = 'complete'
+    return
+  end
+
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+  if not vehObj or not vehData then
+    log('W', logTag, string.format(
+      'Unable to execute base paint workaround for vehicle %s: vehicle object or data unavailable',
+      tostring(vehId)
+    ))
+    state.pendingPart = nil
+    state.phase = 'complete'
+    return
+  end
+
+  local partPaints = pending.paints
+  if type(partPaints) ~= 'table' or tableIsEmpty(partPaints) then
+    state.pendingPart = nil
+    state.phase = 'complete'
+    return
+  end
+
+  state.phase = 'running'
+
+  local baseCopy = copyPaints(basePaints)
+  log('I', logTag, string.format(
+    'Reapplying vehicle %s base paints %s and restoring part=%s (name=%s slot=%s) as workaround',
+    tostring(vehId),
+    paintsToLogSummary(baseCopy),
+    tostring(pending.partPath),
+    tostring(pending.partName),
+    tostring(pending.slotPath)
+  ))
+
+  applyBasePaintsToVehicle(vehObj, baseCopy)
+  queueApplyBasePaintsToAllParts(vehObj, baseCopy)
+
+  local identifierCopy = {}
+  if type(pending.identifiers) == 'table' then
+    for i = 1, #pending.identifiers do
+      identifierCopy[i] = pending.identifiers[i]
+    end
+  end
+
+  queuePartPaintCommands(
+    vehObj,
+    vehId,
+    pending.partPath,
+    pending.partName,
+    pending.slotPath,
+    identifierCopy,
+    copyPaints(partPaints)
+  )
+
+  state.pendingPart = nil
+  state.phase = 'complete'
 end
 
 local function applyPartPaintJson(jsonStr)
@@ -2265,7 +2477,7 @@ local function resetPartPaint(partPath)
 
   ensureVehiclePartConditionInitialized(vehObj, vehId)
 
-  local basePaints = getVehicleBasePaints(vehData, vehObj)
+  local basePaints = getVehicleBasePaints(vehId, vehData, vehObj)
   local resolvedName
   local storedState = storedPartPaintsByVeh[vehId]
   if storedState and storedState[partPath] and storedState[partPath].partName then
@@ -2552,7 +2764,7 @@ local function showAllParts(targetVehId)
 
   local highlight = validPartPathsByVeh[vehId]
   if (not highlight or tableIsEmpty(highlight)) and vehData then
-    local basePaints = getVehicleBasePaints(vehData, vehObj)
+    local basePaints = getVehicleBasePaints(vehId, vehData, vehObj)
     local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
     local tmpParts = {}
     highlight = {}
@@ -2661,6 +2873,8 @@ local function spawnSavedConfiguration(configPath)
 end
 
 local function onVehicleSpawned(vehId)
+  basePaintStateByVeh[vehId] = nil
+  resetBasePaintWorkaroundState(vehId)
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
@@ -2673,6 +2887,8 @@ local function onVehicleSpawned(vehId)
 end
 
 local function onVehicleResetted(vehId)
+  basePaintStateByVeh[vehId] = nil
+  resetBasePaintWorkaroundState(vehId)
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
@@ -2691,6 +2907,8 @@ local function onVehicleDestroyed(vehId)
   activePartIdSetByVeh[vehId] = nil
   ensuredPartConditionsByVeh[vehId] = nil
   savedConfigCacheByVeh[vehId] = nil
+  basePaintStateByVeh[vehId] = nil
+  clearBasePaintWorkaroundState(vehId)
   if vehId == lastKnownPlayerVehicleId then
     lastKnownPlayerVehicleId = nil
   end
@@ -2717,10 +2935,12 @@ local function onVehicleSwitched(oldId, newId, player)
   end
 
   if oldId and oldId ~= -1 then
+    clearBasePaintWorkaroundState(oldId)
     showAllParts(oldId)
   end
 
   if newId and newId ~= -1 then
+    resetBasePaintWorkaroundState(newId)
     applyStoredPaints(newId)
     sendState(newId)
     showAllParts(newId)
@@ -2742,10 +2962,12 @@ local function onExtensionLoaded()
   activePartIdSetByVeh = {}
   ensuredPartConditionsByVeh = {}
   savedConfigCacheByVeh = {}
+  basePaintWorkaroundStateByVeh = {}
   userColorPresets = nil
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     lastKnownPlayerVehicleId = currentVeh
+    resetBasePaintWorkaroundState(currentVeh)
     applyStoredPaints(currentVeh)
     sendState(currentVeh)
     showAllParts(currentVeh)
@@ -2766,6 +2988,7 @@ local function onExtensionUnloaded()
   activePartIdSetByVeh = {}
   ensuredPartConditionsByVeh = {}
   savedConfigCacheByVeh = {}
+  basePaintWorkaroundStateByVeh = {}
   userColorPresets = nil
   lastKnownPlayerVehicleId = nil
   clearHighlight()
@@ -2774,6 +2997,7 @@ end
 M.requestState = requestState
 M.requestSavedConfigs = requestSavedConfigs
 M.applyPartPaintJson = applyPartPaintJson
+M.executeBasePartWorkaround = executeBasePartWorkaround
 M.setPartPaint = setPartPaint
 M.resetPartPaint = resetPartPaint
 M.setVehicleBasePaints = setVehicleBasePaints
