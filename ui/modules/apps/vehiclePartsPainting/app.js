@@ -36,7 +36,7 @@ angular.module('beamng.apps')
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', '$interval', '$timeout', function ($scope, $interval, $timeout) {
+    controller: ['$scope', '$element', '$interval', '$timeout', function ($scope, $element, $interval, $timeout) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -52,6 +52,8 @@ angular.module('beamng.apps')
         filteredParts: [],
         expandedNodes: {},
         minimized: false,
+        minimizedAlignment: 'left',
+        minimizedInlineStyle: {},
         basePaintCollapsed: false,
         partPaintCollapsed: false,
         configToolsCollapsed: true,
@@ -104,6 +106,46 @@ angular.module('beamng.apps')
       $scope.colorPickerState = colorPickerState;
 
       const globalWindow = (typeof window !== 'undefined') ? window : null;
+      const MINIMIZED_ICON_SIZE = 48;
+
+      function getViewportWidth() {
+        if (!globalWindow) { return 0; }
+        const doc = globalWindow.document || null;
+        const docEl = doc && doc.documentElement ? doc.documentElement : null;
+        const body = doc ? doc.body : null;
+        const innerWidth = globalWindow.innerWidth || 0;
+        const docWidth = docEl && docEl.clientWidth ? docEl.clientWidth : 0;
+        const bodyWidth = body && body.clientWidth ? body.clientWidth : 0;
+        return Math.max(innerWidth, docWidth, bodyWidth);
+      }
+
+      function computeMinimizedPresentation() {
+        const result = {
+          alignment: 'left',
+          style: {}
+        };
+
+        const element = ($element && $element[0]) ? $element[0] : null;
+        if (!element || typeof element.getBoundingClientRect !== 'function') { return result; }
+
+        const viewportWidth = getViewportWidth();
+        if (!viewportWidth) { return result; }
+
+        const rect = element.getBoundingClientRect();
+        if (!rect || !isFinite(rect.width) || rect.width <= 0) { return result; }
+
+        const elementCenter = rect.left + (rect.width / 2);
+        const viewportMid = viewportWidth / 2;
+        if (elementCenter > viewportMid) {
+          result.alignment = 'right';
+          const offset = Math.max(0, rect.width - MINIMIZED_ICON_SIZE);
+          result.style = {
+            transform: 'translateX(' + offset + 'px)'
+          };
+        }
+
+        return result;
+      }
 
       const LIVERY_EDITOR_CONFIRMATION_TEXT = 'This is an early highly experimental preview of the Decal Editor. Please be aware that anything created with this feature may be lost in future hotfixes and updates. Do you wish to proceed?';
       const LIVERY_EDITOR_NO_VEHICLE_MESSAGE = 'Vehicle Livery Editor requires an active player vehicle.';
@@ -2137,11 +2179,16 @@ end)()`;
       };
 
       $scope.minimizeApp = function () {
+        const presentation = computeMinimizedPresentation();
+        state.minimizedAlignment = presentation.alignment;
+        state.minimizedInlineStyle = presentation.style;
         state.minimized = true;
       };
 
       $scope.restoreApp = function () {
         state.minimized = false;
+        state.minimizedAlignment = 'left';
+        state.minimizedInlineStyle = {};
       };
 
       $scope.confirmLiveryEditorLaunch = function () {
