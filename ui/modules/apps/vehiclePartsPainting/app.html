@@ -828,7 +828,13 @@
       padding: 4px 6px;
     }
     .vehicle-parts-painting .paint-card .card-header button.black {
-      color: #000000;
+      background: none;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    .vehicle-parts-painting .paint-card .card-header button.black:hover {
+      border: 1px solid rgba(255, 255, 255, 0.6);
     }
     .vehicle-parts-painting .paint-card .field label {
       display: block;
@@ -1492,7 +1498,7 @@
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1-dev | made by KRtekTM</span></h2>
+      <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1-dev | made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1503,7 +1509,7 @@
                 ng-if="state.vehicleId && state.liveryEditorSupported !== null"
                 ng-click="state.liveryEditorSupported && openLiveryEditor()"
                 ng-disabled="!state.liveryEditorSupported">
-          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle does not support Liveries' }}
+          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle does not support Decals' }}
         </button>
         <button type="button" ng-click="minimizeApp()">Minimize</button>
       </div>
@@ -1647,7 +1653,7 @@
             <div class="paint-editors">
               <div class="paint-card" ng-repeat="paint in basePaintEditors track by $index">
                 <div class="card-header">
-                  <h4>Paint {{$index + 1}}</h4>
+                  <h4>Base Paint slot #{{$index + 1}}</h4>
                 </div>
                 <div class="field color-field">
                   <label>Color</label>
@@ -1696,8 +1702,8 @@
             <div class="paint-editors">
               <div class="paint-card" ng-repeat="paint in editedPaints track by $index">
                 <div class="card-header">
-                  <h4>Paint {{$index + 1}}</h4>
-                  <button type="button" ng-click="copyFromVehicle($index)">Copy vehicle paint {{$index + 1}}</button>
+                  <h4>Paint slot #{{$index + 1}}</h4>
+                  <button type="button" class="black" ng-click="copyFromVehicle($index)">Copy base paint {{$index + 1}}</button>
                 </div>
                 <div class="field color-field">
                   <label>Color</label>
