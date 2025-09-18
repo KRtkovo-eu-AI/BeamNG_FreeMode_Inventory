@@ -1410,29 +1410,69 @@
               <div class="finish-field">
                 <label>Metallic</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.metallic">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.metallic"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'metallic')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.metallic"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'metallic')">
                 </div>
               </div>
               <div class="finish-field">
                 <label>Roughness</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.roughness">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.roughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'roughness')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.roughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'roughness')">
                 </div>
               </div>
               <div class="finish-field">
                 <label>Clearcoat</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoat">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoat"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoat')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoat"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoat')">
                 </div>
               </div>
               <div class="finish-field">
                 <label>Clearcoat Roughness</label>
                 <div class="field-row">
-                  <input type="range" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
-                  <input type="number" min="0" max="1" step="0.01" ng-model="colorPickerState.working.clearcoatRoughness">
+                  <input type="range"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoatRoughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoatRoughness')">
+                  <input type="number"
+                         min="0"
+                         max="1"
+                         step="0.01"
+                         ng-model="colorPickerState.working.clearcoatRoughness"
+                         ng-change="onFinishValueChanged(colorPickerState.working, 'clearcoatRoughness')">
                 </div>
               </div>
             </div>

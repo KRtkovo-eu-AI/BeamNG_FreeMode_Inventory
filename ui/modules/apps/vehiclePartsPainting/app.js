@@ -285,6 +285,14 @@ angular.module('beamng.apps')
         return color;
       }
 
+      function sanitizeFinishProperty(paint, key) {
+        if (!paint || !key) { return; }
+        const normalized = Math.round(clamp01(paint[key]) * 100) / 100;
+        if (paint[key] !== normalized) {
+          paint[key] = normalized;
+        }
+      }
+
       function createPickerWorkingPaint(paint) {
         if (!paint) { return null; }
         const working = angular.copy(paint);
@@ -1843,6 +1851,10 @@ end)()`;
         if (colorPickerState.working === paint) {
           syncActiveHsvFromWorking();
         }
+      };
+
+      $scope.onFinishValueChanged = function (paint, key) {
+        sanitizeFinishProperty(paint, key);
       };
 
       $scope.onHtmlColorInputChanged = function (paint) {
