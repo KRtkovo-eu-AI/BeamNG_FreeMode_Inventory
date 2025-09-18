@@ -288,10 +288,30 @@ function instantiateController() {
     }
   };
 
+  let elementRect = { left: 0, top: 0, width: 0, height: 0 };
+  const elementStub = [{
+    getBoundingClientRect: function () {
+      return {
+        left: elementRect.left,
+        top: elementRect.top,
+        width: elementRect.width,
+        height: elementRect.height,
+        right: elementRect.left + elementRect.width,
+        bottom: elementRect.top + elementRect.height
+      };
+    }
+  }];
+  elementStub.length = 1;
+
   global.window = {
     bngApi: bngApiStub,
     console: console,
     bngVue: bngVueStub,
+    innerWidth: 1920,
+    document: {
+      documentElement: { clientWidth: 1920 },
+      body: { clientWidth: 1920 }
+    },
     __vehiclePartsPaintingTestHooks: {
       registerController: function (hooks) {
         controllerHooks = hooks;
@@ -332,6 +352,9 @@ function instantiateController() {
     if (dep === '$scope') {
       return scope;
     }
+    if (dep === '$element') {
+      return elementStub;
+    }
     if (dep === '$interval') {
       return interval;
     }
@@ -356,7 +379,11 @@ function instantiateController() {
     hooks: controllerHooks,
     engineLuaCallbacks: engineLuaCallbacks,
     gotoGameStateCalls: gotoGameStateCalls,
-    window: global.window
+    window: global.window,
+    setElementBoundingRect: function (rect) {
+      if (!rect || typeof rect !== 'object') { return; }
+      elementRect = Object.assign({}, elementRect, rect);
+    }
   };
 }
 
@@ -750,6 +777,26 @@ function resetPaint(scope, partPath) {
   const removeCommand = bngApiCalls[bngApiCalls.length - 1];
   const remainingPresets = parseSettingsSetStateCommand(removeCommand);
   assert(Array.isArray(remainingPresets) && remainingPresets.length === 0, 'Removing a preset should clear stored presets');
+
+  controller.setElementBoundingRect({ left: 1200, width: 400 });
+  scope.minimizeApp();
+  scope.$digest();
+  assert.strictEqual(state.minimized, true, 'Minimize action should set minimized state flag');
+  assert.strictEqual(state.minimizedAlignment, 'right', 'Widgets on the right half should align the minimized icon to the right');
+  assert(state.minimizedInlineStyle && state.minimizedInlineStyle.transform === 'translateX(352px)', 'Right aligned minimize should translate by the width difference');
+  scope.restoreApp();
+  scope.$digest();
+  assert.strictEqual(state.minimized, false, 'Restore action should clear minimized state flag');
+  assert.deepStrictEqual(state.minimizedInlineStyle, {}, 'Restore action should remove minimized inline transform');
+  assert.strictEqual(state.minimizedAlignment, 'left', 'Restore action should reset minimized alignment state');
+
+  controller.setElementBoundingRect({ left: 300, width: 400 });
+  scope.minimizeApp();
+  scope.$digest();
+  assert.strictEqual(state.minimizedAlignment, 'left', 'Widgets on the left half should keep minimized alignment on the left');
+  assert.deepStrictEqual(state.minimizedInlineStyle, {}, 'Left aligned minimize should not apply an inline transform');
+  scope.restoreApp();
+  scope.$digest();
 
   const gotoCalls = controller.gotoGameStateCalls;
   const engineLuaCallbacks = controller.engineLuaCallbacks;

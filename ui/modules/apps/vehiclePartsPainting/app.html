@@ -1,4 +1,6 @@
-<div class="vehicle-parts-painting" ng-class="{'is-minimized': state.minimized}">
+<div class="vehicle-parts-painting"
+     ng-class="{'is-minimized': state.minimized, 'is-minimized-align-right': state.minimized && state.minimizedAlignment === 'right'}"
+     ng-style="state.minimizedInlineStyle">
   <style>
     .vehicle-parts-painting {
       width: 100%;
