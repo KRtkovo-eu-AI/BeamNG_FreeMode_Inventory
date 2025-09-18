@@ -1,71 +1,4 @@
 angular.module('beamng.apps')
-.directive('vehiclePartsPaintingFilterInput', [function () {
-  return {
-    restrict: 'A',
-    require: 'ngModel',
-    link: function (scope, element, attrs, ngModelCtrl) {
-      if (!element || typeof element.on !== 'function' || !ngModelCtrl) { return; }
-
-      function sanitizeValue(value) {
-        if (typeof value === 'string') { return value; }
-        if (value === undefined || value === null) { return ''; }
-        return String(value);
-      }
-
-      function dispatchFilter(value) {
-        if (!scope) { return; }
-        const handler = scope.handleFilterInput;
-        if (typeof handler !== 'function') { return; }
-        if (typeof scope.$evalAsync === 'function') {
-          scope.$evalAsync(function () {
-            handler(sanitizeValue(value));
-          });
-        } else {
-          handler(sanitizeValue(value));
-        }
-      }
-
-      function readElementValue() {
-        if (typeof element.val === 'function') { return element.val(); }
-        if (element && element[0] && 'value' in element[0]) {
-          return element[0].value;
-        }
-        if (element && 'value' in element) {
-          return element.value;
-        }
-        return '';
-      }
-
-      if (Array.isArray(ngModelCtrl.$viewChangeListeners)) {
-        ngModelCtrl.$viewChangeListeners.push(function () {
-          dispatchFilter(ngModelCtrl.$viewValue);
-        });
-      }
-
-      function handleSearchEvent() {
-        const sanitizedValue = sanitizeValue(readElementValue());
-        const currentViewValue = ngModelCtrl.$viewValue;
-        scope.$evalAsync(function () {
-          if (typeof ngModelCtrl.$setViewValue === 'function') {
-            ngModelCtrl.$setViewValue(sanitizedValue);
-          }
-          if (typeof ngModelCtrl.$render === 'function') {
-            ngModelCtrl.$render();
-          }
-          if (sanitizedValue === currentViewValue) {
-            dispatchFilter(sanitizedValue);
-          }
-        });
-      }
-
-      element.on('search', handleSearchEvent);
-
-      scope.$on('$destroy', function () {
-        element.off('search', handleSearchEvent);
-      });
-    }
-  };
-}])
 .directive('vehiclePartsPainting', ['$injector', function ($injector) {
   function resolveBngApi() {
     if ($injector) {
@@ -154,6 +87,9 @@ angular.module('beamng.apps')
       $scope.state = state;
       $scope.editedPaints = [];
       $scope.basePaintEditors = [];
+
+      let activeFilterQuery = createFilterQuery();
+      let lastAppliedFilterText = '';
 
       const colorPickerState = {
         context: null,
@@ -1483,7 +1419,9 @@ end)()`;
           refreshCustomBadges: refreshCustomBadgeVisibility,
           computeFilteredParts: computeFilteredParts,
           markPartsTreeDirty: markPartsTreeDirty,
-          handleFilterInput: handleFilterInputChange,
+          applyFilterText: applyFilterText,
+          handleFilterInput: applyFilterText,
+          getActiveFilterQuery: function () { return activeFilterQuery; },
           getCustomPaintState: function () { return customPaintStateByPath; }
         });
       }
@@ -1607,22 +1545,149 @@ end)()`;
         return true;
       }
 
-      function matchesFilter(part, filter) {
-        if (!filter) { return true; }
-        if (!part) { return false; }
-        const lowered = filter.toLowerCase();
-        const fields = [];
-        if (part.displayName) { fields.push(part.displayName); }
-        if (part.partName) { fields.push(part.partName); }
-        if (part.slotName) { fields.push(part.slotName); }
-        if (part.slotLabel) { fields.push(part.slotLabel); }
-        for (let i = 0; i < fields.length; i++) {
-          const value = fields[i];
-          if (typeof value === 'string' && value.toLowerCase().indexOf(lowered) !== -1) {
-            return true;
+      function sanitizeFilterText(value) {
+        if (typeof value === 'string') { return value; }
+        if (value === undefined || value === null) { return ''; }
+        return String(value);
+      }
+
+      function createFilterQuery(overrides) {
+        const base = {
+          rawText: '',
+          normalizedText: '',
+          args: Object.create(null),
+          mode: 'or',
+          hasExplicitArgs: false,
+          highlightTerm: ''
+        };
+        if (overrides && typeof overrides === 'object') {
+          base.rawText = typeof overrides.rawText === 'string' ? overrides.rawText : base.rawText;
+          base.normalizedText = typeof overrides.normalizedText === 'string' ? overrides.normalizedText : base.normalizedText;
+          base.args = overrides.args && typeof overrides.args === 'object' ? overrides.args : base.args;
+          base.mode = overrides.mode === 'and' ? 'and' : base.mode;
+          base.hasExplicitArgs = overrides.hasExplicitArgs === true;
+          base.highlightTerm = typeof overrides.highlightTerm === 'string' ? overrides.highlightTerm : base.highlightTerm;
+        }
+        return base;
+      }
+
+      function parseFilterQuery(rawValue) {
+        const sanitized = sanitizeFilterText(rawValue);
+        const normalized = sanitized.trim().toLowerCase();
+        const args = Object.create(null);
+        let mode = 'or';
+        let hasExplicitArgs = false;
+        let highlightTerm = '';
+
+        if (normalized && normalized.indexOf(':') !== -1) {
+          const tokens = normalized.split(/[ ,]+/);
+          let parsedCount = 0;
+          for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
+            if (!token) { continue; }
+            const separator = token.indexOf(':');
+            if (separator === -1) { continue; }
+            const key = token.substring(0, separator).trim();
+            const value = token.substring(separator + 1).trim();
+            if (!key || !value) { continue; }
+            args[key] = value;
+            parsedCount++;
+          }
+          if (parsedCount > 1) { mode = 'and'; }
+          hasExplicitArgs = parsedCount > 0;
+          if (args.description) {
+            highlightTerm = args.description;
+          } else if (args.name) {
+            highlightTerm = args.name;
+          } else if (args.partname) {
+            highlightTerm = args.partname;
+          } else if (args.slot) {
+            highlightTerm = args.slot;
           }
         }
-        return false;
+
+        if (!hasExplicitArgs && normalized) {
+          args.description = normalized;
+          highlightTerm = normalized;
+        }
+
+        return createFilterQuery({
+          rawText: sanitized,
+          normalizedText: normalized,
+          args: args,
+          mode: mode,
+          hasExplicitArgs: hasExplicitArgs,
+          highlightTerm: highlightTerm
+        });
+      }
+
+      function valueContains(value, needle) {
+        if (!needle) { return false; }
+        if (value === undefined || value === null) { return false; }
+        return String(value).toLowerCase().indexOf(needle) !== -1;
+      }
+
+      function matchesGeneralFields(part, needle) {
+        return valueContains(part.displayName, needle) ||
+          valueContains(part.partName, needle) ||
+          valueContains(part.partPath, needle) ||
+          valueContains(part.slotLabel, needle) ||
+          valueContains(part.slotName, needle) ||
+          valueContains(part.description, needle) ||
+          valueContains(normalizeSlotPath(part.slotPath), needle);
+      }
+
+      function matchesSlotFields(part, needle) {
+        return valueContains(part.slotLabel, needle) ||
+          valueContains(part.slotName, needle) ||
+          valueContains(normalizeSlotPath(part.slotPath), needle);
+      }
+
+      function matchesPartNameFields(part, needle) {
+        return valueContains(part.partName, needle) ||
+          valueContains(part.partPath, needle);
+      }
+
+      function matchesPartAgainstQuery(part, query) {
+        if (!query || !query.normalizedText) { return true; }
+        if (!part) { return false; }
+
+        const argKeys = Object.keys(query.args || {});
+        if (!argKeys.length) {
+          return matchesGeneralFields(part, query.normalizedText);
+        }
+
+        let matched = query.mode === 'and';
+        for (let i = 0; i < argKeys.length; i++) {
+          const key = argKeys[i];
+          const searchValue = query.args[key];
+          if (!searchValue) { continue; }
+          let currentMatch = false;
+          switch (key) {
+            case 'name':
+              currentMatch = valueContains(part.displayName, searchValue) || valueContains(part.slotLabel, searchValue);
+              break;
+            case 'part':
+            case 'partname':
+              currentMatch = matchesPartNameFields(part, searchValue);
+              break;
+            case 'slot':
+              currentMatch = matchesSlotFields(part, searchValue);
+              break;
+            case 'description':
+              currentMatch = matchesGeneralFields(part, searchValue);
+              break;
+            default:
+              currentMatch = matchesGeneralFields(part, searchValue);
+              break;
+          }
+          if (query.mode === 'and') {
+            matched = matched && currentMatch;
+          } else {
+            matched = matched || currentMatch;
+          }
+        }
+        return matched;
       }
 
       function normalizeSlotPath(slotPath) {
@@ -1741,18 +1806,18 @@ end)()`;
         return roots;
       }
 
-      function filterTreeNodes(nodes, filter) {
+      function filterTreeNodes(nodes, query) {
         if (!Array.isArray(nodes)) { return []; }
         const result = [];
         for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i];
           if (!node || !node.part) { continue; }
-          const matchesSelf = matchesFilter(node.part, filter);
+          const matchesSelf = matchesPartAgainstQuery(node.part, query);
           let children = [];
           if (matchesSelf) {
             children = cloneTreeNodes(Array.isArray(node.children) ? node.children : []);
           } else {
-            children = filterTreeNodes(Array.isArray(node.children) ? node.children : [], filter);
+            children = filterTreeNodes(Array.isArray(node.children) ? node.children : [], query);
           }
           if (matchesSelf || children.length) {
             result.push({
@@ -1792,21 +1857,21 @@ end)()`;
 
       function computeFilteredParts() {
         ensurePartsTreeCurrent();
-        const rawFilter = typeof state.filterText === 'string' ? state.filterText : '';
-        const normalized = rawFilter.trim().toLowerCase();
+        const query = activeFilterQuery;
+        const hasFilter = !!(query && query.normalizedText);
         const parts = Array.isArray(state.parts) ? state.parts.slice() : [];
         let filtered = parts;
-        if (normalized) {
+        if (hasFilter) {
           filtered = parts.filter(function (part) {
-            return matchesFilter(part, normalized);
+            return matchesPartAgainstQuery(part, query);
           });
         }
         state.filteredParts = filtered;
 
-        if (!normalized) {
+        if (!hasFilter) {
           state.filteredTree = state.partsTree;
         } else {
-          const tree = filterTreeNodes(state.partsTree, normalized);
+          const tree = filterTreeNodes(state.partsTree, query);
           state.filteredTree = tree;
           expandFilteredNodes(tree);
         }
@@ -1850,32 +1915,27 @@ end)()`;
         }
       }
 
-      let suppressFilterWatch = false;
-
-      function handleFilterInputChange(rawValue) {
-        let value = '';
-        if (typeof rawValue === 'string') {
-          value = rawValue;
-        } else if (rawValue !== undefined && rawValue !== null) {
-          value = String(rawValue);
+      function applyFilterText(rawValue) {
+        const sanitized = sanitizeFilterText(rawValue);
+        const parsed = parseFilterQuery(sanitized);
+        activeFilterQuery = parsed;
+        lastAppliedFilterText = sanitized;
+        if (state.filterText !== sanitized) {
+          state.filterText = sanitized;
         }
-
-        if (state.filterText !== value) {
-          suppressFilterWatch = true;
-          state.filterText = value;
-        }
-
         computeFilteredParts();
       }
 
-      $scope.handleFilterInput = handleFilterInputChange;
+      $scope.applyFilterText = applyFilterText;
 
-      $scope.$watch(function () { return state.filterText; }, function () {
-        if (suppressFilterWatch) {
-          suppressFilterWatch = false;
-          return;
-        }
-        computeFilteredParts();
+      $scope.onFilterTextChanged = function () {
+        applyFilterText(state.filterText);
+      };
+
+      $scope.$watch(function () { return state.filterText; }, function (newValue) {
+        const sanitized = sanitizeFilterText(newValue);
+        if (sanitized === lastAppliedFilterText) { return; }
+        applyFilterText(sanitized);
       });
 
       $scope.onColorChannelChanged = function (paint) {
@@ -2216,7 +2276,7 @@ end)()`;
       };
 
       $scope.clearFilter = function () {
-        handleFilterInputChange('');
+        applyFilterText('');
       };
 
       $scope.minimizeApp = function () {
