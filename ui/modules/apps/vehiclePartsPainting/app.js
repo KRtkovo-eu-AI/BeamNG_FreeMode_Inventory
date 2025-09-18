@@ -1850,6 +1850,8 @@ end)()`;
         }
       }
 
+      let suppressFilterWatch = false;
+
       function handleFilterInputChange(rawValue) {
         let value = '';
         if (typeof rawValue === 'string') {
@@ -1859,15 +1861,20 @@ end)()`;
         }
 
         if (state.filterText !== value) {
+          suppressFilterWatch = true;
           state.filterText = value;
-        } else {
-          computeFilteredParts();
         }
+
+        computeFilteredParts();
       }
 
       $scope.handleFilterInput = handleFilterInputChange;
 
       $scope.$watch(function () { return state.filterText; }, function () {
+        if (suppressFilterWatch) {
+          suppressFilterWatch = false;
+          return;
+        }
         computeFilteredParts();
       });
 

@@ -457,18 +457,23 @@ function resetPaint(scope, partPath) {
   assert(node && !scope.hasCustomBadge(node.part), 'Part 1 custom paint badge should be cleared after reset');
 
   hooks.handleFilterInput('hood');
-  scope.$digest();
   node = findNode(state.filteredTree, 'vehicle/hood');
-  assert(node && state.filteredParts.length === 1, 'Filter input handler should narrow results to hood');
+  assert(node && state.filteredParts.length === 1, 'Filter input handler should narrow results to hood immediately');
+  scope.$digest();
 
   hooks.handleFilterInput('hood scoop');
-  scope.$digest();
   assert.strictEqual(state.filteredParts.length, 0, 'Filter handler should exclude parts with unmatched queries');
+  scope.$digest();
 
   hooks.handleFilterInput('hood');
-  scope.$digest();
   node = findNode(state.filteredTree, 'vehicle/hood');
   assert(node && state.filteredParts.length === 1, 'Filter handler should restore hood results after refining query');
+  scope.$digest();
+
+  state.filterText = 'vehicle/root';
+  scope.$digest();
+  node = findNode(state.filteredTree, 'vehicle/root');
+  assert(node && state.filteredParts.some((part) => part.partPath === 'vehicle/root'), 'Watcher should recompute filtered parts after external filterText changes');
 
   hooks.handleFilterInput('');
   scope.$digest();
