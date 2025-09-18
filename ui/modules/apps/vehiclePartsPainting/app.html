@@ -1490,7 +1490,7 @@
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.0 | made by KRtekTM</span></h2>
+      <h2>Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1-dev | made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1501,7 +1501,7 @@
                 ng-if="state.vehicleId && state.liveryEditorSupported !== null"
                 ng-click="state.liveryEditorSupported && openLiveryEditor()"
                 ng-disabled="!state.liveryEditorSupported">
-          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle Livery Editor is not available for this vehicle' }}
+          {{ state.liveryEditorSupported ? 'Open Vehicle Livery Editor' : 'Vehicle does not support Liveries' }}
         </button>
         <button type="button" ng-click="minimizeApp()">Minimize</button>
       </div>
@@ -1519,7 +1519,7 @@
           <button type="button" ng-click="showAllParts()" class="orange">
             <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
               <path d="M0 0h24v24H0z" fill="none"/>
-              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#ff6600"/>
+              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#fff"/>
             </svg>
           </button>
         </div>
@@ -1562,7 +1562,7 @@
           <div class="node-content">
             <div class="name">{{node.part.displayName || node.part.partName}}</div>
             <div class="slot" ng-if="node.part.slotName || node.part.slotLabel">{{node.part.slotLabel || node.part.slotName}}</div>
-            <span class="custom-tag" ng-if="hasCustomBadge(node.part)">CUSTOM</span>
+            <span class="custom-tag" ng-if="hasCustomBadge(node.part)">CUSTOM PAINT</span>
           </div>
         </div>
         <ul class="parts-children" ng-if="node.children && node.children.length && isNodeExpanded(node.part)">
