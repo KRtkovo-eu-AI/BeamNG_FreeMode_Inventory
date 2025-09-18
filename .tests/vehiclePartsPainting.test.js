@@ -222,10 +222,12 @@ function structuredClonePaints(paints) {
 function cloneStateForEvent(scope) {
   const state = scope.state || {};
   const basePaints = Array.isArray(state.basePaints) ? structuredClonePaints(state.basePaints) : [];
+  const originalBasePaints = Array.isArray(state.originalBasePaints) ? structuredClonePaints(state.originalBasePaints) : [];
   const partsClone = Array.isArray(state.parts) ? JSON.parse(JSON.stringify(state.parts)) : [];
   return {
     vehicleId: state.vehicleId,
     basePaints: basePaints,
+    originalBasePaints: originalBasePaints,
     parts: partsClone
   };
 }
@@ -359,7 +361,18 @@ function instantiateController() {
 }
 
 function emitState(scope, payload) {
-  scope.$$emit('VehiclePartsPaintingState', payload);
+  const data = Object.assign({}, payload);
+  if (Array.isArray(data.basePaints)) {
+    data.basePaints = structuredClonePaints(data.basePaints);
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'originalBasePaints')) {
+    data.originalBasePaints = Array.isArray(data.originalBasePaints)
+      ? structuredClonePaints(data.originalBasePaints)
+      : [];
+  } else {
+    data.originalBasePaints = Array.isArray(data.basePaints) ? structuredClonePaints(data.basePaints) : [];
+  }
+  scope.$$emit('VehiclePartsPaintingState', data);
   scope.$digest();
 }
 
@@ -474,6 +487,33 @@ function resetPaint(scope, partPath) {
   assert(Math.abs(doorPaint.baseColor[1] - (128 / 255)) < 0.001, 'Door part should inherit updated base paint');
   assert(Math.abs(doorPaint.baseColor[2] - (64 / 255)) < 0.001, 'Door part should inherit updated base paint blue channel');
   assert(!scope.hasCustomBadge(doorNode.part), 'Door should remain without a custom badge after base paint change');
+  const originalBasePaint = state.originalBasePaints[0];
+  assert(originalBasePaint && Math.abs(originalBasePaint.baseColor[0] - 1) < 0.001, 'Original base paint should retain initial red channel');
+  assert(Math.abs(originalBasePaint.baseColor[1]) < 0.001 && Math.abs(originalBasePaint.baseColor[2]) < 0.001, 'Original base paint should retain zero green and blue channels');
+
+  const baseBeforePartApply = structuredClonePaints(scope.state.basePaints);
+  applyCustomPaint(scope, 'vehicle/door', { g: 220 });
+  const baseAfterPartApply = scope.state.basePaints[0];
+  assert(Math.abs(baseAfterPartApply.baseColor[1] - baseBeforePartApply[0].baseColor[1]) < 0.001, 'Part repaint should not alter stored base paint green channel');
+  assert(Math.abs(baseAfterPartApply.baseColor[2] - baseBeforePartApply[0].baseColor[2]) < 0.001, 'Part repaint should not alter stored base paint blue channel');
+  assert(Math.abs(state.originalBasePaints[0].baseColor[0] - 1) < 0.001, 'Original base paint should remain tracked after part repaint');
+
+  scope.resetBasePaintEditors();
+  scope.$digest();
+  assert(scope.basePaintEditors[0].color.r === 255 && scope.basePaintEditors[0].color.g === 0 && scope.basePaintEditors[0].color.b === 0, 'Reset base editors should revert to original vehicle color');
+  assert(scope.hasBasePaintChanges(), 'Resetting base editors should mark base paints as changed');
+  scope.applyBasePaints();
+  scope.$digest();
+  const restoredBasePaint = scope.state.basePaints[0];
+  assert(Math.abs(restoredBasePaint.baseColor[0] - 1) < 0.001, 'Applying reset base should restore original red channel');
+  assert(Math.abs(restoredBasePaint.baseColor[1]) < 0.001 && Math.abs(restoredBasePaint.baseColor[2]) < 0.001, 'Applying reset base should clear green and blue channels');
+  assert(Math.abs(state.originalBasePaints[0].baseColor[0] - 1) < 0.001, 'Original base paint should remain unchanged after reset apply');
+  assert(!scope.hasBasePaintChanges(), 'Base paint change state should clear after resetting to original colors');
+  scope.basePaintEditors[0].color.g = 128;
+  scope.basePaintEditors[0].color.b = 64;
+  scope.$digest();
+  scope.applyBasePaints();
+  scope.$digest();
 
   scope.$$emit('VehiclePartsPaintingSavedConfigs', {
     vehicleId: 4242,

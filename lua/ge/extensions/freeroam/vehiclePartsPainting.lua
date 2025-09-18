@@ -10,6 +10,7 @@ local vehManager = extensions.core_vehicle_manager
 local jbeamIO = require('jbeam/io')
 
 local storedPartPaintsByVeh = {}
+local basePaintStateByVeh = {}
 local highlightedParts = {}
 local highlightFadeAlpha = 0.18
 local validPartPathsByVeh = {}
@@ -1840,6 +1841,8 @@ local function setVehicleBasePaints(paints)
     return
   end
 
+  local previousBase = getVehicleBasePaints(vehId, vehData, vehObj)
+
   local sanitized = sanitizePaints(paints)
   if not sanitized then
     log('W', logTag, 'Invalid base paint data received; ignoring request')
@@ -1850,6 +1853,12 @@ local function setVehicleBasePaints(paints)
 
   vehData.config = vehData.config or {}
   vehData.config.paints = copyPaints(sanitized)
+
+  local state = getBasePaintState(vehId, true)
+  if not state.original or tableIsEmpty(state.original) then
+    state.original = copyPaints(previousBase)
+  end
+  state.current = copyPaints(sanitized)
 
   ensureVehiclePartConditionInitialized(vehObj, vehId)
 
@@ -1872,7 +1881,22 @@ local function setVehicleBasePaintsJson(jsonStr)
   setVehicleBasePaints(paints)
 end
 
-local function getVehicleBasePaints(vehData, vehObj)
+local function getBasePaintState(vehId, create)
+  if not vehId then return nil end
+  local state = basePaintStateByVeh[vehId]
+  if not state and create then
+    state = {}
+    basePaintStateByVeh[vehId] = state
+  end
+  return state
+end
+
+local function getVehicleBasePaints(vehId, vehData, vehObj)
+  local state = getBasePaintState(vehId, false)
+  if state and type(state.current) == 'table' and not tableIsEmpty(state.current) then
+    return copyPaints(state.current)
+  end
+
   local basePaints = {}
   if vehData and vehData.config and type(vehData.config.paints) == 'table' then
     basePaints = copyPaints(vehData.config.paints)
@@ -1893,6 +1917,15 @@ local function getVehicleBasePaints(vehData, vehObj)
   end
   if not basePaints[2] then basePaints[2] = copyPaint(basePaints[1]) end
   if not basePaints[3] then basePaints[3] = copyPaint(basePaints[2]) end
+
+  if vehId then
+    state = getBasePaintState(vehId, true)
+    if not state.original or tableIsEmpty(state.original) then
+      state.original = copyPaints(basePaints)
+    end
+    state.current = copyPaints(basePaints)
+  end
+
   return basePaints
 end
 
@@ -2052,7 +2085,7 @@ sendState = function(targetVehId)
 
   syncStateWithConfig(vehId, vehData)
 
-  local basePaints = getVehicleBasePaints(vehData, vehObj)
+  local basePaints = getVehicleBasePaints(vehId, vehData, vehObj)
   local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
   local parts = {}
   local validPaths = {}
@@ -2100,10 +2133,19 @@ sendState = function(targetVehId)
     return tostring(a.displayName) < tostring(b.displayName)
   end)
 
+  local originalBasePaints = {}
+  local baseState = basePaintStateByVeh[vehId]
+  if baseState and type(baseState.original) == 'table' and not tableIsEmpty(baseState.original) then
+    originalBasePaints = copyPaints(baseState.original)
+  else
+    originalBasePaints = copyPaints(basePaints)
+  end
+
   local data = {
     vehicleId = vehId,
     parts = parts,
     basePaints = copyPaints(basePaints),
+    originalBasePaints = originalBasePaints,
     colorPresets = copyColorPresets()
   }
 
@@ -2211,7 +2253,7 @@ local function setPartPaint(partPath, paints, partName, slotPath)
   local previousPaints = previousEntry and previousEntry.paints or nil
   local previousSource = 'storedCustom'
   if not previousPaints then
-    previousPaints = getVehicleBasePaints(vehData, vehObj)
+    previousPaints = getVehicleBasePaints(vehId, vehData, vehObj)
     previousSource = 'vehicleBase'
   end
 
@@ -2265,7 +2307,7 @@ local function resetPartPaint(partPath)
 
   ensureVehiclePartConditionInitialized(vehObj, vehId)
 
-  local basePaints = getVehicleBasePaints(vehData, vehObj)
+  local basePaints = getVehicleBasePaints(vehId, vehData, vehObj)
   local resolvedName
   local storedState = storedPartPaintsByVeh[vehId]
   if storedState and storedState[partPath] and storedState[partPath].partName then
@@ -2552,7 +2594,7 @@ local function showAllParts(targetVehId)
 
   local highlight = validPartPathsByVeh[vehId]
   if (not highlight or tableIsEmpty(highlight)) and vehData then
-    local basePaints = getVehicleBasePaints(vehData, vehObj)
+    local basePaints = getVehicleBasePaints(vehId, vehData, vehObj)
     local availableParts = jbeamIO.getAvailableParts(vehData.ioCtx) or {}
     local tmpParts = {}
     highlight = {}
@@ -2661,6 +2703,7 @@ local function spawnSavedConfiguration(configPath)
 end
 
 local function onVehicleSpawned(vehId)
+  basePaintStateByVeh[vehId] = nil
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
@@ -2673,6 +2716,7 @@ local function onVehicleSpawned(vehId)
 end
 
 local function onVehicleResetted(vehId)
+  basePaintStateByVeh[vehId] = nil
   applyStoredPaints(vehId)
   if vehId == be:getPlayerVehicleID(0) then
     sendState(vehId)
@@ -2691,6 +2735,7 @@ local function onVehicleDestroyed(vehId)
   activePartIdSetByVeh[vehId] = nil
   ensuredPartConditionsByVeh[vehId] = nil
   savedConfigCacheByVeh[vehId] = nil
+  basePaintStateByVeh[vehId] = nil
   if vehId == lastKnownPlayerVehicleId then
     lastKnownPlayerVehicleId = nil
   end
