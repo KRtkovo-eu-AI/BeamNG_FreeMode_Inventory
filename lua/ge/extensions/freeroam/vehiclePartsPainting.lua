@@ -1826,6 +1826,8 @@ end
 
 local sendState
 local applyStoredPaints
+local getBasePaintState
+local getVehicleBasePaints
 
 local function setVehicleBasePaints(paints)
   local vehObj = getPlayerVehicle(0)
@@ -1881,7 +1883,7 @@ local function setVehicleBasePaintsJson(jsonStr)
   setVehicleBasePaints(paints)
 end
 
-local function getBasePaintState(vehId, create)
+getBasePaintState = function(vehId, create)
   if not vehId then return nil end
   local state = basePaintStateByVeh[vehId]
   if not state and create then
@@ -1891,7 +1893,7 @@ local function getBasePaintState(vehId, create)
   return state
 end
 
-local function getVehicleBasePaints(vehId, vehData, vehObj)
+getVehicleBasePaints = function(vehId, vehData, vehObj)
   local state = getBasePaintState(vehId, false)
   if state and type(state.current) == 'table' and not tableIsEmpty(state.current) then
     return copyPaints(state.current)
