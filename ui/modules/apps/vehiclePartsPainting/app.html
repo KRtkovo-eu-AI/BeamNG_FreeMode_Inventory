@@ -421,6 +421,11 @@
       width: 90%;
       height: 90%;
     }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:disabled {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.3);
+    }
     .vehicle-parts-painting .filter-field {
       padding: 8px 10px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -1616,7 +1621,7 @@
   </div>
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
-      <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1-dev | made by KRtekTM</span></h2>
+      <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.1 | made by KRtekTM</span></h2>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
