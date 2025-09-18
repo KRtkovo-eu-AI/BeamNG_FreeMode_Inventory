@@ -1648,14 +1648,73 @@ end)()`;
         return segments;
       }
 
+      function isWhitespaceChar(ch) {
+        if (ch === undefined || ch === null) { return true; }
+        return String(ch).trim() === '';
+      }
+
+      function mergeSegmentIntoWord(currentWord, match, piece) {
+        if (!piece) { return currentWord; }
+        if (!currentWord) {
+          currentWord = { segments: [] };
+        }
+        const segments = currentWord.segments;
+        const lastSegment = segments.length ? segments[segments.length - 1] : null;
+        if (lastSegment && lastSegment.match === match) {
+          lastSegment.text += piece;
+        } else {
+          segments.push({ text: piece, match: match });
+        }
+        return currentWord;
+      }
+
+      function groupSegmentsIntoWords(segments) {
+        if (!segments || !segments.length) { return []; }
+        const words = [];
+        let currentWord = null;
+
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+          if (!segment || segment.text === undefined || segment.text === null) { continue; }
+          const text = String(segment.text);
+          if (!text) { continue; }
+
+          let lastIndex = 0;
+          for (let j = 0; j < text.length; j++) {
+            if (isWhitespaceChar(text.charAt(j))) {
+              if (lastIndex < j) {
+                currentWord = mergeSegmentIntoWord(currentWord, segment.match, text.substring(lastIndex, j));
+              }
+              if (currentWord && currentWord.segments.length) {
+                words.push(currentWord);
+                currentWord = null;
+              }
+              lastIndex = j + 1;
+            }
+          }
+
+          if (lastIndex < text.length) {
+            currentWord = mergeSegmentIntoWord(currentWord, segment.match, text.substring(lastIndex));
+          }
+        }
+
+        if (currentWord && currentWord.segments.length) {
+          words.push(currentWord);
+        }
+
+        return words;
+      }
+
       function createFilterResult(part, loweredFilter) {
         const filterLength = loweredFilter ? loweredFilter.length : 0;
         const displayName = part && (part.displayName || part.partName || part.partPath || '');
         const slotLabel = part && (part.slotLabel || part.slotName || '');
         const identifier = part && (part.partPath || part.partName || '');
+        const nameSegments = buildHighlightSegments(displayName, loweredFilter, filterLength);
         return {
           part: part,
-          nameSegments: buildHighlightSegments(displayName, loweredFilter, filterLength),
+          nameSegments: nameSegments,
+          nameWordSegments: groupSegmentsIntoWords(nameSegments),
           slotSegments: buildHighlightSegments(slotLabel, loweredFilter, filterLength),
           identifierSegments: buildHighlightSegments(identifier, loweredFilter, filterLength)
         };

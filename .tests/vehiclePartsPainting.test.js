@@ -274,6 +274,29 @@ function partMatchesQuery(part, query) {
   return false;
 }
 
+function collectWordText(word) {
+  if (!word || !Array.isArray(word.segments)) {
+    return '';
+  }
+  let text = '';
+  for (let i = 0; i < word.segments.length; i++) {
+    const segment = word.segments[i];
+    if (!segment || segment.text === undefined || segment.text === null) {
+      continue;
+    }
+    text += String(segment.text);
+  }
+  return text;
+}
+
+function getNormalizedPartName(part) {
+  if (!part) {
+    return '';
+  }
+  const source = part.displayName || part.partName || part.partPath || '';
+  return String(source).trim().replace(/\s+/g, ' ');
+}
+
 function findNode(nodes, partPath) {
   if (!Array.isArray(nodes)) {
     return null;
@@ -525,6 +548,8 @@ function resetPaint(scope, partPath) {
     return segment.match && segment.text.toLowerCase() === 'b';
   }), 'Bumper name should highlight the matching letter in filtered results');
 
+  let bumperLastWord = '';
+
   scope.state.filterText = 'bumper';
   scope.$digest();
 
@@ -536,6 +561,18 @@ function resetPaint(scope, partPath) {
   assert(bumperFullEntry && bumperFullEntry.nameSegments.some(function (segment) {
     return segment.match && segment.text.toLowerCase() === 'bumper';
   }), 'Full bumper query should highlight the entire search term in part names');
+  assert(bumperFullEntry && Array.isArray(bumperFullEntry.nameWordSegments) && bumperFullEntry.nameWordSegments.length,
+    'Filtered bumper entry should expose grouped name segments');
+  const bumperWordTexts = bumperFullEntry.nameWordSegments.map(collectWordText);
+  const normalizedBumperName = getNormalizedPartName(bumperFullEntry.part);
+  assert.strictEqual(bumperWordTexts.join(' '), normalizedBumperName,
+    'Grouped name segments should reconstruct the normalized part name');
+  const bumperTerminalWord = bumperFullEntry.nameWordSegments[bumperFullEntry.nameWordSegments.length - 1];
+  const bumperTerminalText = collectWordText(bumperTerminalWord);
+  bumperLastWord = bumperTerminalText;
+  assert(bumperTerminalWord.segments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === bumperTerminalText.toLowerCase();
+  }), 'Full bumper query should highlight the last word within grouped segments');
 
   ['bumpe', 'bump', 'bum', 'bu', 'b', ''].forEach(function (term) {
     scope.state.filterText = term;
@@ -544,6 +581,24 @@ function resetPaint(scope, partPath) {
     if (term) {
       assert.strictEqual(state.filteringActive, true, 'Partial query "' + term + '" should keep filtering active');
       assert.strictEqual(state.filterResults.length, expectedLength, 'Filtered list should refresh for "' + term + '"');
+      if (term === 'bum' && bumperLastWord) {
+        const bumperEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/front_bumper'; });
+        assert(bumperEntry && Array.isArray(bumperEntry.nameWordSegments) && bumperEntry.nameWordSegments.length,
+          'Partial bumper query should preserve grouped word segments');
+        const bumperWord = bumperEntry.nameWordSegments[bumperEntry.nameWordSegments.length - 1];
+        const bumperWordText = collectWordText(bumperWord);
+        assert.strictEqual(bumperWordText, bumperLastWord,
+          'Partial bumper query should leave the final word intact without removing spacing');
+        assert(bumperWord.segments.some(function (segment) {
+          return segment.match && segment.text.toLowerCase() === term;
+        }), 'Partial bumper query should highlight only the matching portion of the word');
+        const remainder = bumperLastWord.length > term.length ? bumperLastWord.substring(term.length).toLowerCase() : '';
+        if (remainder) {
+          assert(bumperWord.segments.some(function (segment) {
+            return !segment.match && segment.text.toLowerCase() === remainder;
+          }), 'Partial bumper query should leave the remaining letters as non-highlighted segments');
+        }
+      }
     } else {
       assert.strictEqual(state.filteringActive, false, 'Clearing the search should disable filtering');
       assert.strictEqual(state.filterResults.length, 0, 'Clearing the search should hide the filtered list');
@@ -566,6 +621,12 @@ function resetPaint(scope, partPath) {
   assert(steeringEntry && steeringEntry.nameSegments.some(function (segment) {
     return segment.match && segment.text.toLowerCase() === 'steering wheel';
   }), 'Steering wheel search should highlight the full query in the part name');
+  assert(steeringEntry && Array.isArray(steeringEntry.nameWordSegments) && steeringEntry.nameWordSegments.length,
+    'Steering wheel entry should expose grouped name word segments');
+  const steeringWordTexts = steeringEntry.nameWordSegments.map(collectWordText);
+  const normalizedSteeringName = getNormalizedPartName(steeringEntry.part);
+  assert.strictEqual(steeringWordTexts.join(' '), normalizedSteeringName,
+    'Steering wheel grouped segments should reconstruct the normalized part name without collapsing spacing');
 
   scope.state.filterText = 'vehicle/rear_bumper';
   scope.$digest();

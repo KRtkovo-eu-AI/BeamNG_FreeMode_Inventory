@@ -494,8 +494,12 @@
       display: inline-flex;
       flex: 1 1 auto;
       flex-wrap: wrap;
-      gap: 0;
+      gap: 6px;
       min-width: 0;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-name-word {
+      display: inline-flex;
+      gap: 0;
     }
     .vehicle-parts-painting .filtered-results .filtered-slot,
     .vehicle-parts-painting .filtered-results .filtered-identifier {
@@ -1666,7 +1670,13 @@
                ng-mouseleave="onPartMouseLeave(result.part)">
             <div class="filtered-name">
               <span class="filtered-name-text">
-                <span ng-repeat="segment in result.nameSegments track by $index"
+                <span class="filtered-name-word"
+                      ng-repeat="word in result.nameWordSegments track by $index">
+                  <span ng-repeat="segment in word.segments track by $index"
+                        ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                </span>
+                <span ng-if="!result.nameWordSegments.length"
+                      ng-repeat="segment in result.nameSegments track by $index"
                       ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
               </span>
               <span class="custom-tag" ng-if="hasCustomBadge(result.part)">CUSTOM PAINT</span>
