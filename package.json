@@ -3,6 +3,6 @@
   "version": "1.1.1",
   "private": true,
   "scripts": {
-    "test": "node .tests/vehiclePartsPainting.test.js"
+    "test": "node .tests/run-tests.js"
   }
 }
