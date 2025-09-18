@@ -297,6 +297,14 @@ function getNormalizedPartName(part) {
   return String(source).trim().replace(/\s+/g, ' ');
 }
 
+function getNormalizedSlotLabel(part) {
+  if (!part) {
+    return '';
+  }
+  const source = part.slotLabel || part.slotName || part.slotPath || '';
+  return String(source).trim().replace(/\s+/g, ' ');
+}
+
 function findNode(nodes, partPath) {
   if (!Array.isArray(nodes)) {
     return null;
@@ -542,6 +550,17 @@ function resetPaint(scope, partPath) {
   assert(rootFilteredEntry && rootFilteredEntry.slotSegments.some(function (segment) {
     return segment.match && segment.text.toLowerCase() === 'b';
   }), 'Body slot entry should highlight the matching letter when filtering by b');
+  assert(rootFilteredEntry && Array.isArray(rootFilteredEntry.slotWordSegments),
+    'Body slot entry should expose grouped slot segments');
+  const rootSlotWordTexts = rootFilteredEntry ? rootFilteredEntry.slotWordSegments.map(collectWordText) : [];
+  const normalizedRootSlotLabel = getNormalizedSlotLabel(rootFilteredEntry ? rootFilteredEntry.part : null);
+  if (normalizedRootSlotLabel) {
+    assert.strictEqual(rootSlotWordTexts.join(' '), normalizedRootSlotLabel,
+      'Grouped slot segments should reconstruct the normalized slot label');
+  } else {
+    assert.strictEqual(rootSlotWordTexts.length, 0,
+      'Grouped slot segments should be empty when no slot label is present');
+  }
 
   const frontBumperEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/front_bumper'; });
   assert(frontBumperEntry && frontBumperEntry.nameSegments.some(function (segment) {
@@ -549,6 +568,7 @@ function resetPaint(scope, partPath) {
   }), 'Bumper name should highlight the matching letter in filtered results');
 
   let bumperLastWord = '';
+  let bumperSlotLastWord = '';
 
   scope.state.filterText = 'bumper';
   scope.$digest();
@@ -573,6 +593,18 @@ function resetPaint(scope, partPath) {
   assert(bumperTerminalWord.segments.some(function (segment) {
     return segment.match && segment.text.toLowerCase() === bumperTerminalText.toLowerCase();
   }), 'Full bumper query should highlight the last word within grouped segments');
+  assert(bumperFullEntry && Array.isArray(bumperFullEntry.slotWordSegments) && bumperFullEntry.slotWordSegments.length,
+    'Filtered bumper entry should expose grouped slot segments');
+  const bumperSlotWordTexts = bumperFullEntry.slotWordSegments.map(collectWordText);
+  const normalizedBumperSlotLabel = getNormalizedSlotLabel(bumperFullEntry.part);
+  assert.strictEqual(bumperSlotWordTexts.join(' '), normalizedBumperSlotLabel,
+    'Grouped slot segments should reconstruct the normalized slot label');
+  const bumperSlotTerminalWord = bumperFullEntry.slotWordSegments[bumperFullEntry.slotWordSegments.length - 1];
+  const bumperSlotTerminalText = collectWordText(bumperSlotTerminalWord);
+  bumperSlotLastWord = bumperSlotTerminalText;
+  assert(bumperSlotTerminalWord.segments.some(function (segment) {
+    return segment.match && segment.text.toLowerCase() === bumperSlotTerminalText.toLowerCase();
+  }), 'Full bumper query should highlight the last word within grouped slot segments');
 
   ['bumpe', 'bump', 'bum', 'bu', 'b', ''].forEach(function (term) {
     scope.state.filterText = term;
@@ -597,6 +629,24 @@ function resetPaint(scope, partPath) {
           assert(bumperWord.segments.some(function (segment) {
             return !segment.match && segment.text.toLowerCase() === remainder;
           }), 'Partial bumper query should leave the remaining letters as non-highlighted segments');
+        }
+        if (bumperSlotLastWord) {
+          assert(bumperEntry && Array.isArray(bumperEntry.slotWordSegments) && bumperEntry.slotWordSegments.length,
+            'Partial bumper query should preserve grouped slot segments');
+          const bumperSlotWord = bumperEntry.slotWordSegments[bumperEntry.slotWordSegments.length - 1];
+          const bumperSlotWordText = collectWordText(bumperSlotWord);
+          assert.strictEqual(bumperSlotWordText, bumperSlotLastWord,
+            'Partial bumper query should leave the final slot word intact without removing spacing');
+          assert(bumperSlotWord.segments.some(function (segment) {
+            return segment.match && segment.text.toLowerCase() === term;
+          }), 'Partial bumper query should highlight only the matching portion of the slot word');
+          const slotRemainder = bumperSlotLastWord.length > term.length ?
+            bumperSlotLastWord.substring(term.length).toLowerCase() : '';
+          if (slotRemainder) {
+            assert(bumperSlotWord.segments.some(function (segment) {
+              return !segment.match && segment.text.toLowerCase() === slotRemainder;
+            }), 'Partial bumper query should leave the remaining slot letters as non-highlighted segments');
+          }
         }
       }
     } else {
@@ -627,6 +677,12 @@ function resetPaint(scope, partPath) {
   const normalizedSteeringName = getNormalizedPartName(steeringEntry.part);
   assert.strictEqual(steeringWordTexts.join(' '), normalizedSteeringName,
     'Steering wheel grouped segments should reconstruct the normalized part name without collapsing spacing');
+  assert(steeringEntry && Array.isArray(steeringEntry.slotWordSegments) && steeringEntry.slotWordSegments.length,
+    'Steering wheel entry should expose grouped slot segments');
+  const steeringSlotTexts = steeringEntry.slotWordSegments.map(collectWordText);
+  const normalizedSteeringSlot = getNormalizedSlotLabel(steeringEntry.part);
+  assert.strictEqual(steeringSlotTexts.join(' '), normalizedSteeringSlot,
+    'Steering wheel grouped slot segments should reconstruct the normalized slot label without collapsing spacing');
 
   scope.state.filterText = 'vehicle/rear_bumper';
   scope.$digest();

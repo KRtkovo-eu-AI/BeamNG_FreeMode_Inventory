@@ -1711,12 +1711,15 @@ end)()`;
         const slotLabel = part && (part.slotLabel || part.slotName || '');
         const identifier = part && (part.partPath || part.partName || '');
         const nameSegments = buildHighlightSegments(displayName, loweredFilter, filterLength);
+        const slotSegments = buildHighlightSegments(slotLabel, loweredFilter, filterLength);
+        const identifierSegments = buildHighlightSegments(identifier, loweredFilter, filterLength);
         return {
           part: part,
           nameSegments: nameSegments,
           nameWordSegments: groupSegmentsIntoWords(nameSegments),
-          slotSegments: buildHighlightSegments(slotLabel, loweredFilter, filterLength),
-          identifierSegments: buildHighlightSegments(identifier, loweredFilter, filterLength)
+          slotSegments: slotSegments,
+          slotWordSegments: groupSegmentsIntoWords(slotSegments),
+          identifierSegments: identifierSegments
         };
       }
 

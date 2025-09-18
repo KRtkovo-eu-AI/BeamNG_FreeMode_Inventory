@@ -501,6 +501,15 @@
       display: inline-flex;
       gap: 0;
     }
+    .vehicle-parts-painting .filtered-results .filtered-slot .filtered-slot-text {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .vehicle-parts-painting .filtered-results .filtered-slot .filtered-slot-word {
+      display: inline-flex;
+      gap: 0;
+    }
     .vehicle-parts-painting .filtered-results .filtered-slot,
     .vehicle-parts-painting .filtered-results .filtered-identifier {
       display: flex;
@@ -1684,8 +1693,16 @@
             <div class="filtered-slot" ng-if="result.slotSegments.length">
               <span class="label">Slot:</span>
               <span class="value">
-                <span ng-repeat="segment in result.slotSegments track by $index"
-                      ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                <span class="filtered-slot-text">
+                  <span class="filtered-slot-word"
+                        ng-repeat="word in result.slotWordSegments track by $index">
+                    <span ng-repeat="segment in word.segments track by $index"
+                          ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                  </span>
+                  <span ng-if="!result.slotWordSegments.length"
+                        ng-repeat="segment in result.slotSegments track by $index"
+                        ng-class="{'filter-highlight': segment.match}">{{segment.text}}</span>
+                </span>
               </span>
             </div>
             <div class="filtered-identifier" ng-if="result.identifierSegments.length">
