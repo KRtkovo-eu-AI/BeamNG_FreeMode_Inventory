@@ -1640,8 +1640,12 @@
       <div class="panel-header">
         <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
-          <button type="button" ng-click="collapseAllNodes()">Collapse all</button>
-          <button type="button" ng-click="expandAllNodes()">Expand all</button>
+          <button type="button"
+                  ng-click="collapseAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()">Collapse all</button>
+          <button type="button"
+                  ng-click="expandAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()">Expand all</button>
           <button type="button" ng-click="showAllParts()" class="orange">
             <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
               <path d="M0 0h24v24H0z" fill="none"/>

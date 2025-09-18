@@ -2244,6 +2244,10 @@ end)()`;
         setExpansionForNodes(state.partsTree, false);
       };
 
+      $scope.areTreeControlsDisabled = function () {
+        return !!state.filteringActive;
+      };
+
       $scope.clearFilter = function () {
         state.filterText = '';
       };

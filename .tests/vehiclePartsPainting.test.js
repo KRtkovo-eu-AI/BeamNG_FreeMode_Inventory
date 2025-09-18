@@ -536,6 +536,8 @@ function resetPaint(scope, partPath) {
   const initialTreeSnapshot = JSON.stringify(state.filteredTree);
   assert.strictEqual(state.filteringActive, false, 'Filtering should be inactive by default');
   assert(Array.isArray(state.filterResults) && state.filterResults.length === 0, 'Initial filter results should be empty');
+  assert.strictEqual(typeof scope.areTreeControlsDisabled, 'function', 'Tree control helper should be exposed on scope');
+  assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Tree controls should start enabled before filtering');
 
   scope.state.filterText = 'b';
   scope.$digest();
@@ -545,6 +547,7 @@ function resetPaint(scope, partPath) {
   assert.strictEqual(expectedMatches.length, 5, 'Single-letter search should find five matching parts for b');
   assert.strictEqual(state.filteredParts.length, expectedMatches.length, 'Single-letter search should include expected matches');
   assert.strictEqual(state.filterResults.length, expectedMatches.length, 'Filtered list should mirror filtered parts count');
+  assert.strictEqual(scope.areTreeControlsDisabled(), true, 'Tree controls should disable while filtering is active');
 
   const rootFilteredEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/root'; });
   assert(rootFilteredEntry && rootFilteredEntry.slotSegments.some(function (segment) {
@@ -613,6 +616,7 @@ function resetPaint(scope, partPath) {
     if (term) {
       assert.strictEqual(state.filteringActive, true, 'Partial query "' + term + '" should keep filtering active');
       assert.strictEqual(state.filterResults.length, expectedLength, 'Filtered list should refresh for "' + term + '"');
+      assert.strictEqual(scope.areTreeControlsDisabled(), true, 'Tree controls should stay disabled during query "' + term + '"');
       if (term === 'bum' && bumperLastWord) {
         const bumperEntry = state.filterResults.find(function (entry) { return entry.part.partPath === 'vehicle/front_bumper'; });
         assert(bumperEntry && Array.isArray(bumperEntry.nameWordSegments) && bumperEntry.nameWordSegments.length,
@@ -653,6 +657,7 @@ function resetPaint(scope, partPath) {
       assert.strictEqual(state.filteringActive, false, 'Clearing the search should disable filtering');
       assert.strictEqual(state.filterResults.length, 0, 'Clearing the search should hide the filtered list');
       assert.strictEqual(state.filteredParts.length, scope.state.parts.length, 'Clearing the search should restore the full part list');
+      assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Tree controls should re-enable once the search is cleared');
     }
   });
 
@@ -701,6 +706,7 @@ function resetPaint(scope, partPath) {
   assert.strictEqual(state.filteringActive, false, 'Clearing identifier filter should restore tree view');
   assert.strictEqual(state.filterResults.length, 0, 'Clearing identifier filter should clear filtered list data');
   assert.strictEqual(state.filteredParts.length, scope.state.parts.length, 'Clearing identifier filter should restore all parts');
+  assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Tree controls should enable after clearing identifier filter');
   const treeAfterIdentifierClear = JSON.stringify(state.filteredTree);
   assert.strictEqual(treeAfterIdentifierClear, initialTreeSnapshot, 'Tree should remain unchanged after identifier filtering');
 
@@ -718,6 +724,7 @@ function resetPaint(scope, partPath) {
   scope.clearFilter();
   scope.$digest();
   node = findNode(state.filteredTree, 'vehicle/root');
+  assert.strictEqual(scope.areTreeControlsDisabled(), false, 'Clearing filter helper should leave tree controls enabled');
   assert(node && scope.hasCustomBadge(node.part), 'Part 1 should retain custom paint after updating another part');
   node = findNode(state.filteredTree, 'vehicle/hood');
   assert(node && scope.hasCustomBadge(node.part), 'Part 2 should show custom paint after apply');
