@@ -1522,6 +1522,20 @@
       <p class="file-hint" ng-if="state.pendingSanitizedName">
         File name: {{state.pendingSanitizedName}}.pc
       </p>
+      <div class="config-target"
+           ng-if="state.pendingExistingConfig">
+        <div class="config-target-preview">
+          <img ng-src="{{getSavedConfigPreviewSrc(state.pendingExistingConfig)}}"
+               ng-attr-alt="{{getSavedConfigLabel(state.pendingExistingConfig)}} preview">
+        </div>
+        <div class="config-target-details">
+          <div class="config-target-name">{{getSavedConfigLabel(state.pendingExistingConfig)}}</div>
+          <div class="config-target-meta"
+               ng-if="state.pendingExistingConfig.relativePath">
+            File: {{state.pendingExistingConfig.relativePath}}
+          </div>
+        </div>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="confirm" ng-click="confirmReplaceSavedConfig()">Replace</button>
         <button type="button" class="cancel" ng-click="cancelReplaceSavedConfig()">Cancel</button>

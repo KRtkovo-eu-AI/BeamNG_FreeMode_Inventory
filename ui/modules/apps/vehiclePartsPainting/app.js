@@ -945,28 +945,44 @@ end)()`;
         return null;
       }
 
-      function buildConfigPreviewSrc(path) {
+      function buildConfigPreviewSrc(path, signature) {
         if (typeof path !== 'string') { return null; }
         let normalized = path.trim();
         if (!normalized) { return null; }
         normalized = normalized.replace(/\\/g, '/');
 
+        let result = null;
+
         if (/^(?:[a-z]+:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
-          return normalized;
+          result = normalized;
+        } else {
+          let candidate = normalized;
+          if (bngApi && typeof bngApi.resourceUrl === 'function') {
+            try {
+              const resolved = bngApi.resourceUrl(candidate);
+              if (resolved) {
+                result = resolved;
+              }
+            } catch (err) { /* ignore resolution errors */ }
+          }
+
+          if (!result) {
+            if (candidate.charAt(0) === '/') {
+              result = candidate;
+            } else {
+              result = '/' + candidate.replace(/^\/+/, '');
+            }
+          }
         }
 
-        if (bngApi && typeof bngApi.resourceUrl === 'function') {
-          try {
-            const resolved = bngApi.resourceUrl(normalized);
-            if (resolved) { return resolved; }
-          } catch (err) { /* ignore resolution errors */ }
+        if (!result) { return null; }
+
+        if (signature) {
+          const separator = result.indexOf('?') === -1 ? '?' : '&';
+          result = result + separator + 'v=' + encodeURIComponent(signature);
         }
 
-        if (normalized.charAt(0) === '/') {
-          return normalized;
-        }
-
-        return '/' + normalized.replace(/^\/+/, '');
+        return result;
       }
 
       function hasConfigPreview(config) {
@@ -1024,11 +1040,16 @@ end)()`;
         return false;
       }
 
-      function performSaveConfiguration(name) {
+      function performSaveConfiguration(name, options) {
+        options = options || {};
+        const replaceTarget = options.replaceTarget || null;
         clearPendingReplacement();
         state.saveErrorMessage = null;
         state.isSavingConfig = true;
         resetSavedConfigPreviewTracking();
+        if (replaceTarget) {
+          markSavedConfigPreviewForRefresh(replaceTarget);
+        }
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
         bngApi.engineLua(command);
@@ -1524,38 +1545,71 @@ end)()`;
         savedConfigPreviewTracking = Object.create(null);
       }
 
+      function markSavedConfigPreviewForRefresh(config) {
+        if (!config || typeof config !== 'object') { return; }
+        const key = (typeof config.relativePath === 'string' && config.relativePath)
+          ? config.relativePath
+          : null;
+        if (!key) { return; }
+        let signature = null;
+        if (typeof config.previewSignature === 'string' && config.previewSignature) {
+          signature = config.previewSignature;
+        } else {
+          signature = computeConfigPreviewSignature(config);
+        }
+        savedConfigPreviewTracking[key] = {
+          attempts: SAVED_CONFIG_FAST_REFRESH_ATTEMPTS,
+          signature: signature,
+          force: true
+        };
+      }
+
       function updateSavedConfigPreviewTracking(configs) {
+        const previousTracking = savedConfigPreviewTracking || {};
         const next = Object.create(null);
         let hasPending = false;
         if (Array.isArray(configs)) {
           configs.forEach(function (config) {
-            if (!config || typeof config.relativePath !== 'string') { return; }
-            if (config.hasPreviewImage || hasConfigPreview(config)) { return; }
-            const key = config.relativePath;
-            const signature = (config.previewSignature && typeof config.previewSignature === 'string')
+            if (!config || typeof config !== 'object') { return; }
+            const key = (typeof config.relativePath === 'string' && config.relativePath)
+              ? config.relativePath
+              : null;
+            if (!key) { return; }
+            const previous = Object.prototype.hasOwnProperty.call(previousTracking, key)
+              ? previousTracking[key]
+              : null;
+            const signature = (typeof config.previewSignature === 'string' && config.previewSignature)
               ? config.previewSignature
               : computeConfigPreviewSignature(config);
-            let previousAttempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
-            if (Object.prototype.hasOwnProperty.call(savedConfigPreviewTracking, key)) {
-              const previous = savedConfigPreviewTracking[key];
-              if (previous && typeof previous === 'object') {
-                if (previous.signature && previous.signature !== signature) {
-                  previousAttempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
-                } else if (typeof previous.attempts === 'number') {
-                  previousAttempts = previous.attempts;
-                }
-              }
-            }
-            if (previousAttempts <= 0) {
-              next[key] = { attempts: 0, signature: signature };
+            const hasPreviewImage = config.hasPreviewImage || hasConfigPreview(config);
+            const isForced = !!(previous && previous.force);
+
+            if (!isForced && hasPreviewImage) {
               return;
             }
-            const remaining = previousAttempts - 1;
+
+            if (isForced && previous && previous.signature && previous.signature !== signature) {
+              return;
+            }
+
+            let attempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+            if (!isForced && previous && previous.signature && previous.signature !== signature) {
+              attempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+            } else if (previous && typeof previous.attempts === 'number') {
+              attempts = previous.attempts;
+            }
+
+            if (attempts <= 0) {
+              next[key] = { attempts: 0, signature: signature, force: isForced };
+              return;
+            }
+
+            const remaining = attempts - 1;
             if (remaining > 0) {
               hasPending = true;
-              next[key] = { attempts: remaining, signature: signature };
+              next[key] = { attempts: remaining, signature: signature, force: isForced };
             } else {
-              next[key] = { attempts: 0, signature: signature };
+              next[key] = { attempts: 0, signature: signature, force: isForced };
             }
           });
         }
@@ -2532,6 +2586,10 @@ end)()`;
         if (!source || typeof source !== 'object') { return null; }
         const computedKeys = { displayName: true, hasPreviewImage: true, previewPath: true, previewSrc: true, previewSignature: true };
         const result = target && typeof target === 'object' ? target : {};
+        const previousSignature = (result && typeof result.previewSignature === 'string' && result.previewSignature)
+          ? result.previewSignature
+          : null;
+        const hadPreviewQuery = !!(result && typeof result.previewSrc === 'string' && result.previewSrc.indexOf('?') !== -1);
         Object.keys(result).forEach(function (key) {
           if (Object.prototype.hasOwnProperty.call(computedKeys, key)) { return; }
           if (!Object.prototype.hasOwnProperty.call(source, key)) {
@@ -2546,9 +2604,20 @@ end)()`;
         result.displayName = getSavedConfigDisplayName(result);
         result.hasPreviewImage = hasConfigPreview(result);
         const previewPath = resolveConfigPreviewPath(result);
+        const previewSignature = computeConfigPreviewSignature(result);
         result.previewPath = previewPath;
-        result.previewSrc = previewPath ? buildConfigPreviewSrc(previewPath) : null;
-        result.previewSignature = computeConfigPreviewSignature(result);
+        result.previewSignature = previewSignature;
+        if (!previewPath) {
+          result.previewSrc = null;
+        } else {
+          const shouldAppendSignature = (!!previousSignature && previousSignature !== previewSignature) || hadPreviewQuery;
+          if (shouldAppendSignature) {
+            const cacheKey = previewSignature || previousSignature;
+            result.previewSrc = cacheKey ? buildConfigPreviewSrc(previewPath, cacheKey) : buildConfigPreviewSrc(previewPath);
+          } else {
+            result.previewSrc = buildConfigPreviewSrc(previewPath);
+          }
+        }
         return result;
       }
 
@@ -2686,7 +2755,8 @@ end)()`;
           clearPendingReplacement();
           return;
         }
-        performSaveConfiguration(name);
+        const replaceTarget = state.pendingExistingConfig || null;
+        performSaveConfiguration(name, { replaceTarget: replaceTarget });
       };
 
       $scope.cancelReplaceSavedConfig = function () {
