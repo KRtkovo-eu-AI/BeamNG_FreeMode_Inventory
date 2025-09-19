@@ -161,10 +161,12 @@ angular.module('beamng.apps')
       const LIVERY_EDITOR_UNAVAILABLE_MESSAGE = 'Vehicle Livery Editor is not available in this UI.';
       const LIVERY_EDITOR_UNSUPPORTED_MESSAGE = 'Vehicle Livery Editor is not available for this vehicle.';
       const LIVERY_EDITOR_MESSAGE_CATEGORY = 'vehiclePartsPainting';
+      const MOTION_WARNING_MESSAGE = 'Saving configurations while driving is disabled. Please stop the vehicle before saving.';
 
       const DEFAULT_CONFIG_PREVIEW_IMAGE = 'ui/modules/apps/vehiclePartsPainting/missing-preview.png';
 
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
+      $scope.motionWarningMessage = MOTION_WARNING_MESSAGE;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 2000;
@@ -2655,6 +2657,7 @@ end)()`;
 
       $scope.saveCurrentConfiguration = function () {
         if (state.isSavingConfig || state.showReplaceConfirmation) { return; }
+        if (state.motionWarning.moving) { return; }
         const name = typeof state.configNameInput === 'string' ? state.configNameInput.trim() : '';
         if (!name) {
           state.saveErrorMessage = 'Please enter a configuration name.';

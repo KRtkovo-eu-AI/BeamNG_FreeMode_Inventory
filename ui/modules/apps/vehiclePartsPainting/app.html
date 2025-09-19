@@ -342,29 +342,14 @@
       min-width: 0;
       flex: 1 1 auto;
     }
-    .vehicle-parts-painting .header-warning-indicator {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transform: translate(-50%, -50%);
-      cursor: default;
-      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
-      opacity: 0;
-      pointer-events: none;
+    .vehicle-parts-painting .config-tools .config-actions button.save-config-button {
+      position: relative;
     }
-    .vehicle-parts-painting .header-warning-indicator.is-visible {
-      opacity: 1;
+    .vehicle-parts-painting .config-tools .config-actions button.save-config-button .warning-indicator {
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
       pointer-events: auto;
-    }
-    .vehicle-parts-painting .header-warning-indicator svg {
-      width: 100%;
-      height: 100%;
-      display: block;
     }
     .vehicle-parts-painting .palette-dialog .selected-color {
       display: flex;
@@ -1507,7 +1492,7 @@
         </svg>
       </div>
       <h3 id="motion-warning-title">Warning</h3>
-      <p id="motion-warning-message">It's recommended not to use while driving.</p>
+      <p id="motion-warning-message">{{motionWarningMessage}}</p>
       <div class="dialog-actions">
         <button type="button" ng-click="dismissMotionWarning()">OK</button>
       </div>
@@ -1798,18 +1783,6 @@
       <div class="header-title">
         <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.3-dev | made by KRtekTM</span></h2>
       </div>
-      <div class="header-warning-indicator"
-           ng-class="{'is-visible': state.motionWarning.moving}"
-           ng-attr-aria-hidden="{{!state.motionWarning.moving}}"
-           title="It's recommended not to use while driving."
-           role="img"
-           aria-label="It's recommended not to use while driving.">
-        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" focusable="false">
-          <path d="M16 3L29 29H3L16 3Z" fill="#ffb020" stroke="#d97706" stroke-width="2" stroke-linejoin="round"/>
-          <rect x="14.6" y="11" width="2.8" height="9.2" rx="1.2" fill="#1f1300"/>
-          <circle cx="16" cy="23.8" r="1.6" fill="#1f1300"/>
-        </svg>
-      </div>
       <div class="header-actions">
         <button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1962,8 +1935,20 @@
                       ng-model="state.configNameInput"
                       autocomplete="off" value="Save directly in Vehicle Configuration tab">
               <button type="button"
+                      class="save-config-button"
                       ng-click="saveCurrentConfiguration()"
-                      ng-disabled="state.isSavingConfig || state.showReplaceConfirmation">
+                      ng-disabled="state.isSavingConfig || state.showReplaceConfirmation || state.motionWarning.moving">
+                <span class="warning-indicator"
+                      ng-if="state.motionWarning.moving"
+                      ng-attr-title="{{motionWarningMessage}}"
+                      ng-attr-aria-label="{{motionWarningMessage}}"
+                      role="img">
+                  <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                    <path d="M16 3L29 29H3L16 3Z" fill="#ffb020" stroke="#d97706" stroke-width="2" stroke-linejoin="round"/>
+                    <rect x="14.6" y="11" width="2.8" height="9.2" rx="1.2" fill="#1f1300"/>
+                    <circle cx="16" cy="23.8" r="1.6" fill="#1f1300"/>
+                  </svg>
+                </span>
                 <span class="button-label" ng-if="!state.isSavingConfig">Save Configuration</span>
                 <span class="button-progress" ng-if="state.isSavingConfig">
                   <span class="spinner small"></span>
