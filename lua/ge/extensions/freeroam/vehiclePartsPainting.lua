@@ -25,6 +25,19 @@ local lastKnownPlayerVehicleId = nil
 local sanitizeColorPresetEntry
 local previewImageExtensions = { '.png', '.jpg', '.jpeg', '.webp' }
 
+local configurationThumbnailSettings = {
+  fileExtension = '.jpg',
+  width = 500,
+  height = 281,
+  fov = 20,
+  nearPlane = 0.1,
+  cameraOffset = vec3(0, 0, -0.2),
+  screenshotDelay = 0.75,
+  renderViewName = 'vehiclePartsPainting_thumbnail'
+}
+configurationThumbnailSettings.aspectRatio = configurationThumbnailSettings.width / configurationThumbnailSettings.height
+
+
 local function createBasePaintWorkaroundState()
   return {
     phase = 'await_base',
@@ -158,22 +171,11 @@ local function getVehicleModelIdentifier(vehData, vehObj, vehId)
         return candidate
       end
     end
+    if vehData.mainPartName and vehData.mainPartName ~= '' then
+      return vehData.mainPartName
+    end
     if vehData.ioCtx and vehData.ioCtx.jbeam and vehData.ioCtx.jbeam ~= '' then
       return vehData.ioCtx.jbeam
-    end
-  end
-  if vehId then
-    local coreVehiclesExtension = getLoadedExtension('core_vehicles')
-    if coreVehiclesExtension and type(coreVehiclesExtension.getVehicleDetails) == 'function' then
-      local okDetails, details = safePcall(coreVehiclesExtension.getVehicleDetails, vehId)
-      if okDetails and details then
-        if details.current and details.current.key and details.current.key ~= '' then
-          return details.current.key
-        end
-        if details.model and details.model.key and details.model.key ~= '' then
-          return details.model.key
-        end
-      end
     end
   end
   if vehObj then
@@ -191,6 +193,20 @@ local function getVehicleModelIdentifier(vehData, vehObj, vehId)
     end)
     if ok and value and value ~= '' then
       return value
+    end
+  end
+  if vehId then
+    local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+    if coreVehiclesExtension and type(coreVehiclesExtension.getVehicleDetails) == 'function' then
+      local okDetails, details = safePcall(coreVehiclesExtension.getVehicleDetails, vehId)
+      if okDetails and details then
+        if details.current and details.current.key and details.current.key ~= '' then
+          return details.current.key
+        end
+        if details.model and details.model.key and details.model.key ~= '' then
+          return details.model.key
+        end
+      end
     end
   end
   return nil
@@ -255,7 +271,171 @@ local function resolveUserVehiclesRoot()
   if not normalized then
     return nil
   end
-  return (normalized .. 'vehicles/'):lower()
+  return ensureTrailingSlash(normalized .. 'vehicles')
+end
+
+local function resolveThumbnailDirectory(vehData, modelFolder)
+  if vehData and vehData.vehicleDirectory and vehData.vehicleDirectory ~= '' then
+    local normalized = ensureTrailingSlash(normalizePath(vehData.vehicleDirectory))
+    if normalized and normalized ~= '' then
+      return normalized
+    end
+  end
+  if modelFolder and modelFolder ~= '' then
+    return string.format('vehicles/%s/', modelFolder)
+  end
+  return nil
+end
+
+local function ensureRenderViewsExtension()
+  local extensionName = 'render_renderViews'
+  local extension = getLoadedExtension(extensionName)
+  if extension and type(extension.takeScreenshot) == 'function' then
+    return extension
+  end
+  if not extensions or type(extensions.load) ~= 'function' then
+    return nil, 'extensions.load unavailable'
+  end
+  local okLoad, loadErr = safePcall(extensions.load, extensionName)
+  if not okLoad then
+    return nil, tostring(loadErr)
+  end
+  extension = getLoadedExtension(extensionName)
+  if not extension or type(extension.takeScreenshot) ~= 'function' then
+    return nil, string.format('%s.takeScreenshot unavailable', extensionName)
+  end
+  return extension
+end
+
+local function frameVehicleForThumbnail(veh, fov, nearPlane, aspectRatio)
+  if not veh or type(veh.getSpawnWorldOOBB) ~= 'function' then
+    return nil, nil
+  end
+  local bb = veh:getSpawnWorldOOBB()
+  if not bb then
+    return nil, nil
+  end
+
+  local bbCenter = bb:getCenter()
+  local axis0, axis1, axis2 = bb:getAxis(0), bb:getAxis(1), bb:getAxis(2)
+  if not axis0 or not axis1 or not axis2 then
+    return nil, nil
+  end
+
+  local halfExtents = bb:getHalfExtents()
+  if not halfExtents then
+    return nil, nil
+  end
+
+  local camOffsetAxisLocal = vec3(-0.75, -0.66, 0.1):normalized()
+  local camLeftLocal = camOffsetAxisLocal:cross(vec3(0, 0, 1))
+  local camUpLocal = camOffsetAxisLocal:cross(vec3(1, 0, 0))
+
+  local camOffsetAxis = axis0 * camOffsetAxisLocal.x + axis1 * camOffsetAxisLocal.y + axis2 * camOffsetAxisLocal.z
+  local camLeft = (axis0 * camLeftLocal.x + axis1 * camLeftLocal.y + axis2 * camLeftLocal.z):normalized()
+  local camUp = (axis0 * camUpLocal.x + axis1 * camUpLocal.y + axis2 * camUpLocal.z):normalized()
+
+  local bbUpperPoint = bbCenter + axis2 * (halfExtents.z + 0.35)
+  local bbForwardPoint = bbCenter - axis1 * (halfExtents.y + 0.35)
+
+  local upperCamFovAngle = fov / 2
+  local upperCamFovDir = quatFromAxisAngle(camLeft, upperCamFovAngle / 180 * math.pi):__mul(-camOffsetAxis)
+  local camPosVertical = bbUpperPoint - upperCamFovDir * intersectsRay_Plane(bbUpperPoint, -upperCamFovDir, bbCenter + camOffsetAxis, camUp)
+
+  local viewportHeight = nearPlane * math.tan((fov / 180 * math.pi) / 2)
+  local viewportWidth = aspectRatio * viewportHeight
+  local horizontalFov = math.atan(viewportWidth / nearPlane) * 2
+  horizontalFov = horizontalFov * 180 / math.pi
+
+  local rightCamFovAngle = horizontalFov / 2
+  local rightCamFovDir = quatFromAxisAngle(camUp, rightCamFovAngle / 180 * math.pi):__mul(-camOffsetAxis)
+  local camPosHorizontal = bbForwardPoint - rightCamFovDir * intersectsRay_Plane(bbForwardPoint, -rightCamFovDir, bbCenter + camOffsetAxis, camLeft)
+
+  local finalCamPos = camPosVertical
+  if camPosHorizontal:distance(bbCenter) > camPosVertical:distance(bbCenter) then
+    finalCamPos = camPosHorizontal
+  end
+
+  local camRot = quatFromDir(bbCenter - (axis1 * halfExtents.y / 8) - finalCamPos)
+
+  return finalCamPos, camRot
+end
+
+local function prepareVehicleForThumbnail(veh)
+  if not veh or type(veh.queueLuaCommand) ~= 'function' then
+    return
+  end
+  local commands = {
+    "input.event('parkingbrake', 1, 1)",
+    "input.event('throttle', 0, 2)",
+    "controller.mainController.setEngineIgnition(false)"
+  }
+  for _, command in ipairs(commands) do
+    pcall(function()
+      veh:queueLuaCommand(command)
+    end)
+  end
+end
+
+local function captureConfigurationThumbnail(vehId, vehObj, vehData, sanitizedBaseName)
+  if not sanitizedBaseName or sanitizedBaseName == '' then
+    return false, 'invalid_config_name'
+  end
+
+  vehObj = vehObj or (vehId and getObjectByID(vehId)) or nil
+  if not vehObj then
+    return false, 'vehicle_unavailable'
+  end
+
+  vehData = vehData or vehManager.getVehicleData(vehId)
+  local modelIdentifier = getVehicleModelIdentifier(vehData, vehObj, vehId)
+  local modelFolder = normalizeModelFolder(modelIdentifier)
+  local thumbnailDir = resolveThumbnailDirectory(vehData, modelFolder)
+  if not thumbnailDir or thumbnailDir == '' then
+    return false, 'vehicle_directory_unavailable'
+  end
+
+  local thumbnailPath = thumbnailDir .. sanitizedBaseName .. configurationThumbnailSettings.fileExtension
+
+  local userRoot = resolveUserVehiclesRoot()
+  if userRoot then
+    local relativeDir = thumbnailDir:gsub('^/+', '')
+    local suffix = relativeDir
+    if suffix:sub(1, 9) == 'vehicles/' then
+      suffix = suffix:sub(10)
+    end
+    ensureDirectory(userRoot .. suffix)
+  end
+
+  local renderViewsExtension, loadErr = ensureRenderViewsExtension()
+  if not renderViewsExtension then
+    return false, loadErr or 'render_renderViews unavailable'
+  end
+
+  local camPos, camRot = frameVehicleForThumbnail(vehObj, configurationThumbnailSettings.fov, configurationThumbnailSettings.nearPlane, configurationThumbnailSettings.aspectRatio)
+  if not camPos or not camRot then
+    return false, 'camera_setup_failed'
+  end
+
+  prepareVehicleForThumbnail(vehObj)
+
+  local captureOptions = {
+    renderViewName = configurationThumbnailSettings.renderViewName,
+    screenshotDelay = configurationThumbnailSettings.screenshotDelay,
+    resolution = vec3(configurationThumbnailSettings.width, configurationThumbnailSettings.height, 0),
+    rot = camRot,
+    pos = camPos + configurationThumbnailSettings.cameraOffset,
+    fov = configurationThumbnailSettings.fov,
+    nearPlane = configurationThumbnailSettings.nearPlane,
+    filename = thumbnailPath
+  }
+
+  local okCapture, captureErr = safePcall(renderViewsExtension.takeScreenshot, captureOptions)
+  if not okCapture then
+    return false, tostring(captureErr)
+  end
+
+  return true, thumbnailPath
 end
 
 local function getGamePath()
@@ -329,7 +509,8 @@ local function isPlayerConfigPath(vpath, userFilePath)
   end
 
   local normalizedResolved = resolvedPath:lower()
-  if normalizedResolved:sub(1, #userVehiclesRoot) == userVehiclesRoot then
+  local normalizedRootLower = userVehiclesRoot:lower()
+  if normalizedResolved:sub(1, #normalizedRootLower) == normalizedRootLower then
     return true
   end
 
@@ -1074,6 +1255,9 @@ local function saveCurrentUserConfig(configName)
     return
   end
 
+  local vehObj = getObjectByID(vehId)
+  local vehData = vehManager.getVehicleData(vehId)
+
   local partmgmtExtension = getLoadedExtension('core_vehicle_partmgmt')
   if not partmgmtExtension then
     log('E', logTag, 'Unable to save vehicle configuration: core_vehicle_partmgmt extension unavailable')
@@ -1108,6 +1292,14 @@ local function saveCurrentUserConfig(configName)
           fileName = fileName .. '.pc'
         end
 
+        local screenshotLabel = tostring(displayName or sanitizedBaseName)
+        local captureOk, captureResult = captureConfigurationThumbnail(vehId, vehObj, vehData, sanitizedBaseName)
+        if captureOk then
+          log('I', logTag, string.format('Queued configuration thumbnail for "%s" at %s', screenshotLabel, tostring(captureResult)))
+        else
+          log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": %s', screenshotLabel, tostring(captureResult or 'unknown_error')))
+        end
+
         local okSave, resultOrErr = safePcall(saveEntryPoint, fileName)
         if okSave and resultOrErr ~= false then
           if displayName and displayName ~= '' then
@@ -1118,28 +1310,6 @@ local function saveCurrentUserConfig(configName)
             end
           else
             log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(fileName), tostring(saveEntryPointName)))
-          end
-
-          local screenshotExtensionName = 'util_screenshotCreator'
-          if not extensions or type(extensions.load) ~= 'function' then
-            log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": extensions.load unavailable', tostring(displayName or sanitizedBaseName)))
-          else
-            local okLoad, loadErr = safePcall(function()
-              return extensions.load(screenshotExtensionName)
-            end)
-            if not okLoad then
-              log('W', logTag, string.format('Unable to load %s extension for "%s": %s', screenshotExtensionName, tostring(displayName or sanitizedBaseName), tostring(loadErr)))
-            end
-
-            local screenshotExtension = getLoadedExtension(screenshotExtensionName)
-            if screenshotExtension and type(screenshotExtension.startWork) == 'function' then
-              local okStart, startErr = safePcall(screenshotExtension.startWork, { selection = sanitizedBaseName })
-              if not okStart then
-                log('W', logTag, string.format('Failed to start %s for "%s": %s', screenshotExtensionName, tostring(displayName or sanitizedBaseName), tostring(startErr)))
-              end
-            else
-              log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": %s extension unavailable or missing startWork', tostring(displayName or sanitizedBaseName), screenshotExtensionName))
-            end
           end
         else
           local errorMessage
@@ -1154,8 +1324,6 @@ local function saveCurrentUserConfig(configName)
     end
   end
 
-  local vehObj = getObjectByID(vehId)
-  local vehData = vehManager.getVehicleData(vehId)
   sendSavedConfigs(vehId, vehData, vehObj)
 end
 
