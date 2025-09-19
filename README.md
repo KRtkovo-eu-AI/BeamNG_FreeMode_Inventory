@@ -17,7 +17,7 @@ This repository contains a BeamNG.drive mod that enables per-part paint customiz
 
 1. Copy the repository contents into your BeamNG user directory, e.g. `Documents/BeamNG.drive/mods/unpacked/vehicle-parts-painting/`.
 2. Launch BeamNG.drive and enter Freeroam.
-3. Open the UI layout editor, add the **Vehicle Parts Painting** app from the *Vehicle* category, and save your layout.
+3. In Freeroam mode, press Escape, open the **UI Apps** menu, add the **Vehicle Parts Painting** app, then position and resize it as you like, and finally save your layout.
 
 ## Usage
 
