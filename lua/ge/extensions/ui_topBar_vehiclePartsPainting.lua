@@ -263,37 +263,6 @@ local function pushItems(extension, items)
     end
   end
 
-  if manager and type(manager.call) == 'function' then
-    local callCandidates = {
-      'registerExternalItems',
-      'registerExternalEntries',
-      'registerItems',
-      'registerEntries',
-      'addExternalItems',
-      'addExternalEntries',
-      'addItems',
-      'addEntries',
-      'registerExternalItem',
-      'registerExternalEntry',
-      'addExternalItem',
-      'addExternalEntry',
-    }
-
-    for _, fnName in ipairs(callCandidates) do
-      local ok = select(1, safeCall(manager.call, manager, TOPBAR_EXTENSION_NAME, fnName, items))
-      if ok then
-        return true
-      end
-
-      if item then
-        ok = select(1, safeCall(manager.call, manager, TOPBAR_EXTENSION_NAME, fnName, item))
-        if ok then
-          return true
-        end
-      end
-    end
-  end
-
   local fieldCandidates = {'externalItems', 'externalEntries', 'items', 'entries'}
   for _, field in ipairs(fieldCandidates) do
     local target = rawget(extension, field)
