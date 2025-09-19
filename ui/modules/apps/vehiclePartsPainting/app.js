@@ -86,7 +86,14 @@ angular.module('beamng.apps')
         liveryEditorConfirmation: {
           visible: false
         },
-        liveryEditorSupported: null
+        liveryEditorSupported: null,
+        motionWarning: {
+          moving: false,
+          acknowledged: false,
+          dialogVisible: false,
+          speed: 0,
+          vehicleId: null
+        }
       };
 
       $scope.state = state;
@@ -2330,6 +2337,11 @@ end)()`;
         state.minimizedInlineStyle = {};
       };
 
+      $scope.dismissMotionWarning = function () {
+        state.motionWarning.dialogVisible = false;
+        state.motionWarning.acknowledged = true;
+      };
+
       $scope.confirmLiveryEditorLaunch = function () {
         const callback = pendingLiveryEditorLaunch;
         clearLiveryEditorConfirmation();
@@ -2754,6 +2766,7 @@ end)()`;
           const previousVehicleId = state.vehicleId;
           state.vehicleId = data.vehicleId || null;
           const vehicleChanged = state.vehicleId !== previousVehicleId;
+          state.motionWarning.vehicleId = state.vehicleId;
 
           if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
             updateColorPresets(data.colorPresets, { preserveExistingOnEmpty: true });
@@ -2790,6 +2803,11 @@ end)()`;
             refreshCustomBadgeVisibility();
             cancelSavedConfigRefreshTimer();
             resetSavedConfigPreviewTracking();
+            state.motionWarning.moving = false;
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+            state.motionWarning.speed = 0;
+            state.motionWarning.vehicleId = null;
             return;
           }
 
@@ -2817,6 +2835,11 @@ end)()`;
             sendShowAllCommand();
             resetSavedConfigPreviewTracking();
             requestSavedConfigs();
+            state.motionWarning.moving = false;
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+            state.motionWarning.speed = 0;
+            state.motionWarning.vehicleId = state.vehicleId;
           }
 
           if (!vehicleChanged) {
@@ -2843,6 +2866,46 @@ end)()`;
           computeFilteredParts();
           state.isSpawningConfig = false;
           state.isSavingConfig = false;
+        });
+      });
+
+      $scope.$on('VehiclePartsPaintingMotionState', function (event, data) {
+        data = data || {};
+        $scope.$evalAsync(function () {
+          const reportedVehicleId = (data.vehicleId === false || data.vehicleId === null || data.vehicleId === undefined)
+            ? null
+            : data.vehicleId;
+          const speed = typeof data.speed === 'number' ? data.speed : 0;
+
+          if (!state.vehicleId) {
+            state.motionWarning.moving = false;
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+            state.motionWarning.speed = 0;
+            state.motionWarning.vehicleId = reportedVehicleId;
+            return;
+          }
+
+          if (reportedVehicleId !== null && reportedVehicleId !== state.vehicleId) {
+            return;
+          }
+
+          const vehicleChanged = reportedVehicleId !== state.motionWarning.vehicleId;
+          if (vehicleChanged) {
+            state.motionWarning.vehicleId = reportedVehicleId;
+            state.motionWarning.acknowledged = false;
+          }
+
+          const moving = !!data.moving && reportedVehicleId !== null;
+          state.motionWarning.moving = moving;
+          state.motionWarning.speed = speed;
+
+          if (!moving) {
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+          } else if (!state.motionWarning.acknowledged) {
+            state.motionWarning.dialogVisible = true;
+          }
         });
       });
 
