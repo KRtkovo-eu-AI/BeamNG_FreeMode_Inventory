@@ -747,6 +747,23 @@
       gap: 6px;
       max-height: 150px;
       overflow-y: auto;
+      position: relative;
+    }
+    .vehicle-parts-painting .config-tools .saved-configs .loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1;
+    }
+    .vehicle-parts-painting .config-tools .saved-configs .loading-overlay .loading-content {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.85);
     }
     .vehicle-parts-painting .config-tools .saved-item {
       display: flex;
@@ -1835,6 +1852,16 @@
             </div>
             <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
             <div class="saved-configs" ng-if="hasSavedConfigs()">
+              <div class="loading-overlay"
+                   ng-if="state.isRefreshingSavedConfigs"
+                   role="status"
+                   aria-live="polite"
+                   aria-busy="true">
+                <div class="loading-content">
+                  <span class="spinner" aria-hidden="true"></span>
+                  <span class="message">Refreshing…</span>
+                </div>
+              </div>
               <div class="saved-item"
                     ng-repeat="config in getSavedConfigs() track by config.relativePath"
                     ng-class="{selected: isSavedConfigSelected(config)}"

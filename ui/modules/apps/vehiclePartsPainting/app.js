@@ -64,6 +64,7 @@ angular.module('beamng.apps')
         configNameInput: '',
         isSavingConfig: false,
         isSpawningConfig: false,
+        isRefreshingSavedConfigs: false,
         saveErrorMessage: null,
         showReplaceConfirmation: false,
         pendingConfigName: null,
@@ -1491,6 +1492,7 @@ end)()`;
       }
 
       function requestSavedConfigs() {
+        state.isRefreshingSavedConfigs = true;
         bngApi.engineLua('freeroam_vehiclePartsPainting.requestSavedConfigs()');
       }
 
@@ -1499,11 +1501,15 @@ end)()`;
           $timeout.cancel(savedConfigRefreshTimeout);
           savedConfigRefreshTimeout = null;
         }
+        if (!savedConfigRefreshTimeout) {
+          state.isRefreshingSavedConfigs = false;
+        }
       }
 
       function scheduleSavedConfigRefresh(delay) {
         cancelSavedConfigRefreshTimer();
         if (typeof delay !== 'number' || !isFinite(delay) || delay < 0) { return; }
+        state.isRefreshingSavedConfigs = true;
         savedConfigRefreshTimeout = $timeout(function () {
           savedConfigRefreshTimeout = null;
           if (!state.vehicleId) { return; }
@@ -2781,6 +2787,7 @@ end)()`;
             state.configNameInput = '';
             state.isSavingConfig = false;
             state.isSpawningConfig = false;
+            state.isRefreshingSavedConfigs = false;
             state.saveErrorMessage = null;
             state.hasUserSelectedPart = false;
             state.hoveredPartPath = null;
@@ -2809,6 +2816,7 @@ end)()`;
             state.configNameInput = '';
             state.isSavingConfig = false;
             state.isSpawningConfig = false;
+            state.isRefreshingSavedConfigs = true;
             state.saveErrorMessage = null;
             state.hasUserSelectedPart = false;
             state.hoveredPartPath = null;
@@ -2858,6 +2866,7 @@ end)()`;
 
           const previousSelection = state.selectedSavedConfig ? state.selectedSavedConfig.relativePath : null;
           state.savedConfigs = configs;
+          state.isRefreshingSavedConfigs = false;
 
           state.deleteConfigDialog.isDeleting = false;
           if (state.deleteConfigDialog.visible) {
