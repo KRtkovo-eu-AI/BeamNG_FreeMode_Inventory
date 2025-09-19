@@ -25,16 +25,6 @@ local lastKnownPlayerVehicleId = nil
 local sanitizeColorPresetEntry
 local previewImageExtensions = { '.png', '.jpg', '.jpeg', '.webp' }
 
-local thumbnailCaptureConfig = {
-  width = 500,
-  height = 281,
-  fileExtension = '.jpg',
-  fov = 20,
-  nearPlane = 0.1,
-  renderViewName = 'vehiclePartsPaintingThumbnail',
-  cameraOffset = vec3(0, 0, -0.2)
-}
-
 local function createBasePaintWorkaroundState()
   return {
     phase = 'await_base',
@@ -394,137 +384,6 @@ local function removeFileIfExists(path)
 
   log('W', logTag, string.format('Unable to remove file %s: %s', tostring(path), tostring(err)))
   return false
-end
-
-local function frameVehicleForThumbnail(vehObj, fov, nearPlane, aspectRatio)
-  if not vehObj or not vehObj.getSpawnWorldOOBB then
-    return nil, nil
-  end
-
-  local bb = vehObj:getSpawnWorldOOBB()
-  if not bb then
-    return nil, nil
-  end
-
-  local halfExtents = bb:getHalfExtents()
-  local halfExtentsX, halfExtentsY, halfExtentsZ = halfExtents.x, halfExtents.y, halfExtents.z
-  local bbCenter = bb:getCenter()
-  local axis0, axis1, axis2 = bb:getAxis(0), bb:getAxis(1), bb:getAxis(2)
-
-  local camOffsetAxisLocal = vec3(-0.75, -0.66, 0.1)
-  camOffsetAxisLocal:normalize()
-
-  local camLeftLocal = camOffsetAxisLocal:cross(vec3(0, 0, 1))
-  local camUpLocal = camOffsetAxisLocal:cross(vec3(1, 0, 0))
-
-  local camOffsetAxis = axis0 * camOffsetAxisLocal.x + axis1 * camOffsetAxisLocal.y + axis2 * camOffsetAxisLocal.z
-  local camLeft = axis0 * camLeftLocal.x + axis1 * camLeftLocal.y + axis2 * camLeftLocal.z
-  camLeft:normalize()
-  local camUp = axis0 * camUpLocal.x + axis1 * camUpLocal.y + axis2 * camUpLocal.z
-  camUp:normalize()
-
-  local bbUpperPoint = bbCenter + axis2 * (halfExtentsZ + 0.35)
-  local bbForwardPoint = bbCenter - axis1 * (halfExtentsY + 0.35)
-
-  local verticalFov = fov or thumbnailCaptureConfig.fov
-  local verticalRadians = (verticalFov / 180) * math.pi
-  local upperCamFovAngle = verticalFov / 2
-  local upperCamFovDir = quatFromAxisAngle(camLeft, (upperCamFovAngle / 180) * math.pi):__mul(-camOffsetAxis)
-
-  local camPosBasedOnVertical = bbUpperPoint - upperCamFovDir * intersectsRay_Plane(bbUpperPoint, -upperCamFovDir, bbCenter + camOffsetAxis, camUp)
-
-  local activeNearPlane = nearPlane or thumbnailCaptureConfig.nearPlane
-  local viewportHeight = activeNearPlane * math.tan(verticalRadians / 2)
-  local viewportWidth = (aspectRatio or (thumbnailCaptureConfig.width / thumbnailCaptureConfig.height)) * viewportHeight
-  local horizontalFOV = math.atan(viewportWidth / activeNearPlane) * 2
-  horizontalFOV = horizontalFOV * 180 / math.pi
-
-  local rightCamFovAngle = horizontalFOV / 2
-  local rightCamFovDir = quatFromAxisAngle(camUp, (rightCamFovAngle / 180) * math.pi):__mul(-camOffsetAxis)
-
-  local camPosBasedOnHorizontal = bbForwardPoint - rightCamFovDir * intersectsRay_Plane(bbForwardPoint, -rightCamFovDir, bbCenter + camOffsetAxis, camLeft)
-
-  local finalCamPos
-  if camPosBasedOnVertical:distance(bbCenter) > camPosBasedOnHorizontal:distance(bbCenter) then
-    finalCamPos = camPosBasedOnVertical
-  else
-    finalCamPos = camPosBasedOnHorizontal
-  end
-
-  local camRot = quatFromDir(bbCenter - (axis1 * halfExtentsY / 8) - finalCamPos)
-
-  return finalCamPos, camRot
-end
-
-local function captureSavedConfigThumbnail(vehObj, vehData, baseName)
-  if not vehObj or not vehData or not baseName or baseName == '' then
-    return false, 'invalid thumbnail arguments'
-  end
-
-  local directory = vehData.vehicleDirectory
-  if type(directory) ~= 'string' or directory == '' then
-    return false, 'vehicle directory unavailable'
-  end
-
-  local normalizedDir = normalizePath(directory)
-  if not normalizedDir or normalizedDir == '' then
-    return false, 'vehicle directory unavailable'
-  end
-
-  normalizedDir = normalizedDir:gsub('^/+', '')
-  normalizedDir = ensureTrailingSlash(normalizedDir)
-  if not normalizedDir or normalizedDir == '' then
-    return false, 'vehicle directory unavailable'
-  end
-
-  ensureDirectory(normalizedDir)
-
-  local renderViews = getLoadedExtension('render_renderViews') or rawget(_G, 'render_renderViews')
-  if (not renderViews or type(renderViews.takeScreenshot) ~= 'function') and extensions and type(extensions.load) == 'function' then
-    safePcall(function()
-      return extensions.load('render_renderViews')
-    end)
-    renderViews = getLoadedExtension('render_renderViews') or rawget(_G, 'render_renderViews')
-  end
-
-  if not renderViews or type(renderViews.takeScreenshot) ~= 'function' then
-    return false, 'render_renderViews extension unavailable'
-  end
-
-  local width = thumbnailCaptureConfig.width or 0
-  local height = thumbnailCaptureConfig.height or 0
-  if width <= 0 or height <= 0 then
-    return false, 'invalid thumbnail resolution'
-  end
-
-  local aspectRatio = width / height
-  local camPos, camRot = frameVehicleForThumbnail(vehObj, thumbnailCaptureConfig.fov, thumbnailCaptureConfig.nearPlane, aspectRatio)
-  if not camPos or not camRot then
-    return false, 'unable to compute thumbnail camera'
-  end
-
-  local outputPath = normalizePath(normalizedDir .. baseName .. thumbnailCaptureConfig.fileExtension)
-  if not outputPath or outputPath == '' then
-    return false, 'invalid thumbnail output path'
-  end
-
-  local renderViewOptions = {
-    renderViewName = thumbnailCaptureConfig.renderViewName,
-    screenshotDelay = 0,
-    resolution = vec3(width, height, 0),
-    rot = camRot,
-    pos = camPos + thumbnailCaptureConfig.cameraOffset,
-    fov = thumbnailCaptureConfig.fov,
-    nearPlane = thumbnailCaptureConfig.nearPlane,
-    filename = outputPath
-  }
-
-  local okShot, err = safePcall(renderViews.takeScreenshot, renderViewOptions)
-  if not okShot then
-    return false, err or 'screenshot capture failed'
-  end
-
-  return true
 end
 
 local function joinPaths(base, relative)
@@ -1250,20 +1109,11 @@ local function saveCurrentUserConfig(configName)
       if not saveEntryPoint then
         log('E', logTag, 'Unable to save vehicle configuration: no save entry point available on core_vehicle_partmgmt')
       else
-        local baseNameNoExt = sanitizedBaseName
-        if baseNameNoExt and baseNameNoExt ~= '' then
-          baseNameNoExt = baseNameNoExt:gsub('%.pc$', '')
-        end
-        if not baseNameNoExt or baseNameNoExt == '' then
-          baseNameNoExt = sanitizedBaseName
-        end
-
         local fileName = sanitizedBaseName
         if not string.lower(fileName):match('%.pc$') then
           fileName = fileName .. '.pc'
         end
 
-        local screenshotLabel = tostring(displayName or baseNameNoExt or fileName)
         local okSave, resultOrErr = safePcall(saveEntryPoint, fileName)
         if okSave and resultOrErr ~= false then
           if displayName and displayName ~= '' then
@@ -1276,13 +1126,26 @@ local function saveCurrentUserConfig(configName)
             log('I', logTag, string.format('Saved vehicle configuration "%s" via core_vehicle_partmgmt.%s', tostring(fileName), tostring(saveEntryPointName)))
           end
 
-          if vehObj and vehData and baseNameNoExt and baseNameNoExt ~= '' then
-            local okThumbnail, thumbErr = captureSavedConfigThumbnail(vehObj, vehData, baseNameNoExt)
-            if not okThumbnail then
-              log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": %s', screenshotLabel, tostring(thumbErr)))
+          local screenshotExtensionName = 'util_screenshotCreator'
+          if not extensions or type(extensions.load) ~= 'function' then
+            log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": extensions.load unavailable', tostring(displayName or sanitizedBaseName)))
+          else
+            local okLoad, loadErr = safePcall(function()
+              return extensions.load(screenshotExtensionName)
+            end)
+            if not okLoad then
+              log('W', logTag, string.format('Unable to load %s extension for "%s": %s', screenshotExtensionName, tostring(displayName or sanitizedBaseName), tostring(loadErr)))
             end
-          elseif baseNameNoExt and baseNameNoExt ~= '' then
-            log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": vehicle data unavailable', screenshotLabel))
+
+            local screenshotExtension = getLoadedExtension(screenshotExtensionName)
+            if screenshotExtension and type(screenshotExtension.startWork) == 'function' then
+              local okStart, startErr = safePcall(screenshotExtension.startWork, { selection = sanitizedBaseName })
+              if not okStart then
+                log('W', logTag, string.format('Failed to start %s for "%s": %s', screenshotExtensionName, tostring(displayName or sanitizedBaseName), tostring(startErr)))
+              end
+            else
+              log('W', logTag, string.format('Unable to capture configuration thumbnail for "%s": %s extension unavailable or missing startWork', tostring(displayName or sanitizedBaseName), screenshotExtensionName))
+            end
           end
         else
           local errorMessage
