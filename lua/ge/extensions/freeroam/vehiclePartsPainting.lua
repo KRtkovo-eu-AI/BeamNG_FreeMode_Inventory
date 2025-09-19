@@ -34,7 +34,7 @@ local configurationThumbnailSettings = {
   fov = 20,
   nearPlane = 0.1,
   cameraOffset = vec3(0, 0, -0.2),
-  screenshotDelay = 0.05,
+  screenshotDelay = 0.75,
   renderViewName = 'vehiclePartsPainting_thumbnail',
   pauseResumeBuffer = 0.4,
   minimumPauseDuration = 0.25,
@@ -42,7 +42,7 @@ local configurationThumbnailSettings = {
   motionCompensationLeadTime = false,
   motionCompensationSpeedThreshold = 0.5,
   motionCompensationMaxDistance = 0,
-  motionCompensationMinLeadTime = 0.15,
+  motionCompensationMinLeadTime = 0.35,
   motionCompensationForwardFactor = 1,
   motionCompensationLateralFactor = 0.45,
   motionCompensationVerticalFactor = 0
@@ -50,8 +50,8 @@ local configurationThumbnailSettings = {
 configurationThumbnailSettings.aspectRatio = configurationThumbnailSettings.width / configurationThumbnailSettings.height
 
 local movingThumbnailCameraSettings = {
-  offset = vec3(0, -0.5, -0.2),
-  fovMultiplier = 0.95
+  offset = vec3(0, -3.5, -0.15),
+  fovMultiplier = 0.15
 }
 
 local thumbnailCameraOffsetAxisLocal = vec3(-0.75, -0.66, 0.1):normalized()
