@@ -1,0 +1,216 @@
+<style>
+  .vehicle-parts-painting-modal {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    box-sizing: border-box;
+    pointer-events: auto;
+    color: #fff;
+    font-family: inherit;
+    z-index: 10;
+  }
+
+  .vehicle-parts-painting-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+  }
+
+  .vehicle-parts-painting-modal__dialog {
+    position: relative;
+    width: min(680px, 100%);
+    max-height: min(760px, calc(100vh - 96px));
+    background: rgba(18, 18, 18, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 12px;
+    padding: 32px 36px;
+    box-sizing: border-box;
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    outline: none;
+  }
+
+  .vehicle-parts-painting-modal__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .vehicle-parts-painting-modal__title {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 600;
+  }
+
+  .vehicle-parts-painting-modal__dismiss {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+    border-radius: 6px;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .vehicle-parts-painting-modal__dismiss:focus,
+  .vehicle-parts-painting-modal__dismiss:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+
+  .vehicle-parts-painting-modal__dismiss span {
+    display: block;
+    font-weight: 600;
+  }
+
+  .vehicle-parts-painting-modal__intro {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .vehicle-parts-painting-modal__section-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .vehicle-parts-painting-modal__steps {
+    margin: 0;
+    padding-left: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .vehicle-parts-painting-modal__steps li::marker {
+    font-weight: 600;
+  }
+
+  .vehicle-parts-painting-modal__actions {
+    margin-top: 8px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .vehicle-parts-painting-modal__action {
+    appearance: none;
+    background: #ff7f0e;
+    border: none;
+    border-radius: 8px;
+    color: #0f0f0f;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 20px;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  }
+
+  .vehicle-parts-painting-modal__action:hover,
+  .vehicle-parts-painting-modal__action:focus {
+    background: #ffa23d;
+    color: #000;
+  }
+
+  .vehicle-parts-painting-modal__action:active {
+    transform: translateY(1px);
+  }
+
+  @media (max-width: 720px) {
+    .vehicle-parts-painting-modal {
+      padding: 32px 16px;
+    }
+
+    .vehicle-parts-painting-modal__dialog {
+      padding: 28px 24px;
+    }
+
+    .vehicle-parts-painting-modal__title {
+      font-size: 24px;
+    }
+
+    .vehicle-parts-painting-modal__intro {
+      font-size: 15px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .vehicle-parts-painting-modal__dialog {
+      padding: 24px 20px;
+      gap: 16px;
+    }
+
+    .vehicle-parts-painting-modal__steps {
+      font-size: 14px;
+    }
+  }
+</style>
+
+<div
+  class="vehicle-parts-painting-modal"
+  ng-keydown="$ctrl.onKeyDown($event)"
+>
+  <div
+    class="vehicle-parts-painting-modal__backdrop"
+    ng-click="$ctrl.onBackdropClick($event)"
+  ></div>
+  <section
+    class="vehicle-parts-painting-modal__dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="vehiclePartsPaintingInstructionsTitle"
+    tabindex="-1"
+    data-focus-target
+    ng-click="$ctrl.onDialogClick($event)"
+  >
+    <header class="vehicle-parts-painting-modal__header">
+      <h1
+        class="vehicle-parts-painting-modal__title"
+        id="vehiclePartsPaintingInstructionsTitle"
+      >
+        Vehicle Parts Painting
+      </h1>
+      <button
+        type="button"
+        class="vehicle-parts-painting-modal__dismiss"
+        ng-click="$ctrl.close($event)"
+        aria-label="Close instructions"
+        data-role="vehicle-parts-painting-close"
+      >
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </header>
+    <p class="vehicle-parts-painting-modal__intro">
+      Go to the UI Apps menu, search for Vehicle Parts Painting app, add it, position it and resize it as you like, and finally save your layout.
+    </p>
+    <h2 class="vehicle-parts-painting-modal__section-title">Usage</h2>
+    <ol class="vehicle-parts-painting-modal__steps">
+      <li>Make sure the vehicle you want to edit is the active player vehicle.</li>
+      <li>Open the Vehicle Parts Painting app.</li>
+      <li>Select a part from the list on the left – use the search field to filter by name if needed. The part is highlighted in-game to help you locate it.</li>
+      <li>Use Show whole vehicle whenever you want to bring every part back into view (for example before closing the app).</li>
+      <li>Modify the paint values (RGB color, alpha, metallic, roughness, clearcoat, clearcoat roughness) for each paint slot.</li>
+      <li>Click Apply paint to part to push the changes to the vehicle. Use Reset to vehicle paints to revert to the current vehicle-wide paint scheme.</li>
+    </ol>
+    <footer class="vehicle-parts-painting-modal__actions">
+      <button
+        type="button"
+        class="vehicle-parts-painting-modal__action"
+        ng-click="$ctrl.close($event)"
+      >
+        Close
+      </button>
+    </footer>
+  </section>
+</div>
