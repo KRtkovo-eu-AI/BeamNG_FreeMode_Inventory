@@ -58,7 +58,7 @@ angular.module('beamng.apps')
         minimizedInlineStyle: {},
         basePaintCollapsed: false,
         partPaintCollapsed: false,
-        configToolsCollapsed: true,
+        configToolsCollapsed: false,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',
@@ -86,7 +86,14 @@ angular.module('beamng.apps')
         liveryEditorConfirmation: {
           visible: false
         },
-        liveryEditorSupported: null
+        liveryEditorSupported: null,
+        motionWarning: {
+          moving: false,
+          acknowledged: false,
+          dialogVisible: false,
+          speed: 0,
+          vehicleId: null
+        }
       };
 
       $scope.state = state;
@@ -154,17 +161,20 @@ angular.module('beamng.apps')
       const LIVERY_EDITOR_UNAVAILABLE_MESSAGE = 'Vehicle Livery Editor is not available in this UI.';
       const LIVERY_EDITOR_UNSUPPORTED_MESSAGE = 'Vehicle Livery Editor is not available for this vehicle.';
       const LIVERY_EDITOR_MESSAGE_CATEGORY = 'vehiclePartsPainting';
+      const MOTION_WARNING_MESSAGE = 'Saving configurations while driving is disabled. Please stop the vehicle before saving.';
 
       const DEFAULT_CONFIG_PREVIEW_IMAGE = 'ui/modules/apps/vehiclePartsPainting/missing-preview.png';
 
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
+      $scope.motionWarningMessage = MOTION_WARNING_MESSAGE;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
-      const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 2000;
-      const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 8;
+      const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 3000;
+      const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 12;
       let customBadgeRefreshPromise = null;
       let savedConfigRefreshTimeout = null;
       let savedConfigPreviewTracking = Object.create(null);
+      let savedConfigPreviewForceCounter = 0;
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
@@ -936,28 +946,44 @@ end)()`;
         return null;
       }
 
-      function buildConfigPreviewSrc(path) {
+      function buildConfigPreviewSrc(path, signature) {
         if (typeof path !== 'string') { return null; }
         let normalized = path.trim();
         if (!normalized) { return null; }
         normalized = normalized.replace(/\\/g, '/');
 
+        let result = null;
+
         if (/^(?:[a-z]+:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
-          return normalized;
+          result = normalized;
+        } else {
+          let candidate = normalized;
+          if (bngApi && typeof bngApi.resourceUrl === 'function') {
+            try {
+              const resolved = bngApi.resourceUrl(candidate);
+              if (resolved) {
+                result = resolved;
+              }
+            } catch (err) { /* ignore resolution errors */ }
+          }
+
+          if (!result) {
+            if (candidate.charAt(0) === '/') {
+              result = candidate;
+            } else {
+              result = '/' + candidate.replace(/^\/+/, '');
+            }
+          }
         }
 
-        if (bngApi && typeof bngApi.resourceUrl === 'function') {
-          try {
-            const resolved = bngApi.resourceUrl(normalized);
-            if (resolved) { return resolved; }
-          } catch (err) { /* ignore resolution errors */ }
+        if (!result) { return null; }
+
+        if (signature) {
+          const separator = result.indexOf('?') === -1 ? '?' : '&';
+          result = result + separator + 'v=' + encodeURIComponent(signature);
         }
 
-        if (normalized.charAt(0) === '/') {
-          return normalized;
-        }
-
-        return '/' + normalized.replace(/^\/+/, '');
+        return result;
       }
 
       function hasConfigPreview(config) {
@@ -1015,11 +1041,16 @@ end)()`;
         return false;
       }
 
-      function performSaveConfiguration(name) {
+      function performSaveConfiguration(name, options) {
+        options = options || {};
+        const replaceTarget = options.replaceTarget || null;
         clearPendingReplacement();
         state.saveErrorMessage = null;
         state.isSavingConfig = true;
         resetSavedConfigPreviewTracking();
+        if (replaceTarget) {
+          markSavedConfigPreviewForRefresh(replaceTarget);
+        }
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
         bngApi.engineLua(command);
@@ -1513,40 +1544,79 @@ end)()`;
 
       function resetSavedConfigPreviewTracking() {
         savedConfigPreviewTracking = Object.create(null);
+        savedConfigPreviewForceCounter = 0;
+      }
+
+      function markSavedConfigPreviewForRefresh(config) {
+        if (!config || typeof config !== 'object') { return; }
+        const key = (typeof config.relativePath === 'string' && config.relativePath)
+          ? config.relativePath
+          : null;
+        if (!key) { return; }
+        let signature = null;
+        if (typeof config.previewSignature === 'string' && config.previewSignature) {
+          signature = config.previewSignature;
+        } else {
+          signature = computeConfigPreviewSignature(config);
+        }
+        const forceKey = 'force-' + (++savedConfigPreviewForceCounter) + '-' + Date.now();
+        savedConfigPreviewTracking[key] = {
+          attempts: SAVED_CONFIG_FAST_REFRESH_ATTEMPTS,
+          signature: signature,
+          force: true,
+          forceKey: forceKey
+        };
       }
 
       function updateSavedConfigPreviewTracking(configs) {
+        const previousTracking = savedConfigPreviewTracking || {};
         const next = Object.create(null);
         let hasPending = false;
         if (Array.isArray(configs)) {
           configs.forEach(function (config) {
-            if (!config || typeof config.relativePath !== 'string') { return; }
-            if (config.hasPreviewImage || hasConfigPreview(config)) { return; }
-            const key = config.relativePath;
-            const signature = (config.previewSignature && typeof config.previewSignature === 'string')
+            if (!config || typeof config !== 'object') { return; }
+            const key = (typeof config.relativePath === 'string' && config.relativePath)
+              ? config.relativePath
+              : null;
+            if (!key) { return; }
+            const previous = Object.prototype.hasOwnProperty.call(previousTracking, key)
+              ? previousTracking[key]
+              : null;
+            const signature = (typeof config.previewSignature === 'string' && config.previewSignature)
               ? config.previewSignature
               : computeConfigPreviewSignature(config);
-            let previousAttempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
-            if (Object.prototype.hasOwnProperty.call(savedConfigPreviewTracking, key)) {
-              const previous = savedConfigPreviewTracking[key];
-              if (previous && typeof previous === 'object') {
-                if (previous.signature && previous.signature !== signature) {
-                  previousAttempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
-                } else if (typeof previous.attempts === 'number') {
-                  previousAttempts = previous.attempts;
-                }
-              }
-            }
-            if (previousAttempts <= 0) {
-              next[key] = { attempts: 0, signature: signature };
+            const hasPreviewImage = config.hasPreviewImage || hasConfigPreview(config);
+            const isForced = !!(previous && previous.force);
+            const forceKey = (previous && typeof previous.forceKey === 'string')
+              ? previous.forceKey
+              : null;
+
+            if (!isForced && hasPreviewImage) {
               return;
             }
-            const remaining = previousAttempts - 1;
+
+            if (isForced && previous && previous.signature && previous.signature !== signature) {
+              return;
+            }
+
+            let attempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+            if (!isForced && previous && previous.signature && previous.signature !== signature) {
+              attempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+            } else if (previous && typeof previous.attempts === 'number') {
+              attempts = previous.attempts;
+            }
+
+            if (attempts <= 0) {
+              next[key] = { attempts: 0, signature: signature, force: isForced, forceKey: isForced ? forceKey : null };
+              return;
+            }
+
+            const remaining = attempts - 1;
             if (remaining > 0) {
               hasPending = true;
-              next[key] = { attempts: remaining, signature: signature };
+              next[key] = { attempts: remaining, signature: signature, force: isForced, forceKey: isForced ? forceKey : null };
             } else {
-              next[key] = { attempts: 0, signature: signature };
+              next[key] = { attempts: 0, signature: signature, force: isForced, forceKey: isForced ? forceKey : null };
             }
           });
         }
@@ -2330,6 +2400,11 @@ end)()`;
         state.minimizedInlineStyle = {};
       };
 
+      $scope.dismissMotionWarning = function () {
+        state.motionWarning.dialogVisible = false;
+        state.motionWarning.acknowledged = true;
+      };
+
       $scope.confirmLiveryEditorLaunch = function () {
         const callback = pendingLiveryEditorLaunch;
         clearLiveryEditorConfirmation();
@@ -2518,6 +2593,10 @@ end)()`;
         if (!source || typeof source !== 'object') { return null; }
         const computedKeys = { displayName: true, hasPreviewImage: true, previewPath: true, previewSrc: true, previewSignature: true };
         const result = target && typeof target === 'object' ? target : {};
+        const previousSignature = (result && typeof result.previewSignature === 'string' && result.previewSignature)
+          ? result.previewSignature
+          : null;
+        const hadPreviewQuery = !!(result && typeof result.previewSrc === 'string' && result.previewSrc.indexOf('?') !== -1);
         Object.keys(result).forEach(function (key) {
           if (Object.prototype.hasOwnProperty.call(computedKeys, key)) { return; }
           if (!Object.prototype.hasOwnProperty.call(source, key)) {
@@ -2532,9 +2611,46 @@ end)()`;
         result.displayName = getSavedConfigDisplayName(result);
         result.hasPreviewImage = hasConfigPreview(result);
         const previewPath = resolveConfigPreviewPath(result);
+        const previewSignature = computeConfigPreviewSignature(result);
+        const pathKey = (typeof result.relativePath === 'string' && result.relativePath)
+          ? result.relativePath
+          : null;
+        const tracking = (pathKey && Object.prototype.hasOwnProperty.call(savedConfigPreviewTracking, pathKey))
+          ? savedConfigPreviewTracking[pathKey]
+          : null;
+        const forcedRefreshActive = !!(tracking && tracking.force);
+        const forcedAttempts = (forcedRefreshActive && typeof tracking.attempts === 'number')
+          ? tracking.attempts
+          : null;
+        let forcedBaseKey = null;
+        if (forcedRefreshActive) {
+          if (tracking && typeof tracking.forceKey === 'string' && tracking.forceKey) {
+            forcedBaseKey = tracking.forceKey;
+          } else if (tracking && tracking.signature) {
+            forcedBaseKey = tracking.signature;
+          } else {
+            forcedBaseKey = previewSignature || previousSignature || 'refresh';
+          }
+        }
         result.previewPath = previewPath;
-        result.previewSrc = previewPath ? buildConfigPreviewSrc(previewPath) : null;
-        result.previewSignature = computeConfigPreviewSignature(result);
+        result.previewSignature = previewSignature;
+        if (!previewPath) {
+          result.previewSrc = null;
+        } else if (forcedRefreshActive) {
+          const attemptMarker = (typeof forcedAttempts === 'number')
+            ? ':' + forcedAttempts
+            : ':force';
+          const cacheKey = (forcedBaseKey || 'refresh') + attemptMarker;
+          result.previewSrc = buildConfigPreviewSrc(previewPath, cacheKey);
+        } else {
+          const shouldAppendSignature = (!!previousSignature && previousSignature !== previewSignature) || hadPreviewQuery;
+          if (shouldAppendSignature) {
+            const cacheKey = previewSignature || previousSignature;
+            result.previewSrc = cacheKey ? buildConfigPreviewSrc(previewPath, cacheKey) : buildConfigPreviewSrc(previewPath);
+          } else {
+            result.previewSrc = buildConfigPreviewSrc(previewPath);
+          }
+        }
         return result;
       }
 
@@ -2643,6 +2759,7 @@ end)()`;
 
       $scope.saveCurrentConfiguration = function () {
         if (state.isSavingConfig || state.showReplaceConfirmation) { return; }
+        if (state.motionWarning.moving) { return; }
         const name = typeof state.configNameInput === 'string' ? state.configNameInput.trim() : '';
         if (!name) {
           state.saveErrorMessage = 'Please enter a configuration name.';
@@ -2671,7 +2788,8 @@ end)()`;
           clearPendingReplacement();
           return;
         }
-        performSaveConfiguration(name);
+        const replaceTarget = state.pendingExistingConfig || null;
+        performSaveConfiguration(name, { replaceTarget: replaceTarget });
       };
 
       $scope.cancelReplaceSavedConfig = function () {
@@ -2754,6 +2872,7 @@ end)()`;
           const previousVehicleId = state.vehicleId;
           state.vehicleId = data.vehicleId || null;
           const vehicleChanged = state.vehicleId !== previousVehicleId;
+          state.motionWarning.vehicleId = state.vehicleId;
 
           if (Object.prototype.hasOwnProperty.call(data, 'colorPresets')) {
             updateColorPresets(data.colorPresets, { preserveExistingOnEmpty: true });
@@ -2790,6 +2909,11 @@ end)()`;
             refreshCustomBadgeVisibility();
             cancelSavedConfigRefreshTimer();
             resetSavedConfigPreviewTracking();
+            state.motionWarning.moving = false;
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+            state.motionWarning.speed = 0;
+            state.motionWarning.vehicleId = null;
             return;
           }
 
@@ -2817,6 +2941,11 @@ end)()`;
             sendShowAllCommand();
             resetSavedConfigPreviewTracking();
             requestSavedConfigs();
+            state.motionWarning.moving = false;
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+            state.motionWarning.speed = 0;
+            state.motionWarning.vehicleId = state.vehicleId;
           }
 
           if (!vehicleChanged) {
@@ -2846,11 +2975,57 @@ end)()`;
         });
       });
 
+      $scope.$on('VehiclePartsPaintingMotionState', function (event, data) {
+        data = data || {};
+        $scope.$evalAsync(function () {
+          const reportedVehicleId = (data.vehicleId === false || data.vehicleId === null || data.vehicleId === undefined)
+            ? null
+            : data.vehicleId;
+          const speed = typeof data.speed === 'number' ? data.speed : 0;
+
+          if (!state.vehicleId) {
+            state.motionWarning.moving = false;
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+            state.motionWarning.speed = 0;
+            state.motionWarning.vehicleId = reportedVehicleId;
+            return;
+          }
+
+          if (reportedVehicleId !== null && reportedVehicleId !== state.vehicleId) {
+            return;
+          }
+
+          const vehicleChanged = reportedVehicleId !== state.motionWarning.vehicleId;
+          if (vehicleChanged) {
+            state.motionWarning.vehicleId = reportedVehicleId;
+            state.motionWarning.acknowledged = false;
+          }
+
+          const moving = !!data.moving && reportedVehicleId !== null;
+          state.motionWarning.moving = moving;
+          state.motionWarning.speed = speed;
+
+          if (!moving) {
+            state.motionWarning.dialogVisible = false;
+            state.motionWarning.acknowledged = false;
+          } else if (!state.motionWarning.acknowledged) {
+            state.motionWarning.dialogVisible = true;
+          }
+        });
+      });
+
       $scope.$on('VehiclePartsPaintingSavedConfigs', function (event, data) {
         data = data || {};
         $scope.$evalAsync(function () {
           const wasSaving = state.isSavingConfig;
-          clearPendingReplacement();
+          const hadPendingReplacement = !!state.showReplaceConfirmation;
+          const pendingName = typeof state.pendingConfigName === 'string'
+            ? state.pendingConfigName
+            : null;
+          const pendingSanitized = typeof state.pendingSanitizedName === 'string'
+            ? state.pendingSanitizedName
+            : null;
           const rawConfigs = Array.isArray(data.configs)
             ? data.configs.filter(function (config) { return config && typeof config === 'object'; })
             : [];
@@ -2858,6 +3033,27 @@ end)()`;
 
           const previousSelection = state.selectedSavedConfig ? state.selectedSavedConfig.relativePath : null;
           state.savedConfigs = configs;
+
+          let preservePendingReplacement = false;
+          if (hadPendingReplacement) {
+            const lookupName = pendingSanitized || pendingName;
+            if (lookupName) {
+              const updated = resolveExistingConfig(lookupName);
+              if (updated && updated.existing) {
+                state.pendingExistingConfig = updated.existing;
+                state.pendingSanitizedName = updated.sanitized || pendingSanitized || null;
+                state.pendingConfigName = pendingName !== null
+                  ? pendingName
+                  : (updated.sanitized || lookupName);
+                state.showReplaceConfirmation = true;
+                preservePendingReplacement = true;
+              }
+            }
+          }
+
+          if (!preservePendingReplacement) {
+            clearPendingReplacement();
+          }
 
           state.deleteConfigDialog.isDeleting = false;
           if (state.deleteConfigDialog.visible) {

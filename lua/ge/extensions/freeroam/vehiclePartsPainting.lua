@@ -21,6 +21,8 @@ local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
 local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
+local activeScreenshotPauseState = nil
+local screenshotPauseHandleCounter = 0
 
 local sanitizeColorPresetEntry
 local previewImageExtensions = { '.png', '.jpg', '.jpeg', '.webp' }
@@ -33,9 +35,125 @@ local configurationThumbnailSettings = {
   nearPlane = 0.1,
   cameraOffset = vec3(0, 0, -0.2),
   screenshotDelay = 0.75,
-  renderViewName = 'vehiclePartsPainting_thumbnail'
+  renderViewName = 'vehiclePartsPainting_thumbnail',
+  pauseResumeBuffer = 0.4,
+  minimumPauseDuration = 0.25,
+  motionCompensationEnabled = true,
+  motionCompensationLeadTime = false,
+  motionCompensationSpeedThreshold = 0.5,
+  motionCompensationMaxDistance = 0,
+  motionCompensationMinLeadTime = 0.35,
+  motionCompensationForwardFactor = 1,
+  motionCompensationLateralFactor = 0.45,
+  motionCompensationVerticalFactor = 0
 }
 configurationThumbnailSettings.aspectRatio = configurationThumbnailSettings.width / configurationThumbnailSettings.height
+
+local movingThumbnailCameraSettings = {
+  offset = vec3(0, -3.5, -0.15),
+  fovMultiplier = 0.15
+}
+
+local thumbnailCameraOffsetAxisLocal = vec3(-0.75, -0.66, 0.1):normalized()
+local thumbnailCameraLeftLocal = thumbnailCameraOffsetAxisLocal:cross(vec3(0, 0, 1))
+local thumbnailCameraUpLocal = thumbnailCameraOffsetAxisLocal:cross(vec3(1, 0, 0))
+
+local vehicleMotionWarningSettings = {
+  enterSpeed = 0.8,
+  exitSpeed = 0.35
+}
+
+local vehicleMotionState = {
+  vehicleId = false,
+  moving = false,
+  speed = 0
+}
+
+local function safeVec3(value)
+  if value == nil then return nil end
+  local ok, vec = pcall(vec3, value)
+  if not ok or not vec then
+    return nil
+  end
+  return vec
+end
+
+local function normalizedVecOrNil(value)
+  local vector = safeVec3(value)
+  if not vector then
+    return nil
+  end
+  local length = vector:length()
+  if not length or length <= 0 then
+    return nil
+  end
+  return vector / length
+end
+
+local function callVehicleVector(veh, methodName, normalize)
+  if not veh or type(methodName) ~= 'string' or methodName == '' then
+    return nil
+  end
+  local method = veh[methodName]
+  if type(method) ~= 'function' then
+    return nil
+  end
+  local ok, result = pcall(method, veh)
+  if not ok or not result then
+    return nil
+  end
+  if normalize then
+    return normalizedVecOrNil(result)
+  end
+  return safeVec3(result)
+end
+
+local function clampNumber(value, minValue, maxValue)
+  if value == nil then return minValue end
+  if maxValue ~= nil and value > maxValue then
+    return maxValue
+  end
+  if minValue ~= nil and value < minValue then
+    return minValue
+  end
+  return value
+end
+
+local function applyCameraOffset(basePos, frame, offset)
+  if not basePos or not offset then
+    return basePos
+  end
+
+  local offsetVec = safeVec3(offset)
+  if not offsetVec then
+    return basePos
+  end
+
+  local worldOffset = nil
+  if frame then
+    local basisRight = frame.right
+    local basisForward = frame.forward
+    local basisUp = frame.up
+
+    if basisRight then
+      worldOffset = (basisRight * (offsetVec.x or 0))
+    end
+    if basisForward then
+      local forwardComponent = basisForward * (offsetVec.y or 0)
+      worldOffset = worldOffset and (worldOffset + forwardComponent) or forwardComponent
+    end
+    if basisUp then
+      local upComponent = basisUp * (offsetVec.z or 0)
+      worldOffset = worldOffset and (worldOffset + upComponent) or upComponent
+    end
+  end
+
+  if not worldOffset then
+    worldOffset = offsetVec
+  end
+
+  return basePos + worldOffset
+end
 
 
 local function createBasePaintWorkaroundState()
@@ -307,36 +425,37 @@ local function ensureRenderViewsExtension()
   return extension
 end
 
-local function frameVehicleForThumbnail(veh, fov, nearPlane, aspectRatio)
-  if not veh or type(veh.getSpawnWorldOOBB) ~= 'function' then
-    return nil, nil
-  end
-  local bb = veh:getSpawnWorldOOBB()
-  if not bb then
-    return nil, nil
+local function computeThumbnailCameraFrame(bbCenter, basisRight, basisForward, basisUp, halfExtentX, halfExtentY, halfExtentZ, fov, nearPlane, aspectRatio)
+  if not bbCenter or not basisRight or not basisForward or not basisUp then
+    return nil
   end
 
-  local bbCenter = bb:getCenter()
-  local axis0, axis1, axis2 = bb:getAxis(0), bb:getAxis(1), bb:getAxis(2)
-  if not axis0 or not axis1 or not axis2 then
-    return nil, nil
+  local camOffsetAxis = basisRight * thumbnailCameraOffsetAxisLocal.x + basisForward * thumbnailCameraOffsetAxisLocal.y + basisUp * thumbnailCameraOffsetAxisLocal.z
+  if not camOffsetAxis then
+    return nil
   end
 
-  local halfExtents = bb:getHalfExtents()
-  if not halfExtents then
-    return nil, nil
+  local rawCamLeft = basisRight * thumbnailCameraLeftLocal.x + basisForward * thumbnailCameraLeftLocal.y + basisUp * thumbnailCameraLeftLocal.z
+  local rawCamUp = basisRight * thumbnailCameraUpLocal.x + basisForward * thumbnailCameraUpLocal.y + basisUp * thumbnailCameraUpLocal.z
+
+  if not rawCamLeft or not rawCamUp then
+    return nil
   end
 
-  local camOffsetAxisLocal = vec3(-0.75, -0.66, 0.1):normalized()
-  local camLeftLocal = camOffsetAxisLocal:cross(vec3(0, 0, 1))
-  local camUpLocal = camOffsetAxisLocal:cross(vec3(1, 0, 0))
+  local camLeftLength = rawCamLeft:length()
+  if not camLeftLength or camLeftLength <= 0 then
+    return nil
+  end
+  local camLeft = rawCamLeft / camLeftLength
 
-  local camOffsetAxis = axis0 * camOffsetAxisLocal.x + axis1 * camOffsetAxisLocal.y + axis2 * camOffsetAxisLocal.z
-  local camLeft = (axis0 * camLeftLocal.x + axis1 * camLeftLocal.y + axis2 * camLeftLocal.z):normalized()
-  local camUp = (axis0 * camUpLocal.x + axis1 * camUpLocal.y + axis2 * camUpLocal.z):normalized()
+  local camUpLength = rawCamUp:length()
+  if not camUpLength or camUpLength <= 0 then
+    return nil
+  end
+  local camUp = rawCamUp / camUpLength
 
-  local bbUpperPoint = bbCenter + axis2 * (halfExtents.z + 0.35)
-  local bbForwardPoint = bbCenter - axis1 * (halfExtents.y + 0.35)
+  local bbUpperPoint = bbCenter + basisUp * (halfExtentZ + 0.35)
+  local bbForwardPoint = bbCenter - basisForward * (halfExtentY + 0.35)
 
   local upperCamFovAngle = fov / 2
   local upperCamFovDir = quatFromAxisAngle(camLeft, upperCamFovAngle / 180 * math.pi):__mul(-camOffsetAxis)
@@ -356,9 +475,575 @@ local function frameVehicleForThumbnail(veh, fov, nearPlane, aspectRatio)
     finalCamPos = camPosHorizontal
   end
 
-  local camRot = quatFromDir(bbCenter - (axis1 * halfExtents.y / 8) - finalCamPos)
+  local targetPoint = bbCenter - basisForward * (halfExtentY / 8)
+  local forwardVector = targetPoint - finalCamPos
+  local forwardLength = forwardVector:length()
+  if not forwardLength or forwardLength <= 0 then
+    return nil
+  end
+  local camForward = forwardVector / forwardLength
 
-  return finalCamPos, camRot
+  local projection = camUp:dot(camForward)
+  if math.abs(projection) > 1e-4 then
+    local adjustedUp = camUp - camForward * projection
+    local adjustedLength = adjustedUp:length()
+    if adjustedLength and adjustedLength > 0 then
+      camUp = adjustedUp / adjustedLength
+    end
+  end
+
+  local camRight = camForward:cross(camUp)
+  local rightLength = camRight:length()
+  if not rightLength or rightLength <= 0 then
+    camRight = (-camLeft):normalized()
+  else
+    camRight = camRight / rightLength
+  end
+
+  camUp = camRight:cross(camForward)
+  local upLength = camUp:length()
+  if upLength and upLength > 0 then
+    camUp = camUp / upLength
+  end
+
+  local camRot = quatFromDir(forwardVector)
+
+  return {
+    pos = finalCamPos,
+    rot = camRot,
+    forward = camForward,
+    right = camRight,
+    up = camUp,
+    left = camLeft,
+    offsetAxis = camOffsetAxis,
+    target = targetPoint
+  }
+end
+
+local function frameVehicleForThumbnail(veh, fov, nearPlane, aspectRatio, options)
+  if not veh or type(veh.getSpawnWorldOOBB) ~= 'function' then
+    return nil, nil
+  end
+  local bb = veh:getSpawnWorldOOBB()
+  if not bb then
+    return nil, nil
+  end
+
+  local bbCenter = bb:getCenter()
+  local axis0, axis1, axis2 = bb:getAxis(0), bb:getAxis(1), bb:getAxis(2)
+  if not axis0 or not axis1 or not axis2 then
+    return nil, nil
+  end
+
+  local halfExtents = bb:getHalfExtents()
+  if not halfExtents then
+    return nil, nil
+  end
+
+  local motionOptions = nil
+  if type(options) == 'table' then
+    motionOptions = options
+  end
+
+  local motionLeadTime = 0
+  local motionSpeedThreshold = 0
+  local motionMaxDistance = 0
+  local motionForwardFactor = configurationThumbnailSettings.motionCompensationForwardFactor or 1
+  local motionLateralFactor = configurationThumbnailSettings.motionCompensationLateralFactor or 0.45
+  local motionVerticalFactor = configurationThumbnailSettings.motionCompensationVerticalFactor or 0
+  local providedVelocity = nil
+  local allowMotionCompensation = false
+  if motionOptions and motionOptions.motionCompensationEnabled ~= false then
+    motionLeadTime = tonumber(motionOptions.motionLeadTime) or 0
+    motionSpeedThreshold = tonumber(motionOptions.motionMinSpeed) or 0
+    motionMaxDistance = tonumber(motionOptions.motionMaxDistance) or 0
+    if motionOptions.motionForwardFactor ~= nil then
+      motionForwardFactor = tonumber(motionOptions.motionForwardFactor) or motionForwardFactor
+    end
+    if motionOptions.motionLateralFactor ~= nil then
+      motionLateralFactor = tonumber(motionOptions.motionLateralFactor) or motionLateralFactor
+    end
+    if motionOptions.motionVerticalFactor ~= nil then
+      motionVerticalFactor = tonumber(motionOptions.motionVerticalFactor) or motionVerticalFactor
+    end
+    if motionOptions.sampledVelocity ~= nil then
+      providedVelocity = safeVec3(motionOptions.sampledVelocity)
+    elseif motionOptions.motionVelocity ~= nil then
+      providedVelocity = safeVec3(motionOptions.motionVelocity)
+    end
+    if motionLeadTime > 0 then
+      allowMotionCompensation = true
+    end
+  end
+
+  local halfExtentX = halfExtents.x or 0
+  local halfExtentY = halfExtents.y or 0
+  local halfExtentZ = halfExtents.z or 0
+  local halfExtentLength = halfExtents:length()
+
+  local axisRight = axis0:normalized()
+  local axisForward = axis1:normalized()
+  local axisUp = axis2:normalized()
+
+  local basisRight = axisRight
+  local basisForward = axisForward
+  local basisUp = axisUp
+
+  local vehForward = callVehicleVector(veh, 'getDirectionVector', true)
+  local vehUp = callVehicleVector(veh, 'getDirectionVectorUp', true)
+  local vehRight = callVehicleVector(veh, 'getDirectionVectorRight', true)
+
+  if vehForward then basisForward = vehForward end
+  if vehUp then basisUp = vehUp end
+  if vehRight then basisRight = vehRight end
+
+  local function alignBasisVector(candidate, reference)
+    if not candidate then
+      return nil
+    end
+    local length = candidate:length()
+    if not length or length <= 0 then
+      return nil
+    end
+    local normalized = candidate / length
+    if reference then
+      local refLength = reference:length()
+      if refLength and refLength > 0 and normalized:dot(reference) < 0 then
+        normalized = -normalized
+      end
+    end
+    return normalized
+  end
+
+  basisForward = alignBasisVector(basisForward, axisForward) or axisForward
+  basisUp = alignBasisVector(basisUp, axisUp) or axisUp
+  basisRight = alignBasisVector(basisRight, axisRight) or axisRight
+
+  if basisForward and basisUp then
+    local projection = basisForward:dot(basisUp)
+    if math.abs(projection) > 1e-3 then
+      local adjustedUp = basisUp - basisForward * projection
+      if adjustedUp:length() > 0 then
+        basisUp = alignBasisVector(adjustedUp, axisUp) or axisUp
+      end
+    end
+  end
+
+  if basisForward and basisUp then
+    local computedRight = basisForward:cross(basisUp)
+    if computedRight:length() > 0 then
+      basisRight = alignBasisVector(computedRight, axisRight) or axisRight
+    end
+  end
+
+  if basisRight and basisForward then
+    local rebuiltUp = basisRight:cross(basisForward)
+    if rebuiltUp:length() > 0 then
+      basisUp = alignBasisVector(rebuiltUp, axisUp) or axisUp
+    end
+  end
+
+  basisRight = basisRight or axisRight
+  basisForward = basisForward or axisForward
+  basisUp = basisUp or axisUp
+
+  local frame = computeThumbnailCameraFrame(bbCenter, basisRight, basisForward, basisUp, halfExtentX, halfExtentY, halfExtentZ, fov, nearPlane, aspectRatio)
+  if not frame then
+    return nil, nil
+  end
+
+  local motionOffset = nil
+  if allowMotionCompensation then
+    local velocity = providedVelocity
+    if not velocity then
+      velocity = callVehicleVector(veh, 'getVelocityXYZ', false)
+      if not velocity and type(veh.getVelocity) == 'function' then
+        velocity = callVehicleVector(veh, 'getVelocity', false)
+      end
+    end
+    if velocity then
+      local speed = velocity:length()
+      if speed > motionSpeedThreshold then
+        local displacement = velocity * motionLeadTime
+
+        local forwardClamp = math.max(halfExtentY * 0.65, halfExtentLength * 0.25, 0.75)
+        local lateralClamp = math.max(halfExtentX * 0.85, halfExtentLength * 0.3, 0.6)
+        local verticalClamp = math.max(halfExtentZ * 0.5, halfExtentLength * 0.15, 0.3)
+
+        local forwardComponent = frame.forward and displacement:dot(frame.forward) or 0
+        local lateralComponent = frame.right and displacement:dot(frame.right) or 0
+        local verticalComponent = frame.up and displacement:dot(frame.up) or 0
+
+        local forwardOffset = clampNumber(forwardComponent * motionForwardFactor, -forwardClamp, forwardClamp)
+        local lateralOffset = clampNumber(lateralComponent * motionLateralFactor, -lateralClamp, lateralClamp)
+        local verticalOffset = clampNumber(verticalComponent * motionVerticalFactor, -verticalClamp, verticalClamp)
+
+        local offsetVector = nil
+        if frame.forward and math.abs(forwardOffset) > 1e-4 then
+          offsetVector = frame.forward * forwardOffset
+        end
+        if frame.right and math.abs(lateralOffset) > 1e-4 then
+          offsetVector = offsetVector and (offsetVector + frame.right * lateralOffset) or (frame.right * lateralOffset)
+        end
+        if frame.up and math.abs(verticalOffset) > 1e-4 then
+          offsetVector = offsetVector and (offsetVector + frame.up * verticalOffset) or (frame.up * verticalOffset)
+        end
+
+        if offsetVector then
+          local offsetLength = offsetVector:length()
+          local maxDistance = motionMaxDistance
+          if not maxDistance or maxDistance <= 0 then
+            local fallback = math.max(halfExtentLength * 1.2, forwardClamp + lateralClamp, 2.5)
+            maxDistance = fallback
+          else
+            maxDistance = math.max(maxDistance, 0.5)
+          end
+          if offsetLength > maxDistance then
+            offsetVector = offsetVector * (maxDistance / offsetLength)
+          end
+          motionOffset = offsetVector
+        end
+      end
+    end
+  end
+
+  if motionOffset then
+    bbCenter = bbCenter + motionOffset
+    frame = computeThumbnailCameraFrame(bbCenter, basisRight, basisForward, basisUp, halfExtentX, halfExtentY, halfExtentZ, fov, nearPlane, aspectRatio)
+    if not frame then
+      return nil, nil
+    end
+  end
+
+  return frame.pos, frame.rot, frame
+end
+
+local function isGameplayCurrentlyPaused()
+  local globalEnv = _G
+  if type(globalEnv) ~= 'table' then
+    return false
+  end
+
+  local pauseStateGetter = rawget(globalEnv, 'getGamePause') or rawget(globalEnv, 'isGamePaused')
+  if type(pauseStateGetter) == 'function' then
+    local okState, stateValue = safePcall(pauseStateGetter)
+    if okState then
+      local valueType = type(stateValue)
+      if valueType == 'boolean' then
+        if stateValue then
+          return true
+        end
+      elseif valueType == 'number' then
+        if stateValue ~= 0 then
+          return true
+        end
+      end
+    end
+  end
+
+  local speedGetter = rawget(globalEnv, 'getGameSpeed')
+  if type(speedGetter) == 'function' then
+    local okSpeed, speedValue = safePcall(speedGetter)
+    if okSpeed and type(speedValue) == 'number' and speedValue == 0 then
+      return true
+    end
+  end
+
+  local simAuthority = rawget(globalEnv, 'simTimeAuthority')
+  if type(simAuthority) == 'table' then
+    local getFunc = rawget(simAuthority, 'getReal') or rawget(simAuthority, 'get')
+    if type(getFunc) == 'function' then
+      local okRate, rate = safePcall(getFunc)
+      if okRate and type(rate) == 'number' and rate == 0 then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
+local function beginTemporaryGamePause()
+  local globalEnv = _G
+  if type(globalEnv) ~= 'table' then
+    return nil
+  end
+
+  local simTimeAuthority = rawget(globalEnv, 'simTimeAuthority')
+  if type(simTimeAuthority) == 'table' then
+    local pauseFunc = rawget(simTimeAuthority, 'pause')
+    if type(pauseFunc) == 'function' then
+      local getPauseFunc = rawget(simTimeAuthority, 'getPause')
+      local wasPaused = nil
+      if type(getPauseFunc) == 'function' then
+        local okState, stateValue = safePcall(getPauseFunc)
+        if okState then
+          local valueType = type(stateValue)
+          if valueType == 'boolean' then
+            wasPaused = stateValue
+          elseif valueType == 'number' then
+            wasPaused = stateValue ~= 0
+          end
+        end
+      end
+
+      local okPause = safePcall(pauseFunc, true, false)
+      if okPause then
+        local resumed = false
+        return function()
+          if resumed then
+            return
+          end
+          resumed = true
+          local targetState = false
+          if wasPaused ~= nil then
+            targetState = wasPaused
+          end
+          safePcall(pauseFunc, targetState, false)
+        end
+      end
+    end
+  end
+
+  local pauseSetter = rawget(globalEnv, 'setGamePause')
+  if type(pauseSetter) == 'function' then
+    local stateGetter = rawget(globalEnv, 'getGamePause') or rawget(globalEnv, 'isGamePaused')
+    local wasPaused = nil
+    if type(stateGetter) == 'function' then
+      local okState, stateValue = safePcall(stateGetter)
+      if okState then
+        local valueType = type(stateValue)
+        if valueType == 'boolean' then
+          wasPaused = stateValue
+        elseif valueType == 'number' then
+          wasPaused = stateValue ~= 0
+        end
+      end
+    end
+
+    local okPause = safePcall(pauseSetter, true)
+    if okPause then
+      return function()
+        local targetState = false
+        if wasPaused ~= nil then
+          targetState = wasPaused
+        end
+        safePcall(pauseSetter, targetState)
+      end
+    end
+  end
+
+  local speedSetter = rawget(globalEnv, 'setGameSpeed')
+  if type(speedSetter) == 'function' then
+    local speedGetter = rawget(globalEnv, 'getGameSpeed')
+    local originalSpeed = nil
+    if type(speedGetter) == 'function' then
+      local okSpeed, speedValue = safePcall(speedGetter)
+      if okSpeed and type(speedValue) == 'number' then
+        originalSpeed = speedValue
+      end
+    end
+
+    local okPause = safePcall(speedSetter, 0)
+    if okPause then
+      return function()
+        local resumeSpeed = originalSpeed
+        if type(resumeSpeed) ~= 'number' or resumeSpeed <= 0 then
+          resumeSpeed = 1
+        end
+        safePcall(speedSetter, resumeSpeed)
+      end
+    end
+  end
+
+  return nil
+end
+
+local function resumeGameplayAfterScreenshotPause()
+  if not activeScreenshotPauseState then
+    return
+  end
+  local state = activeScreenshotPauseState
+  activeScreenshotPauseState = nil
+  if state and type(state.resumeFunc) == 'function' then
+    safePcall(state.resumeFunc)
+  end
+end
+
+local function ensureGamePausedForScreenshot()
+  if activeScreenshotPauseState and activeScreenshotPauseState.resumeFunc then
+    activeScreenshotPauseState.handles = activeScreenshotPauseState.handles or {}
+    return activeScreenshotPauseState
+  end
+
+  local resumeFunc = beginTemporaryGamePause()
+  if not resumeFunc then
+    return nil
+  end
+
+  activeScreenshotPauseState = {
+    resumeFunc = resumeFunc,
+    handles = {}
+  }
+
+  return activeScreenshotPauseState
+end
+
+local function cancelScreenshotPauseHandle(handle)
+  local state = activeScreenshotPauseState
+  if not state then
+    return
+  end
+
+  if state.handles then
+    if handle ~= nil then
+      state.handles[handle] = nil
+    else
+      for key in pairs(state.handles) do
+        state.handles[key] = nil
+      end
+    end
+  end
+
+  if not state.handles or not next(state.handles) then
+    resumeGameplayAfterScreenshotPause()
+  end
+end
+
+local function scheduleScreenshotPauseHandle(duration)
+  local state = ensureGamePausedForScreenshot()
+  if not state then
+    return nil
+  end
+
+  local pauseDuration = tonumber(duration) or 0
+  if pauseDuration < 0 then
+    pauseDuration = 0
+  end
+
+  state.handles = state.handles or {}
+
+  screenshotPauseHandleCounter = screenshotPauseHandleCounter + 1
+  local handle = screenshotPauseHandleCounter
+  state.handles[handle] = { remaining = pauseDuration }
+
+  if pauseDuration <= 0 then
+    cancelScreenshotPauseHandle(handle)
+  end
+
+  return handle
+end
+
+local function finalizeScreenshotPauseHandle(handle, minimumHoldDuration)
+  local state = activeScreenshotPauseState
+  if not state or not state.handles or handle == nil then
+    return
+  end
+
+  local timer = state.handles[handle]
+  if not timer then
+    return
+  end
+
+  local minHold = tonumber(minimumHoldDuration) or 0
+  if minHold <= 0 then
+    state.handles[handle] = nil
+    if not next(state.handles) then
+      resumeGameplayAfterScreenshotPause()
+    end
+    return
+  end
+
+  timer.remaining = math.max(minHold, 0)
+end
+
+local function updateScreenshotPauseState(dt)
+  local state = activeScreenshotPauseState
+  if not state or not state.handles then
+    return
+  end
+
+  local delta = tonumber(dt) or 0
+  if delta <= 0 then
+    return
+  end
+
+  local toRemove = nil
+  for handle, timer in pairs(state.handles) do
+    if timer then
+      local remaining = tonumber(timer.remaining) or 0
+      remaining = remaining - delta
+      timer.remaining = remaining
+      if remaining <= 0 then
+        toRemove = toRemove or {}
+        toRemove[#toRemove + 1] = handle
+      end
+    end
+  end
+
+  if toRemove then
+    for _, handle in ipairs(toRemove) do
+      state.handles[handle] = nil
+    end
+  end
+
+  if not next(state.handles) then
+    resumeGameplayAfterScreenshotPause()
+  end
+end
+
+local function updateVehicleMotionState()
+  local vehId = be:getPlayerVehicleID(0)
+  local vehObj = nil
+  if vehId and vehId ~= -1 then
+    vehObj = getObjectByID(vehId)
+  end
+
+  local previousVehId = vehicleMotionState.vehicleId
+  local previousMoving = vehicleMotionState.moving and previousVehId == vehId
+  local moving = false
+  local speed = 0
+
+  if vehObj then
+    local velocity = callVehicleVector(vehObj, 'getVelocityXYZ', false)
+    if not velocity and type(vehObj.getVelocity) == 'function' then
+      velocity = callVehicleVector(vehObj, 'getVelocity', false)
+    end
+    if velocity then
+      speed = velocity:length()
+      local enterThreshold = tonumber(vehicleMotionWarningSettings.enterSpeed) or 0
+      local exitThreshold = tonumber(vehicleMotionWarningSettings.exitSpeed) or 0
+      if exitThreshold > enterThreshold then
+        exitThreshold = enterThreshold * 0.5
+      end
+      if exitThreshold < 0 then exitThreshold = 0 end
+      if enterThreshold < 0 then enterThreshold = 0 end
+      if previousMoving then
+        moving = speed > exitThreshold
+      else
+        moving = speed > enterThreshold
+      end
+    end
+  end
+
+  local effectiveVehId = vehObj and vehId or false
+  if not vehObj then
+    moving = false
+  end
+
+  local stateChanged = vehicleMotionState.vehicleId ~= effectiveVehId or vehicleMotionState.moving ~= moving
+  if stateChanged then
+    vehicleMotionState.vehicleId = effectiveVehId
+    vehicleMotionState.moving = moving
+    vehicleMotionState.speed = speed
+    guihooks.trigger('VehiclePartsPaintingMotionState', {
+      vehicleId = effectiveVehId,
+      moving = moving,
+      speed = speed
+    })
+  elseif moving then
+    vehicleMotionState.speed = speed
+  end
 end
 
 local function prepareVehicleForThumbnail(veh)
@@ -412,26 +1097,129 @@ local function captureConfigurationThumbnail(vehId, vehObj, vehData, sanitizedBa
     return false, loadErr or 'render_renderViews unavailable'
   end
 
-  local camPos, camRot = frameVehicleForThumbnail(vehObj, configurationThumbnailSettings.fov, configurationThumbnailSettings.nearPlane, configurationThumbnailSettings.aspectRatio)
+  prepareVehicleForThumbnail(vehObj)
+
+  local sampledVelocity = callVehicleVector(vehObj, 'getVelocityXYZ', false)
+  if not sampledVelocity and type(vehObj.getVelocity) == 'function' then
+    sampledVelocity = callVehicleVector(vehObj, 'getVelocity', false)
+  end
+
+  local sampledSpeed = 0
+  if sampledVelocity then
+    local velocityLength = sampledVelocity:length()
+    if velocityLength and velocityLength > 0 then
+      sampledSpeed = velocityLength
+    else
+      sampledVelocity = nil
+    end
+  end
+
+  local motionSpeedThreshold = tonumber(configurationThumbnailSettings.motionCompensationSpeedThreshold) or 0
+  local stateMoving = vehicleMotionState.vehicleId == vehId and vehicleMotionState.moving == true
+  local stateSpeed = 0
+  if stateMoving then
+    stateSpeed = tonumber(vehicleMotionState.speed) or 0
+  end
+
+  local effectiveSpeed = math.max(sampledSpeed or 0, stateSpeed)
+  local movingForFraming = stateMoving or effectiveSpeed > motionSpeedThreshold
+
+  local baseFov = tonumber(configurationThumbnailSettings.fov) or 20
+  local captureFov = baseFov
+  if movingForFraming and type(movingThumbnailCameraSettings) == 'table' then
+    local overrideFov = tonumber(movingThumbnailCameraSettings.fov)
+    if overrideFov and overrideFov > 0 then
+      captureFov = overrideFov
+    else
+      local multiplier = tonumber(movingThumbnailCameraSettings.fovMultiplier)
+      if multiplier and multiplier > 0 then
+        captureFov = baseFov * multiplier
+      end
+    end
+  end
+  captureFov = clampNumber(captureFov, 1, 150)
+
+  local screenshotDelay = tonumber(configurationThumbnailSettings.screenshotDelay) or 0
+  local pauseBuffer = tonumber(configurationThumbnailSettings.pauseResumeBuffer) or 0
+  local minimumPause = tonumber(configurationThumbnailSettings.minimumPauseDuration) or 0
+  local pauseDuration = math.max(screenshotDelay + pauseBuffer, minimumPause)
+
+  local gameplayWasPaused = isGameplayCurrentlyPaused()
+
+  local frameOptions = nil
+  local motionCompensationEnabled = configurationThumbnailSettings.motionCompensationEnabled ~= false
+  local allowMotionCompensation = motionCompensationEnabled and not gameplayWasPaused
+  if allowMotionCompensation then
+    local leadTime = configurationThumbnailSettings.motionCompensationLeadTime
+    if leadTime == nil or leadTime == false then
+      leadTime = screenshotDelay
+    end
+    leadTime = tonumber(leadTime) or 0
+    local minLead = tonumber(configurationThumbnailSettings.motionCompensationMinLeadTime) or 0
+    if minLead > 0 and leadTime < minLead then
+      leadTime = minLead
+    end
+    if leadTime <= 0 then
+      local fallbackLead = math.max(screenshotDelay or 0, minLead)
+      if fallbackLead > 0 then
+        leadTime = fallbackLead
+      end
+    end
+    if leadTime > 0 then
+      frameOptions = {
+        motionCompensationEnabled = true,
+        motionLeadTime = leadTime,
+        motionMinSpeed = configurationThumbnailSettings.motionCompensationSpeedThreshold,
+        motionMaxDistance = configurationThumbnailSettings.motionCompensationMaxDistance,
+        motionForwardFactor = configurationThumbnailSettings.motionCompensationForwardFactor,
+        motionLateralFactor = configurationThumbnailSettings.motionCompensationLateralFactor,
+        motionVerticalFactor = configurationThumbnailSettings.motionCompensationVerticalFactor
+      }
+      if sampledVelocity then
+        frameOptions.sampledVelocity = sampledVelocity
+      end
+    end
+  end
+
+  local camPos, camRot, camFrame = frameVehicleForThumbnail(vehObj, captureFov, configurationThumbnailSettings.nearPlane, configurationThumbnailSettings.aspectRatio, frameOptions)
   if not camPos or not camRot then
     return false, 'camera_setup_failed'
   end
 
-  prepareVehicleForThumbnail(vehObj)
+  local effectiveCameraOffset = configurationThumbnailSettings.cameraOffset
+  if movingForFraming and type(movingThumbnailCameraSettings) == 'table' and movingThumbnailCameraSettings.offset then
+    effectiveCameraOffset = movingThumbnailCameraSettings.offset
+  end
+
+  local finalCamPos = applyCameraOffset(camPos, camFrame, effectiveCameraOffset)
+
+  local pauseHandle = scheduleScreenshotPauseHandle(pauseDuration)
 
   local captureOptions = {
     renderViewName = configurationThumbnailSettings.renderViewName,
-    screenshotDelay = configurationThumbnailSettings.screenshotDelay,
+    screenshotDelay = screenshotDelay,
     resolution = vec3(configurationThumbnailSettings.width, configurationThumbnailSettings.height, 0),
     rot = camRot,
-    pos = camPos + configurationThumbnailSettings.cameraOffset,
-    fov = configurationThumbnailSettings.fov,
+    pos = finalCamPos,
+    fov = captureFov,
     nearPlane = configurationThumbnailSettings.nearPlane,
     filename = thumbnailPath
   }
 
-  local okCapture, captureErr = safePcall(renderViewsExtension.takeScreenshot, captureOptions)
+  local captureCallback = nil
+  if pauseHandle then
+    captureCallback = function()
+      finalizeScreenshotPauseHandle(pauseHandle, minimumPause)
+      pauseHandle = nil
+    end
+  end
+
+  local okCapture, captureErr = safePcall(renderViewsExtension.takeScreenshot, captureOptions, captureCallback)
   if not okCapture then
+    if pauseHandle then
+      cancelScreenshotPauseHandle(pauseHandle)
+      pauseHandle = nil
+    end
     return false, tostring(captureErr)
   end
 
@@ -3040,6 +3828,11 @@ local function spawnSavedConfiguration(configPath)
   spawnUserConfig(configPath)
 end
 
+local function onUpdate(dt)
+  updateScreenshotPauseState(dt)
+  updateVehicleMotionState()
+end
+
 local function onVehicleSpawned(vehId)
   basePaintStateByVeh[vehId] = nil
   resetBasePaintWorkaroundState(vehId)
@@ -3124,6 +3917,8 @@ local function onVehicleSwitched(oldId, newId, player)
 end
 
 local function onExtensionLoaded()
+  cancelScreenshotPauseHandle()
+  screenshotPauseHandleCounter = 0
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
   partDescriptorsByVeh = {}
@@ -3150,6 +3945,8 @@ local function onExtensionLoaded()
 end
 
 local function onExtensionUnloaded()
+  cancelScreenshotPauseHandle()
+  screenshotPauseHandleCounter = 0
   storedPartPaintsByVeh = {}
   validPartPathsByVeh = {}
   partDescriptorsByVeh = {}
@@ -3180,6 +3977,7 @@ M.spawnSavedConfiguration = spawnSavedConfiguration
 M.addColorPreset = addColorPreset
 M.removeColorPreset = removeColorPreset
 
+M.onUpdate = onUpdate
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleDestroyed = onVehicleDestroyed
