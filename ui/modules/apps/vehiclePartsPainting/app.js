@@ -2850,7 +2850,13 @@ end)()`;
         data = data || {};
         $scope.$evalAsync(function () {
           const wasSaving = state.isSavingConfig;
-          clearPendingReplacement();
+          const hadPendingReplacement = !!state.showReplaceConfirmation;
+          const pendingName = typeof state.pendingConfigName === 'string'
+            ? state.pendingConfigName
+            : null;
+          const pendingSanitized = typeof state.pendingSanitizedName === 'string'
+            ? state.pendingSanitizedName
+            : null;
           const rawConfigs = Array.isArray(data.configs)
             ? data.configs.filter(function (config) { return config && typeof config === 'object'; })
             : [];
@@ -2858,6 +2864,27 @@ end)()`;
 
           const previousSelection = state.selectedSavedConfig ? state.selectedSavedConfig.relativePath : null;
           state.savedConfigs = configs;
+
+          let preservePendingReplacement = false;
+          if (hadPendingReplacement) {
+            const lookupName = pendingSanitized || pendingName;
+            if (lookupName) {
+              const updated = resolveExistingConfig(lookupName);
+              if (updated && updated.existing) {
+                state.pendingExistingConfig = updated.existing;
+                state.pendingSanitizedName = updated.sanitized || pendingSanitized || null;
+                state.pendingConfigName = pendingName !== null
+                  ? pendingName
+                  : (updated.sanitized || lookupName);
+                state.showReplaceConfirmation = true;
+                preservePendingReplacement = true;
+              }
+            }
+          }
+
+          if (!preservePendingReplacement) {
+            clearPendingReplacement();
+          }
 
           state.deleteConfigDialog.isDeleting = false;
           if (state.deleteConfigDialog.visible) {
