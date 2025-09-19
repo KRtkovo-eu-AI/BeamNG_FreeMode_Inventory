@@ -123,6 +123,25 @@
       gap: 4px;
       min-width: 0;
     }
+    .vehicle-parts-painting .config-confirm-dialog .delete-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .vehicle-parts-painting .config-confirm-dialog .delete-progress .spinner {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      animation: vehiclePartsPaintingSpinner 0.8s linear infinite;
+    }
+    @keyframes vehiclePartsPaintingSpinner {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
     .vehicle-parts-painting .config-confirm-dialog .config-target .config-target-name {
       font-size: 15px;
       font-weight: 600;
@@ -663,6 +682,10 @@
     .vehicle-parts-painting .config-tools.is-collapsed .config-tools-body {
       display: none;
     }
+    .vehicle-parts-painting .config-tools.is-collapsed,
+    .vehicle-parts-painting .config-tools.is-collapsed .config-tools-header {
+      cursor: pointer;
+    }
     .vehicle-parts-painting .config-tools h3 {
       margin: 0;
       font-size: 16px;
@@ -829,6 +852,10 @@
       justify-content: space-between;
       gap: 12px;
       padding: 12px 12px 6px 12px;
+    }
+    .vehicle-parts-painting .base-paint-panel.is-collapsed,
+    .vehicle-parts-painting .base-paint-panel.is-collapsed .base-paint-header {
+      cursor: pointer;
     }
     .vehicle-parts-painting .base-paint-panel .header-actions,
     .vehicle-parts-painting .part-paint-panel .header-actions {
@@ -1394,6 +1421,13 @@
           </div>
         </div>
       </div>
+      <div class="delete-progress"
+           ng-if="state.deleteConfigDialog.isDeleting"
+           role="status"
+           aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="message">Deleting configuration…</span>
+      </div>
       <div class="dialog-actions">
         <button type="button"
                 class="danger"
@@ -1753,7 +1787,9 @@
       </script>
       </div>
       <div class="editor-side">
-        <div class="config-tools" ng-class="{'is-collapsed': state.configToolsCollapsed}">
+        <div class="config-tools"
+             ng-class="{'is-collapsed': state.configToolsCollapsed}"
+             ng-click="onConfigToolsContainerClick($event)">
           <div class="config-tools-header">
             <h3>Saved Configurations</h3>
             <button type="button"
@@ -1804,7 +1840,10 @@
             </div>-->
           </div>
         </div>
-        <div class="editor-panel base-paint-panel" ng-if="state.vehicleId" ng-class="{'is-collapsed': state.basePaintCollapsed}">
+        <div class="editor-panel base-paint-panel"
+             ng-if="state.vehicleId"
+             ng-class="{'is-collapsed': state.basePaintCollapsed}"
+             ng-click="onBasePaintPanelClick($event)">
           <div class="base-paint-header">
             <div class="part-summary">
               <h3>Vehicle base paint</h3>

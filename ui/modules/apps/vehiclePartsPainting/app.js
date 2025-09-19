@@ -1019,7 +1019,6 @@ end)()`;
         state.isSavingConfig = true;
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
         bngApi.engineLua(command);
-        requestSavedConfigs();
       }
 
       function createViewPaint(paint) {
@@ -2342,6 +2341,22 @@ end)()`;
 
       $scope.toggleConfigToolsCollapsed = function () {
         state.configToolsCollapsed = !state.configToolsCollapsed;
+      };
+
+      $scope.onConfigToolsContainerClick = function ($event) {
+        if (!state.configToolsCollapsed) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.configToolsCollapsed = false;
+      };
+
+      $scope.onBasePaintPanelClick = function ($event) {
+        if (!state.basePaintCollapsed) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.basePaintCollapsed = false;
       };
 
       $scope.refresh = function () {
