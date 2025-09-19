@@ -158,22 +158,11 @@ local function getVehicleModelIdentifier(vehData, vehObj, vehId)
         return candidate
       end
     end
+    if vehData.mainPartName and vehData.mainPartName ~= '' then
+      return vehData.mainPartName
+    end
     if vehData.ioCtx and vehData.ioCtx.jbeam and vehData.ioCtx.jbeam ~= '' then
       return vehData.ioCtx.jbeam
-    end
-  end
-  if vehId then
-    local coreVehiclesExtension = getLoadedExtension('core_vehicles')
-    if coreVehiclesExtension and type(coreVehiclesExtension.getVehicleDetails) == 'function' then
-      local okDetails, details = safePcall(coreVehiclesExtension.getVehicleDetails, vehId)
-      if okDetails and details then
-        if details.current and details.current.key and details.current.key ~= '' then
-          return details.current.key
-        end
-        if details.model and details.model.key and details.model.key ~= '' then
-          return details.model.key
-        end
-      end
     end
   end
   if vehObj then
@@ -191,6 +180,20 @@ local function getVehicleModelIdentifier(vehData, vehObj, vehId)
     end)
     if ok and value and value ~= '' then
       return value
+    end
+  end
+  if vehId then
+    local coreVehiclesExtension = getLoadedExtension('core_vehicles')
+    if coreVehiclesExtension and type(coreVehiclesExtension.getVehicleDetails) == 'function' then
+      local okDetails, details = safePcall(coreVehiclesExtension.getVehicleDetails, vehId)
+      if okDetails and details then
+        if details.current and details.current.key and details.current.key ~= '' then
+          return details.current.key
+        end
+        if details.model and details.model.key and details.model.key ~= '' then
+          return details.model.key
+        end
+      end
     end
   end
   return nil
