@@ -92,7 +92,8 @@ angular.module('beamng.apps')
           acknowledged: false,
           dialogVisible: false,
           speed: 0,
-          vehicleId: null
+          vehicleId: null,
+          pending: false
         }
       };
 
@@ -2392,17 +2393,29 @@ end)()`;
         state.minimizedAlignment = presentation.alignment;
         state.minimizedInlineStyle = presentation.style;
         state.minimized = true;
+
+        if (state.motionWarning.dialogVisible && !state.motionWarning.acknowledged) {
+          state.motionWarning.dialogVisible = false;
+          state.motionWarning.pending = true;
+        }
       };
 
       $scope.restoreApp = function () {
         state.minimized = false;
         state.minimizedAlignment = 'left';
         state.minimizedInlineStyle = {};
+
+        if (state.motionWarning.pending && state.motionWarning.moving && !state.motionWarning.acknowledged) {
+          state.motionWarning.dialogVisible = true;
+        }
+
+        state.motionWarning.pending = false;
       };
 
       $scope.dismissMotionWarning = function () {
         state.motionWarning.dialogVisible = false;
         state.motionWarning.acknowledged = true;
+        state.motionWarning.pending = false;
       };
 
       $scope.confirmLiveryEditorLaunch = function () {
@@ -2912,6 +2925,7 @@ end)()`;
             state.motionWarning.moving = false;
             state.motionWarning.dialogVisible = false;
             state.motionWarning.acknowledged = false;
+            state.motionWarning.pending = false;
             state.motionWarning.speed = 0;
             state.motionWarning.vehicleId = null;
             return;
@@ -2944,6 +2958,7 @@ end)()`;
             state.motionWarning.moving = false;
             state.motionWarning.dialogVisible = false;
             state.motionWarning.acknowledged = false;
+            state.motionWarning.pending = false;
             state.motionWarning.speed = 0;
             state.motionWarning.vehicleId = state.vehicleId;
           }
@@ -2987,6 +3002,7 @@ end)()`;
             state.motionWarning.moving = false;
             state.motionWarning.dialogVisible = false;
             state.motionWarning.acknowledged = false;
+            state.motionWarning.pending = false;
             state.motionWarning.speed = 0;
             state.motionWarning.vehicleId = reportedVehicleId;
             return;
@@ -3000,6 +3016,7 @@ end)()`;
           if (vehicleChanged) {
             state.motionWarning.vehicleId = reportedVehicleId;
             state.motionWarning.acknowledged = false;
+            state.motionWarning.pending = false;
           }
 
           const moving = !!data.moving && reportedVehicleId !== null;
@@ -3009,8 +3026,17 @@ end)()`;
           if (!moving) {
             state.motionWarning.dialogVisible = false;
             state.motionWarning.acknowledged = false;
+            state.motionWarning.pending = false;
           } else if (!state.motionWarning.acknowledged) {
-            state.motionWarning.dialogVisible = true;
+            if (state.minimized) {
+              state.motionWarning.dialogVisible = false;
+              state.motionWarning.pending = true;
+            } else {
+              state.motionWarning.dialogVisible = true;
+              state.motionWarning.pending = false;
+            }
+          } else {
+            state.motionWarning.pending = false;
           }
         });
       });

@@ -1497,7 +1497,7 @@
     }
   </style>
   <div class="motion-warning-overlay"
-       ng-if="state.motionWarning.dialogVisible"
+       ng-if="state.motionWarning.dialogVisible && !state.minimized"
        role="dialog"
        aria-modal="true"
        aria-labelledby="motion-warning-title"
