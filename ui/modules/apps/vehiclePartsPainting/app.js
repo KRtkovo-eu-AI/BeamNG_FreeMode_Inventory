@@ -58,7 +58,7 @@ angular.module('beamng.apps')
         minimizedInlineStyle: {},
         basePaintCollapsed: false,
         partPaintCollapsed: false,
-        configToolsCollapsed: true,
+        configToolsCollapsed: false,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',

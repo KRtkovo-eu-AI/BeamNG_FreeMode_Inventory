@@ -533,6 +533,10 @@
       width: 90%;
       height: 90%;
     }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:hover .svgIconCollapseExpand path,
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:hover .svgIconCollapseExpand polygon {
+      fill: #ff6600;
+    }
     .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:disabled {
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.3);
@@ -750,10 +754,11 @@
       flex-direction: column;
       gap: 8px;
       flex: 1 1 auto;
-      min-height: 0;
+      min-height: 300px;
     }
     .vehicle-parts-painting .config-tools.is-collapsed {
       flex: 0 0 auto;
+      min-height: 0;
     }
     .vehicle-parts-painting .config-tools .config-tools-header {
       display: flex;
@@ -1812,11 +1817,11 @@
         <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.3-dev | made by KRtekTM</span></h2>
       </div>
       <div class="header-actions">
-        <button type="button" ng-click="refresh()">
+        <!--<button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 9V6C8.69 6 6 8.69 6 12C6 13.01 6.25 13.97 6.7 14.8L5.24 16.26C4.46 15.03 4 13.57 4 12C4 7.58 7.58 4 12 4V1L16 5L12 9ZM17.3 9.2L18.76 7.74C19.54 8.97 20 10.43 20 12C20 16.42 16.42 20 12 20V23L8 19L12 15V18C15.31 18 18 15.31 18 12C18 10.99 17.74 10.04 17.3 9.2Z" fill="#ffffff"/>
           </svg>
-        </button>
+        </button>-->
         <button type="button"
                 ng-if="state.vehicleId && state.liveryEditorSupported !== null"
                 ng-click="state.liveryEditorSupported && openLiveryEditor()"
@@ -1835,17 +1840,25 @@
         <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
           <button type="button"
-                  ng-click="collapseAllNodes()"
-                  ng-disabled="areTreeControlsDisabled()">Collapse all</button>
-          <button type="button"
                   ng-click="expandAllNodes()"
-                  ng-disabled="areTreeControlsDisabled()">Expand all</button>
-          <button type="button" ng-click="showAllParts()" class="orange">
+                  ng-disabled="areTreeControlsDisabled()"><svg xmlns="http://www.w3.org/2000/svg" class="svgIconCollapseExpand" viewBox="0 0 6.315 6.315" width="12" height="12">
+  <path fill="white" fill-rule="nonzero" d="M0.139 0h6.176v6.315H0V0h0.139zm5.898 0.278H0.278v5.759h5.759V0.278z"/>
+  <polygon fill="white" fill-rule="nonzero" points="2.776,5.331 2.776,3.53 0.984,3.53 0.984,2.776 2.776,2.776 2.776,0.984 3.539,0.984 3.539,2.776 5.331,2.776 5.331,3.53 3.539,3.53 3.539,5.331"/>
+</svg>
+&nbsp;Expand all</button>
+<button type="button"
+                  ng-click="collapseAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()"><svg xmlns="http://www.w3.org/2000/svg" class="svgIconCollapseExpand" viewBox="0 0 8.542 8.542" width="12" height="12">
+  <path fill="white" fill-rule="nonzero" d="M0.188 0h8.354v8.542H0V0h0.188zm7.979 0.376H0.376v7.791h7.791V0.376z"/>
+  <path fill="white" fill-rule="nonzero" d="M1.33 4.775v-1.02h5.882v1.02H1.33z"/>
+</svg>
+&nbsp;Collapse all</button>
+          <!--<button type="button" ng-click="showAllParts()" class="orange">
             <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
               <path d="M0 0h24v24H0z" fill="none"/>
               <path style="opacity:0.5;" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#fff"/>
             </svg>
-          </button>
+          </button>-->
         </div>
       </div>
       <div class="filter-field">
