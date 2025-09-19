@@ -160,7 +160,6 @@ angular.module('beamng.apps')
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
-      const SAVED_CONFIG_REFRESH_INTERVAL_MS = 10000;
       const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 2000;
       const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 8;
       let customBadgeRefreshPromise = null;
@@ -1504,14 +1503,12 @@ end)()`;
 
       function scheduleSavedConfigRefresh(delay) {
         cancelSavedConfigRefreshTimer();
-        const effectiveDelay = typeof delay === 'number' && isFinite(delay) && delay >= 0
-          ? delay
-          : SAVED_CONFIG_REFRESH_INTERVAL_MS;
+        if (typeof delay !== 'number' || !isFinite(delay) || delay < 0) { return; }
         savedConfigRefreshTimeout = $timeout(function () {
           savedConfigRefreshTimeout = null;
           if (!state.vehicleId) { return; }
           requestSavedConfigs();
-        }, effectiveDelay);
+        }, delay);
       }
 
       function resetSavedConfigPreviewTracking() {
@@ -2422,6 +2419,7 @@ end)()`;
       };
 
       $scope.onConfigToolsContainerClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
         if (!state.configToolsCollapsed) { return; }
         if ($event && typeof $event.stopPropagation === 'function') {
           $event.stopPropagation();
@@ -2438,6 +2436,7 @@ end)()`;
       };
 
       $scope.onBasePaintPanelClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
         if (!state.basePaintCollapsed) { return; }
         if ($event && typeof $event.stopPropagation === 'function') {
           $event.stopPropagation();
@@ -2454,6 +2453,7 @@ end)()`;
       };
 
       $scope.onPartPaintPanelClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
         if (!state.partPaintCollapsed) { return; }
         if ($event && typeof $event.stopPropagation === 'function') {
           $event.stopPropagation();
@@ -2475,7 +2475,6 @@ end)()`;
 
       $scope.refreshSavedConfigs = function () {
         requestSavedConfigs();
-        scheduleSavedConfigRefresh(SAVED_CONFIG_REFRESH_INTERVAL_MS);
       };
 
       function getSavedConfigDisplayName(config) {
@@ -2818,7 +2817,6 @@ end)()`;
             sendShowAllCommand();
             resetSavedConfigPreviewTracking();
             requestSavedConfigs();
-            scheduleSavedConfigRefresh(SAVED_CONFIG_REFRESH_INTERVAL_MS);
           }
 
           if (!vehicleChanged) {
@@ -2898,8 +2896,11 @@ end)()`;
 
           if (state.vehicleId) {
             const hasPendingPreview = updateSavedConfigPreviewTracking(configs);
-            const nextDelay = hasPendingPreview ? SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS : SAVED_CONFIG_REFRESH_INTERVAL_MS;
-            scheduleSavedConfigRefresh(nextDelay);
+            if (hasPendingPreview) {
+              scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
+            } else {
+              cancelSavedConfigRefreshTimer();
+            }
           } else {
             cancelSavedConfigRefreshTimer();
             resetSavedConfigPreviewTracking();
@@ -2928,12 +2929,12 @@ end)()`;
 
       $scope.$on('$destroy', function () {
         stopHsvRectDrag();
+        cancelSavedConfigRefreshTimer();
       });
 
       bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
       $scope.refresh();
       requestSavedConfigs();
-      scheduleSavedConfigRefresh(SAVED_CONFIG_REFRESH_INTERVAL_MS);
       bngApi.engineLua('settings.notifyUI()');
       refreshCustomBadgeVisibility();
       customBadgeRefreshPromise = $interval(function () {
