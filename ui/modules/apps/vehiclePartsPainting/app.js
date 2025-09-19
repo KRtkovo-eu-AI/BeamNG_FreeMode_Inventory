@@ -160,7 +160,9 @@ angular.module('beamng.apps')
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
+      const SAVED_CONFIG_REFRESH_INTERVAL_MS = 2000;
       let customBadgeRefreshPromise = null;
+      let savedConfigRefreshPromise = null;
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
@@ -2535,6 +2537,10 @@ end)()`;
           $interval.cancel(customBadgeRefreshPromise);
           customBadgeRefreshPromise = null;
         }
+        if (savedConfigRefreshPromise) {
+          $interval.cancel(savedConfigRefreshPromise);
+          savedConfigRefreshPromise = null;
+        }
         resetPartLookup();
         resetTreeNodeLookup();
         clearCustomPaintState();
@@ -2714,6 +2720,10 @@ end)()`;
       requestSavedConfigs();
       bngApi.engineLua('settings.notifyUI()');
       refreshCustomBadgeVisibility();
+      savedConfigRefreshPromise = $interval(function () {
+        if (!state.vehicleId) { return; }
+        requestSavedConfigs();
+      }, SAVED_CONFIG_REFRESH_INTERVAL_MS);
       customBadgeRefreshPromise = $interval(function () {
         refreshCustomBadgeVisibility();
       }, CUSTOM_BADGE_REFRESH_INTERVAL_MS);
