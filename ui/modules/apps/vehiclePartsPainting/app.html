@@ -130,13 +130,18 @@
       font-size: 13px;
       color: rgba(255, 255, 255, 0.85);
     }
-    .vehicle-parts-painting .config-confirm-dialog .delete-progress .spinner {
+    .vehicle-parts-painting .spinner {
+      display: inline-block;
       width: 16px;
       height: 16px;
       border-radius: 50%;
       border: 2px solid rgba(255, 255, 255, 0.3);
       border-top-color: #fff;
       animation: vehiclePartsPaintingSpinner 0.8s linear infinite;
+    }
+    .vehicle-parts-painting .spinner.small {
+      width: 14px;
+      height: 14px;
     }
     @keyframes vehiclePartsPaintingSpinner {
       0% { transform: rotate(0deg); }
@@ -662,6 +667,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
+      cursor: pointer;
     }
     .vehicle-parts-painting .config-tools .collapse-toggle {
       background: transparent;
@@ -714,9 +720,18 @@
       color: #fff;
       font-weight: 600;
       font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
     .vehicle-parts-painting .config-tools .config-actions button:hover {
       background: #ff7d26;
+    }
+    .vehicle-parts-painting .config-tools .config-actions .button-progress {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
     .vehicle-parts-painting .config-tools .config-actions button:disabled {
       opacity: 0.5;
@@ -852,6 +867,7 @@
       justify-content: space-between;
       gap: 12px;
       padding: 12px 12px 6px 12px;
+      cursor: pointer;
     }
     .vehicle-parts-painting .base-paint-panel.is-collapsed,
     .vehicle-parts-painting .base-paint-panel.is-collapsed .base-paint-header {
@@ -1790,7 +1806,8 @@
         <div class="config-tools"
              ng-class="{'is-collapsed': state.configToolsCollapsed}"
              ng-click="onConfigToolsContainerClick($event)">
-          <div class="config-tools-header">
+          <div class="config-tools-header"
+               ng-click="onConfigToolsHeaderClick($event)">
             <h3>Saved Configurations</h3>
             <button type="button"
                     class="collapse-toggle"
@@ -1808,7 +1825,13 @@
                       autocomplete="off" value="Save directly in Vehicle Configuration tab">
               <button type="button"
                       ng-click="saveCurrentConfiguration()"
-                      ng-disabled="false">Save Configuration</button>
+                      ng-disabled="state.isSavingConfig || state.showReplaceConfirmation">
+                <span class="button-label" ng-if="!state.isSavingConfig">Save Configuration</span>
+                <span class="button-progress" ng-if="state.isSavingConfig">
+                  <span class="spinner small"></span>
+                  Saving...
+                </span>
+              </button>
             </div>
             <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
             <div class="saved-configs" ng-if="hasSavedConfigs()">
@@ -1817,11 +1840,11 @@
                     ng-class="{selected: isSavedConfigSelected(config)}"
                     ng-click="selectSavedConfig(config)">
                 <div class="saved-preview">
-                  <img ng-src="{{getSavedConfigPreviewSrc(config)}}"
-                       ng-attr-alt="{{getSavedConfigLabel(config)}} preview">
+                  <img ng-src="{{config.previewSrc || getSavedConfigPreviewSrc(config)}}"
+                       ng-attr-alt="{{config.displayName || getSavedConfigLabel(config)}} preview">
                 </div>
                 <div class="saved-details">
-                  <div class="saved-name">{{getSavedConfigLabel(config)}}</div>
+                  <div class="saved-name">{{config.displayName || getSavedConfigLabel(config)}}</div>
                   <div class="saved-meta">{{config.relativePath}}</div>
                 </div>
                 <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
@@ -1844,7 +1867,8 @@
              ng-if="state.vehicleId"
              ng-class="{'is-collapsed': state.basePaintCollapsed}"
              ng-click="onBasePaintPanelClick($event)">
-          <div class="base-paint-header">
+          <div class="base-paint-header"
+               ng-click="onBasePaintHeaderClick($event)">
             <div class="part-summary">
               <h3>Vehicle base paint</h3>
               <div class="meta">Used for the vehicle paint and parts without custom colors.</div>
@@ -1891,8 +1915,10 @@
 
         <div class="editor-panel part-paint-panel"
              ng-if="state.selectedPart"
-             ng-class="{'is-collapsed': state.partPaintCollapsed}">
-          <div class="part-panel-header">
+             ng-class="{'is-collapsed': state.partPaintCollapsed}"
+             ng-click="onPartPaintPanelClick($event)">
+          <div class="part-panel-header"
+               ng-click="onPartPaintHeaderClick($event)">
             <div class="part-summary">
               <h3>{{state.selectedPart.displayName || state.selectedPart.partName}}</h3>
               <div class="meta">Identifier: {{state.selectedPart.partPath}}</div>
