@@ -533,6 +533,10 @@
       width: 90%;
       height: 90%;
     }
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:hover .svgIconCollapseExpand path,
+    .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:hover .svgIconCollapseExpand polygon {
+      fill: #ff6600;
+    }
     .vehicle-parts-painting .parts-panel .panel-header .panel-actions button:disabled {
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.3);
@@ -749,6 +753,12 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      flex: 1 1 auto;
+      min-height: 300px;
+    }
+    .vehicle-parts-painting .config-tools.is-collapsed {
+      flex: 0 0 auto;
+      min-height: 0;
     }
     .vehicle-parts-painting .config-tools .config-tools-header {
       display: flex;
@@ -772,6 +782,9 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
     }
     .vehicle-parts-painting .config-tools.is-collapsed .config-tools-body {
       display: none;
@@ -833,7 +846,8 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
-      max-height: 150px;
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
     }
     .vehicle-parts-painting .config-tools .saved-item {
@@ -927,6 +941,11 @@
     .vehicle-parts-painting .config-tools .saved-empty {
       font-size: 12px;
       opacity: 0.75;
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
     }
     .vehicle-parts-painting .editor-panel {
       flex: 0 0 auto;
@@ -1522,6 +1541,20 @@
       <p class="file-hint" ng-if="state.pendingSanitizedName">
         File name: {{state.pendingSanitizedName}}.pc
       </p>
+      <div class="config-target"
+           ng-if="state.pendingExistingConfig">
+        <div class="config-target-preview">
+          <img ng-src="{{getSavedConfigPreviewSrc(state.pendingExistingConfig)}}"
+               ng-attr-alt="{{getSavedConfigLabel(state.pendingExistingConfig)}} preview">
+        </div>
+        <div class="config-target-details">
+          <div class="config-target-name">{{getSavedConfigLabel(state.pendingExistingConfig)}}</div>
+          <div class="config-target-meta"
+               ng-if="state.pendingExistingConfig.relativePath">
+            File: {{state.pendingExistingConfig.relativePath}}
+          </div>
+        </div>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="confirm" ng-click="confirmReplaceSavedConfig()">Replace</button>
         <button type="button" class="cancel" ng-click="cancelReplaceSavedConfig()">Cancel</button>
@@ -1784,11 +1817,11 @@
         <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.3-dev | made by KRtekTM</span></h2>
       </div>
       <div class="header-actions">
-        <button type="button" ng-click="refresh()">
+        <!--<button type="button" ng-click="refresh()">
           <svg width="12px" height="12px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 9V6C8.69 6 6 8.69 6 12C6 13.01 6.25 13.97 6.7 14.8L5.24 16.26C4.46 15.03 4 13.57 4 12C4 7.58 7.58 4 12 4V1L16 5L12 9ZM17.3 9.2L18.76 7.74C19.54 8.97 20 10.43 20 12C20 16.42 16.42 20 12 20V23L8 19L12 15V18C15.31 18 18 15.31 18 12C18 10.99 17.74 10.04 17.3 9.2Z" fill="#ffffff"/>
           </svg>
-        </button>
+        </button>-->
         <button type="button"
                 ng-if="state.vehicleId && state.liveryEditorSupported !== null"
                 ng-click="state.liveryEditorSupported && openLiveryEditor()"
@@ -1807,17 +1840,25 @@
         <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
           <button type="button"
-                  ng-click="collapseAllNodes()"
-                  ng-disabled="areTreeControlsDisabled()">Collapse all</button>
-          <button type="button"
                   ng-click="expandAllNodes()"
-                  ng-disabled="areTreeControlsDisabled()">Expand all</button>
-          <button type="button" ng-click="showAllParts()" class="orange">
+                  ng-disabled="areTreeControlsDisabled()"><svg xmlns="http://www.w3.org/2000/svg" class="svgIconCollapseExpand" viewBox="0 0 6.315 6.315" width="12" height="12">
+  <path fill="white" fill-rule="nonzero" d="M0.139 0h6.176v6.315H0V0h0.139zm5.898 0.278H0.278v5.759h5.759V0.278z"/>
+  <polygon fill="white" fill-rule="nonzero" points="2.776,5.331 2.776,3.53 0.984,3.53 0.984,2.776 2.776,2.776 2.776,0.984 3.539,0.984 3.539,2.776 5.331,2.776 5.331,3.53 3.539,3.53 3.539,5.331"/>
+</svg>
+&nbsp;Expand all</button>
+<button type="button"
+                  ng-click="collapseAllNodes()"
+                  ng-disabled="areTreeControlsDisabled()"><svg xmlns="http://www.w3.org/2000/svg" class="svgIconCollapseExpand" viewBox="0 0 8.542 8.542" width="12" height="12">
+  <path fill="white" fill-rule="nonzero" d="M0.188 0h8.354v8.542H0V0h0.188zm7.979 0.376H0.376v7.791h7.791V0.376z"/>
+  <path fill="white" fill-rule="nonzero" d="M1.33 4.775v-1.02h5.882v1.02H1.33z"/>
+</svg>
+&nbsp;Collapse all</button>
+          <!--<button type="button" ng-click="showAllParts()" class="orange">
             <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
               <path d="M0 0h24v24H0z" fill="none"/>
               <path style="opacity:0.5;" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="#fff"/>
             </svg>
-          </button>
+          </button>-->
         </div>
       </div>
       <div class="filter-field">
@@ -1914,78 +1955,6 @@
       </script>
       </div>
       <div class="editor-side">
-        <div class="config-tools"
-             ng-class="{'is-collapsed': state.configToolsCollapsed}"
-             ng-click="onConfigToolsContainerClick($event)">
-          <div class="config-tools-header"
-               ng-click="onConfigToolsHeaderClick($event)">
-            <h3>Saved Configurations</h3>
-            <button type="button"
-                    class="collapse-toggle"
-                    ng-click="toggleConfigToolsCollapsed()"
-                    ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
-                    aria-controls="vehiclePartsConfigToolsBody">
-              {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
-            </button>
-          </div>
-          <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
-            <div class="config-actions">
-              <input type="text"
-                      placeholder="Configuration name"
-                      ng-model="state.configNameInput"
-                      autocomplete="off" value="Save directly in Vehicle Configuration tab">
-              <button type="button"
-                      class="save-config-button"
-                      ng-click="saveCurrentConfiguration()"
-                      ng-disabled="state.isSavingConfig || state.showReplaceConfirmation || state.motionWarning.moving">
-                <span class="warning-indicator"
-                      ng-if="state.motionWarning.moving"
-                      ng-attr-title="{{motionWarningMessage}}"
-                      ng-attr-aria-label="{{motionWarningMessage}}"
-                      role="img">
-                  <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                    <path d="M16 3L29 29H3L16 3Z" fill="#ffb020" stroke="#d97706" stroke-width="2" stroke-linejoin="round"/>
-                    <rect x="14.6" y="11" width="2.8" height="9.2" rx="1.2" fill="#1f1300"/>
-                    <circle cx="16" cy="23.8" r="1.6" fill="#1f1300"/>
-                  </svg>
-                </span>
-                <span class="button-label" ng-if="!state.isSavingConfig">Save Configuration</span>
-                <span class="button-progress" ng-if="state.isSavingConfig">
-                  <span class="spinner small"></span>
-                  Saving...
-                </span>
-              </button>
-            </div>
-            <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
-            <div class="saved-configs" ng-if="hasSavedConfigs()">
-              <div class="saved-item"
-                    ng-repeat="config in getSavedConfigs() track by config.relativePath"
-                    ng-class="{selected: isSavedConfigSelected(config)}"
-                    ng-click="selectSavedConfig(config)">
-                <div class="saved-preview">
-                  <img ng-src="{{config.previewSrc || getSavedConfigPreviewSrc(config)}}"
-                       ng-attr-alt="{{config.displayName || getSavedConfigLabel(config)}} preview">
-                </div>
-                <div class="saved-details">
-                  <div class="saved-name">{{config.displayName || getSavedConfigLabel(config)}}</div>
-                  <div class="saved-meta">{{config.relativePath}}</div>
-                </div>
-                <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
-                  <button type="button"
-                          class="delete-button"
-                          ng-click="promptDeleteSavedConfig(config); $event.stopPropagation();"
-                          ng-disabled="state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath">
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>
-            <!--<div class="config-footer">
-              <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
-            </div>-->
-          </div>
-        </div>
         <div class="editor-panel base-paint-panel"
              ng-if="state.vehicleId"
              ng-class="{'is-collapsed': state.basePaintCollapsed}"
@@ -2085,6 +2054,78 @@
               <button type="button" class="primary" ng-click="applyPaint()" ng-disabled="!editedPaints.length">Apply paint to part</button>
               <button type="button" class="secondary" ng-click="resetPaint()">Reset to vehicle paints</button>
             </div>
+          </div>
+        </div>
+        <div class="config-tools"
+             ng-class="{'is-collapsed': state.configToolsCollapsed}"
+             ng-click="onConfigToolsContainerClick($event)">
+          <div class="config-tools-header"
+               ng-click="onConfigToolsHeaderClick($event)">
+            <h3>Saved Configurations</h3>
+            <button type="button"
+                    class="collapse-toggle"
+                    ng-click="toggleConfigToolsCollapsed()"
+                    ng-attr-aria-expanded="{{!state.configToolsCollapsed}}"
+                    aria-controls="vehiclePartsConfigToolsBody">
+              {{state.configToolsCollapsed ? 'Expand' : 'Collapse'}}
+            </button>
+          </div>
+          <div class="config-tools-body" id="vehiclePartsConfigToolsBody">
+            <div class="config-actions">
+              <input type="text"
+                      placeholder="Configuration name"
+                      ng-model="state.configNameInput"
+                      autocomplete="off" value="Save directly in Vehicle Configuration tab">
+              <button type="button"
+                      class="save-config-button"
+                      ng-click="saveCurrentConfiguration()"
+                      ng-disabled="state.isSavingConfig || state.showReplaceConfirmation || state.motionWarning.moving">
+                <span class="warning-indicator"
+                      ng-if="state.motionWarning.moving"
+                      ng-attr-title="{{motionWarningMessage}}"
+                      ng-attr-aria-label="{{motionWarningMessage}}"
+                      role="img">
+                  <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                    <path d="M16 3L29 29H3L16 3Z" fill="#ffb020" stroke="#d97706" stroke-width="2" stroke-linejoin="round"/>
+                    <rect x="14.6" y="11" width="2.8" height="9.2" rx="1.2" fill="#1f1300"/>
+                    <circle cx="16" cy="23.8" r="1.6" fill="#1f1300"/>
+                  </svg>
+                </span>
+                <span class="button-label" ng-if="!state.isSavingConfig">Save Configuration</span>
+                <span class="button-progress" ng-if="state.isSavingConfig">
+                  <span class="spinner small"></span>
+                  Saving...
+                </span>
+              </button>
+            </div>
+            <div class="config-error" ng-if="state.saveErrorMessage">{{state.saveErrorMessage}}</div>
+            <div class="saved-configs" ng-if="hasSavedConfigs()">
+              <div class="saved-item"
+                    ng-repeat="config in getSavedConfigs() track by config.relativePath"
+                    ng-class="{selected: isSavedConfigSelected(config)}"
+                    ng-click="selectSavedConfig(config)">
+                <div class="saved-preview">
+                  <img ng-src="{{config.previewSrc || getSavedConfigPreviewSrc(config)}}"
+                       ng-attr-alt="{{config.displayName || getSavedConfigLabel(config)}} preview">
+                </div>
+                <div class="saved-details">
+                  <div class="saved-name">{{config.displayName || getSavedConfigLabel(config)}}</div>
+                  <div class="saved-meta">{{config.relativePath}}</div>
+                </div>
+                <div class="saved-actions" ng-if="canDeleteSavedConfig(config)">
+                  <button type="button"
+                          class="delete-button"
+                          ng-click="promptDeleteSavedConfig(config); $event.stopPropagation();"
+                          ng-disabled="state.deleteConfigDialog.isDeleting && state.deleteConfigDialog.config && state.deleteConfigDialog.config.relativePath === config.relativePath">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="saved-empty" ng-if="!hasSavedConfigs()">No saved configurations for this vehicle yet.</div>
+            <!--<div class="config-footer">
+              <button type="button" ng-click="refreshSavedConfigs()">Refresh List</button>
+            </div>-->
           </div>
         </div>
       </div>
