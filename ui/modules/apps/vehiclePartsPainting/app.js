@@ -169,11 +169,12 @@ angular.module('beamng.apps')
       $scope.motionWarningMessage = MOTION_WARNING_MESSAGE;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
-      const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 2000;
-      const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 8;
+      const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 3000;
+      const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 12;
       let customBadgeRefreshPromise = null;
       let savedConfigRefreshTimeout = null;
       let savedConfigPreviewTracking = Object.create(null);
+      let savedConfigPreviewForceCounter = 0;
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
@@ -1543,6 +1544,7 @@ end)()`;
 
       function resetSavedConfigPreviewTracking() {
         savedConfigPreviewTracking = Object.create(null);
+        savedConfigPreviewForceCounter = 0;
       }
 
       function markSavedConfigPreviewForRefresh(config) {
@@ -1557,10 +1559,12 @@ end)()`;
         } else {
           signature = computeConfigPreviewSignature(config);
         }
+        const forceKey = 'force-' + (++savedConfigPreviewForceCounter) + '-' + Date.now();
         savedConfigPreviewTracking[key] = {
           attempts: SAVED_CONFIG_FAST_REFRESH_ATTEMPTS,
           signature: signature,
-          force: true
+          force: true,
+          forceKey: forceKey
         };
       }
 
@@ -1583,6 +1587,9 @@ end)()`;
               : computeConfigPreviewSignature(config);
             const hasPreviewImage = config.hasPreviewImage || hasConfigPreview(config);
             const isForced = !!(previous && previous.force);
+            const forceKey = (previous && typeof previous.forceKey === 'string')
+              ? previous.forceKey
+              : null;
 
             if (!isForced && hasPreviewImage) {
               return;
@@ -1600,16 +1607,16 @@ end)()`;
             }
 
             if (attempts <= 0) {
-              next[key] = { attempts: 0, signature: signature, force: isForced };
+              next[key] = { attempts: 0, signature: signature, force: isForced, forceKey: isForced ? forceKey : null };
               return;
             }
 
             const remaining = attempts - 1;
             if (remaining > 0) {
               hasPending = true;
-              next[key] = { attempts: remaining, signature: signature, force: isForced };
+              next[key] = { attempts: remaining, signature: signature, force: isForced, forceKey: isForced ? forceKey : null };
             } else {
-              next[key] = { attempts: 0, signature: signature, force: isForced };
+              next[key] = { attempts: 0, signature: signature, force: isForced, forceKey: isForced ? forceKey : null };
             }
           });
         }
@@ -2605,10 +2612,36 @@ end)()`;
         result.hasPreviewImage = hasConfigPreview(result);
         const previewPath = resolveConfigPreviewPath(result);
         const previewSignature = computeConfigPreviewSignature(result);
+        const pathKey = (typeof result.relativePath === 'string' && result.relativePath)
+          ? result.relativePath
+          : null;
+        const tracking = (pathKey && Object.prototype.hasOwnProperty.call(savedConfigPreviewTracking, pathKey))
+          ? savedConfigPreviewTracking[pathKey]
+          : null;
+        const forcedRefreshActive = !!(tracking && tracking.force);
+        const forcedAttempts = (forcedRefreshActive && typeof tracking.attempts === 'number')
+          ? tracking.attempts
+          : null;
+        let forcedBaseKey = null;
+        if (forcedRefreshActive) {
+          if (tracking && typeof tracking.forceKey === 'string' && tracking.forceKey) {
+            forcedBaseKey = tracking.forceKey;
+          } else if (tracking && tracking.signature) {
+            forcedBaseKey = tracking.signature;
+          } else {
+            forcedBaseKey = previewSignature || previousSignature || 'refresh';
+          }
+        }
         result.previewPath = previewPath;
         result.previewSignature = previewSignature;
         if (!previewPath) {
           result.previewSrc = null;
+        } else if (forcedRefreshActive) {
+          const attemptMarker = (typeof forcedAttempts === 'number')
+            ? ':' + forcedAttempts
+            : ':force';
+          const cacheKey = (forcedBaseKey || 'refresh') + attemptMarker;
+          result.previewSrc = buildConfigPreviewSrc(previewPath, cacheKey);
         } else {
           const shouldAppendSignature = (!!previousSignature && previousSignature !== previewSignature) || hadPreviewQuery;
           if (shouldAppendSignature) {
