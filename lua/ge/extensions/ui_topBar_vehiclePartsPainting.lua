@@ -14,7 +14,7 @@ local desiredItemDefinition = {
   label = 'vehiclePartsPainting.topbarLabel',
   icon = 'engine',
   targetState = 'menu.vehiclePartsPainting',
-  substate = 'menu.vehiclePartsPainting',
+  substate = 'menu.appselect',
   order = 250,
   flags = {'inGameOnly', 'noMission', 'noScenario', 'noGarage'},
 }
