@@ -160,7 +160,11 @@ angular.module('beamng.apps')
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
 
       const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
+      const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 2000;
+      const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 8;
       let customBadgeRefreshPromise = null;
+      let savedConfigRefreshTimeout = null;
+      let savedConfigPreviewTracking = Object.create(null);
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
@@ -1015,9 +1019,10 @@ end)()`;
         clearPendingReplacement();
         state.saveErrorMessage = null;
         state.isSavingConfig = true;
+        resetSavedConfigPreviewTracking();
+        scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
         bngApi.engineLua(command);
-        requestSavedConfigs();
       }
 
       function createViewPaint(paint) {
@@ -1487,6 +1492,66 @@ end)()`;
 
       function requestSavedConfigs() {
         bngApi.engineLua('freeroam_vehiclePartsPainting.requestSavedConfigs()');
+      }
+
+      function cancelSavedConfigRefreshTimer() {
+        if (savedConfigRefreshTimeout) {
+          $timeout.cancel(savedConfigRefreshTimeout);
+          savedConfigRefreshTimeout = null;
+        }
+      }
+
+      function scheduleSavedConfigRefresh(delay) {
+        cancelSavedConfigRefreshTimer();
+        if (typeof delay !== 'number' || !isFinite(delay) || delay < 0) { return; }
+        savedConfigRefreshTimeout = $timeout(function () {
+          savedConfigRefreshTimeout = null;
+          if (!state.vehicleId) { return; }
+          requestSavedConfigs();
+        }, delay);
+      }
+
+      function resetSavedConfigPreviewTracking() {
+        savedConfigPreviewTracking = Object.create(null);
+      }
+
+      function updateSavedConfigPreviewTracking(configs) {
+        const next = Object.create(null);
+        let hasPending = false;
+        if (Array.isArray(configs)) {
+          configs.forEach(function (config) {
+            if (!config || typeof config.relativePath !== 'string') { return; }
+            if (config.hasPreviewImage || hasConfigPreview(config)) { return; }
+            const key = config.relativePath;
+            const signature = (config.previewSignature && typeof config.previewSignature === 'string')
+              ? config.previewSignature
+              : computeConfigPreviewSignature(config);
+            let previousAttempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+            if (Object.prototype.hasOwnProperty.call(savedConfigPreviewTracking, key)) {
+              const previous = savedConfigPreviewTracking[key];
+              if (previous && typeof previous === 'object') {
+                if (previous.signature && previous.signature !== signature) {
+                  previousAttempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+                } else if (typeof previous.attempts === 'number') {
+                  previousAttempts = previous.attempts;
+                }
+              }
+            }
+            if (previousAttempts <= 0) {
+              next[key] = { attempts: 0, signature: signature };
+              return;
+            }
+            const remaining = previousAttempts - 1;
+            if (remaining > 0) {
+              hasPending = true;
+              next[key] = { attempts: remaining, signature: signature };
+            } else {
+              next[key] = { attempts: 0, signature: signature };
+            }
+          });
+        }
+        savedConfigPreviewTracking = next;
+        return hasPending;
       }
 
       function highlightPart(partPath) {
@@ -2330,6 +2395,17 @@ end)()`;
         });
       };
 
+      function isCollapseToggleEvent($event) {
+        if (!$event || !$event.target) { return false; }
+        const target = $event.target;
+        if (target && target.classList && target.classList.contains('collapse-toggle')) { return true; }
+        if (target && typeof target.closest === 'function') {
+          const toggleButton = target.closest('.collapse-toggle');
+          if (toggleButton) { return true; }
+        }
+        return false;
+      }
+
       $scope.toggleBasePaintCollapsed = function () {
         state.basePaintCollapsed = !state.basePaintCollapsed;
       };
@@ -2340,6 +2416,57 @@ end)()`;
 
       $scope.toggleConfigToolsCollapsed = function () {
         state.configToolsCollapsed = !state.configToolsCollapsed;
+      };
+
+      $scope.onConfigToolsContainerClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if (!state.configToolsCollapsed) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.configToolsCollapsed = false;
+      };
+
+      $scope.onConfigToolsHeaderClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.configToolsCollapsed = !state.configToolsCollapsed;
+      };
+
+      $scope.onBasePaintPanelClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if (!state.basePaintCollapsed) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.basePaintCollapsed = false;
+      };
+
+      $scope.onBasePaintHeaderClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.basePaintCollapsed = !state.basePaintCollapsed;
+      };
+
+      $scope.onPartPaintPanelClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if (!state.partPaintCollapsed) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.partPaintCollapsed = false;
+      };
+
+      $scope.onPartPaintHeaderClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.partPaintCollapsed = !state.partPaintCollapsed;
       };
 
       $scope.refresh = function () {
@@ -2370,6 +2497,73 @@ end)()`;
         return 'Configuration';
       }
 
+      function computeConfigPreviewSignature(config) {
+        if (!config || typeof config !== 'object') { return ''; }
+        const previewImage = typeof config.previewImage === 'string' ? config.previewImage : '';
+        const fileName = typeof config.fileName === 'string' ? config.fileName : '';
+        const relativePath = typeof config.relativePath === 'string' ? config.relativePath : '';
+        const markers = [];
+        if (typeof config.fileDate === 'number') { markers.push(config.fileDate); }
+        if (typeof config.fileSize === 'number') { markers.push(config.fileSize); }
+        if (typeof config.modified === 'number') { markers.push(config.modified); }
+        if (typeof config.timestamp === 'number') { markers.push(config.timestamp); }
+        if (typeof config.timeStamp === 'number') { markers.push(config.timeStamp); }
+        if (typeof config.mtime === 'number') { markers.push(config.mtime); }
+        if (typeof config.updateTime === 'number') { markers.push(config.updateTime); }
+        if (typeof config.version === 'number') { markers.push(config.version); }
+        return [relativePath, fileName, previewImage, markers.join('|')].join('::');
+      }
+
+      function mergeSavedConfigEntry(target, source) {
+        if (!source || typeof source !== 'object') { return null; }
+        const computedKeys = { displayName: true, hasPreviewImage: true, previewPath: true, previewSrc: true, previewSignature: true };
+        const result = target && typeof target === 'object' ? target : {};
+        Object.keys(result).forEach(function (key) {
+          if (Object.prototype.hasOwnProperty.call(computedKeys, key)) { return; }
+          if (!Object.prototype.hasOwnProperty.call(source, key)) {
+            delete result[key];
+          }
+        });
+        for (const key in source) {
+          if (Object.prototype.hasOwnProperty.call(source, key)) {
+            result[key] = source[key];
+          }
+        }
+        result.displayName = getSavedConfigDisplayName(result);
+        result.hasPreviewImage = hasConfigPreview(result);
+        const previewPath = resolveConfigPreviewPath(result);
+        result.previewPath = previewPath;
+        result.previewSrc = previewPath ? buildConfigPreviewSrc(previewPath) : null;
+        result.previewSignature = computeConfigPreviewSignature(result);
+        return result;
+      }
+
+      function mergeSavedConfigList(configs) {
+        if (!Array.isArray(configs)) { return []; }
+        const previousByPath = Object.create(null);
+        if (Array.isArray(state.savedConfigs)) {
+          state.savedConfigs.forEach(function (entry) {
+            if (!entry || typeof entry !== 'object') { return; }
+            const path = typeof entry.relativePath === 'string' ? entry.relativePath : null;
+            if (!path) { return; }
+            previousByPath[path] = entry;
+          });
+        }
+        const result = [];
+        configs.forEach(function (config) {
+          if (!config || typeof config !== 'object') { return; }
+          const path = typeof config.relativePath === 'string' ? config.relativePath : null;
+          const base = path && Object.prototype.hasOwnProperty.call(previousByPath, path)
+            ? previousByPath[path]
+            : {};
+          const merged = mergeSavedConfigEntry(base, config);
+          if (merged) {
+            result.push(merged);
+          }
+        });
+        return result;
+      }
+
       $scope.getSavedConfigs = function () {
         return Array.isArray(state.savedConfigs) ? state.savedConfigs : [];
       };
@@ -2383,10 +2577,18 @@ end)()`;
       };
 
       $scope.hasSavedConfigPreview = function (config) {
+        if (!config) { return false; }
+        if (Object.prototype.hasOwnProperty.call(config, 'hasPreviewImage')) {
+          return !!config.hasPreviewImage;
+        }
         return hasConfigPreview(config);
       };
 
       $scope.getSavedConfigPreviewSrc = function (config) {
+        if (!config) { return null; }
+        if (config.previewSrc && typeof config.previewSrc === 'string') {
+          return config.previewSrc;
+        }
         const path = resolveConfigPreviewPath(config);
         if (!path) { return null; }
         return buildConfigPreviewSrc(path);
@@ -2433,6 +2635,8 @@ end)()`;
           return;
         }
         state.deleteConfigDialog.isDeleting = true;
+        resetSavedConfigPreviewTracking();
+        scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.deleteSavedConfiguration(' + toLuaString(target.relativePath) + ')';
         bngApi.engineLua(command);
       };
@@ -2535,6 +2739,8 @@ end)()`;
           $interval.cancel(customBadgeRefreshPromise);
           customBadgeRefreshPromise = null;
         }
+        cancelSavedConfigRefreshTimer();
+        resetSavedConfigPreviewTracking();
         resetPartLookup();
         resetTreeNodeLookup();
         clearCustomPaintState();
@@ -2582,6 +2788,8 @@ end)()`;
             setSelectedPart(null);
             sendShowAllCommand();
             refreshCustomBadgeVisibility();
+            cancelSavedConfigRefreshTimer();
+            resetSavedConfigPreviewTracking();
             return;
           }
 
@@ -2607,6 +2815,7 @@ end)()`;
             resetDeleteConfigDialog();
             setSelectedPart(null);
             sendShowAllCommand();
+            resetSavedConfigPreviewTracking();
             requestSavedConfigs();
           }
 
@@ -2642,19 +2851,17 @@ end)()`;
         $scope.$evalAsync(function () {
           const wasSaving = state.isSavingConfig;
           clearPendingReplacement();
-          const configs = Array.isArray(data.configs) ? data.configs.map(function (config) {
-            if (!config || typeof config !== 'object') { return null; }
-            const clone = Object.assign({}, config);
-            clone.displayName = getSavedConfigDisplayName(clone);
-            return clone;
-          }).filter(function (entry) { return !!entry; }) : [];
+          const rawConfigs = Array.isArray(data.configs)
+            ? data.configs.filter(function (config) { return config && typeof config === 'object'; })
+            : [];
+          const configs = mergeSavedConfigList(rawConfigs);
 
           const previousSelection = state.selectedSavedConfig ? state.selectedSavedConfig.relativePath : null;
           state.savedConfigs = configs;
 
+          state.deleteConfigDialog.isDeleting = false;
           if (state.deleteConfigDialog.visible) {
             const pending = state.deleteConfigDialog.config;
-            state.deleteConfigDialog.isDeleting = false;
             if (pending && pending.relativePath) {
               const updated = configs.find(function (entry) { return entry.relativePath === pending.relativePath; });
               if (updated) {
@@ -2670,7 +2877,10 @@ end)()`;
           if (!configs.length) {
             state.selectedSavedConfig = null;
           } else {
-            let selected = configs.find(function (entry) { return entry.relativePath === previousSelection; });
+            let selected = null;
+            if (previousSelection) {
+              selected = configs.find(function (entry) { return entry.relativePath === previousSelection; });
+            }
             if (!selected) {
               selected = configs[0];
             }
@@ -2682,6 +2892,18 @@ end)()`;
           if (wasSaving) {
             state.configNameInput = '';
             state.saveErrorMessage = null;
+          }
+
+          if (state.vehicleId) {
+            const hasPendingPreview = updateSavedConfigPreviewTracking(configs);
+            if (hasPendingPreview) {
+              scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
+            } else {
+              cancelSavedConfigRefreshTimer();
+            }
+          } else {
+            cancelSavedConfigRefreshTimer();
+            resetSavedConfigPreviewTracking();
           }
         });
       });
@@ -2707,6 +2929,7 @@ end)()`;
 
       $scope.$on('$destroy', function () {
         stopHsvRectDrag();
+        cancelSavedConfigRefreshTimer();
       });
 
       bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
