@@ -904,12 +904,16 @@ angular.module('beamng.apps')
         bngApi.engineLua('settings.notifyUI()');
       }
 
-      function handleWorldReadyStateChange(payload) {
+      function handleWorldReadyStateChange(payload, options) {
         const nextState = extractWorldReadyState(payload);
-        const force = payload && typeof payload === 'object' && payload.forceReinitialize === true;
+        const force = (payload && typeof payload === 'object' && payload.forceReinitialize === true)
+          || (options && options.forceOnReady === true);
         if (nextState === null || nextState === undefined) { return; }
         if (nextState !== 1) {
           lastWorldReadyState = nextState;
+          if (nextState === 0) {
+            resetExtensionIntegrationState();
+          }
           return;
         }
         if (!force && lastWorldReadyState === 1) {
@@ -920,10 +924,10 @@ angular.module('beamng.apps')
         performWorldReadyInitialization();
       }
 
-      function registerWorldReadyListener(eventName) {
+      function registerWorldReadyListener(eventName, options) {
         if (!eventName) { return; }
         $scope.$on(eventName, function (event, data) {
-          handleWorldReadyStateChange(data);
+          handleWorldReadyStateChange(data, options);
         });
       }
 
@@ -1923,8 +1927,8 @@ end)()`;
       }
 
       registerWorldReadyListener('VehiclePartsPaintingWorldReady');
-      registerWorldReadyListener('WorldReadyStateChanged');
-      registerWorldReadyListener('WorldReadyState');
+      registerWorldReadyListener('WorldReadyStateChanged', { forceOnReady: true });
+      registerWorldReadyListener('WorldReadyState', { forceOnReady: true });
 
       function cancelSavedConfigRefreshTimer() {
         if (savedConfigRefreshTimeout) {

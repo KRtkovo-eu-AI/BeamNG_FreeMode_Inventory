@@ -643,6 +643,54 @@ function resetPaint(scope, partPath) {
     'Duplicate world ready notifications should not enqueue additional commands');
 })();
 
+(function verifyForcedWorldReadyReinitializationFromEngine() {
+  const controller = instantiateController({ autoResolveExtension: false });
+  const scope = controller.scope;
+  const timeout = controller.timeout;
+  const engineLuaCallbacks = controller.engineLuaCallbacks;
+  const bngApiCalls = controller.bngApiCalls;
+  const hooks = controller.hooks;
+
+  assert(engineLuaCallbacks.length >= 1, 'Initial extension availability probe should be enqueued');
+  const initialProbe = engineLuaCallbacks.shift();
+  assert(initialProbe.command && initialProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
+    'Initial availability probe should query extension readiness');
+  initialProbe.callback(false);
+
+  timeout.flush();
+  engineLuaCallbacks.splice(0, engineLuaCallbacks.length);
+  bngApiCalls.splice(0, bngApiCalls.length);
+
+  scope.$$emit('VehiclePartsPaintingWorldReady', { worldReadyState: 1, previousState: 0 });
+  scope.$digest();
+
+  engineLuaCallbacks.splice(0, engineLuaCallbacks.length);
+  bngApiCalls.splice(0, bngApiCalls.length);
+
+  const loadCallsBefore = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+
+  scope.$$emit('WorldReadyStateChanged', { state: 1 });
+  scope.$digest();
+
+  assert.strictEqual(hooks.getLastWorldReadyState(), 1,
+    'Forced world ready handler should update the tracked state value');
+
+  const loadCallsAfter = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+  assert.strictEqual(loadCallsAfter, loadCallsBefore + 1,
+    'Forced world ready events should reload the freeroam extension');
+
+  const queueSnapshot = hooks.getExtensionQueueSnapshot();
+  assert(queueSnapshot.length >= 2,
+    'Forced world ready events should queue refresh commands for the extension');
+
+  assert.strictEqual(hooks.hasAvailabilityCheckInFlight(), true,
+    'Forced world ready events should restart the extension availability probe');
+})();
+
 (function runTests() {
   const controller = instantiateController();
   const scope = controller.scope;
