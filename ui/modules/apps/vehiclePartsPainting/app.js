@@ -826,8 +826,28 @@ angular.module('beamng.apps')
         return null;
       }
 
+      const EXTENSION_LOAD_GUARD_INTERVAL_MS = 500;
+      let extensionLoadGuardPromise = null;
+
+      function clearExtensionLoadGuard() {
+        if (extensionLoadGuardPromise) {
+          $timeout.cancel(extensionLoadGuardPromise);
+          extensionLoadGuardPromise = null;
+        }
+      }
+
+      function requestExtensionLoad() {
+        if (!bngApi || typeof bngApi.engineLua !== 'function') { return; }
+        if (extensionLoadGuardPromise) { return; }
+        bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
+        extensionLoadGuardPromise = $timeout(function () {
+          extensionLoadGuardPromise = null;
+        }, EXTENSION_LOAD_GUARD_INTERVAL_MS);
+      }
+
       function resetExtensionIntegrationState() {
         clearExtensionAvailabilityRetry();
+        clearExtensionLoadGuard();
         extensionCommandQueue.length = 0;
         extensionCommandProcessing = false;
         extensionAvailabilityCheckInFlight = false;
@@ -896,12 +916,7 @@ angular.module('beamng.apps')
       }
 
       function performWorldReadyInitialization() {
-        resetExtensionIntegrationState();
-        resetUiForWorldChange();
-        bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
-        $scope.refresh();
-        requestSavedConfigs();
-        bngApi.engineLua('settings.notifyUI()');
+        handleVehicleChange();
       }
 
       function handleWorldReadyStateChange(payload, options) {
@@ -957,6 +972,7 @@ angular.module('beamng.apps')
           if (!extensionReady) {
             extensionCommandQueue.unshift(command);
             extensionCommandProcessing = false;
+            requestExtensionLoad();
             scheduleExtensionAvailabilityCheck();
             return;
           }
@@ -981,11 +997,6 @@ angular.module('beamng.apps')
       }
 
       function checkExtensionAvailability() {
-        if (extensionReady) {
-          processExtensionCommandQueue();
-          return;
-        }
-
         if (!extensionCommandQueue.length) { return; }
         if (extensionAvailabilityCheckInFlight) { return; }
 
@@ -993,14 +1004,14 @@ angular.module('beamng.apps')
         bngApi.engineLua('freeroam_vehiclePartsPainting ~= nil', function (result) {
           extensionAvailabilityCheckInFlight = false;
           const available = interpretLuaBoolean(result);
-          extensionReady = !!available;
-
-          if (extensionReady) {
-            clearExtensionAvailabilityRetry();
+          if (available) {
+            markExtensionAvailable();
             processExtensionCommandQueue();
-          } else {
-            scheduleExtensionAvailabilityCheck();
+            return;
           }
+
+          requestExtensionLoad();
+          scheduleExtensionAvailabilityCheck();
         });
       }
 
@@ -1014,6 +1025,7 @@ angular.module('beamng.apps')
 
         extensionReady = true;
         clearExtensionAvailabilityRetry();
+        clearExtensionLoadGuard();
         if (!extensionCommandProcessing && extensionCommandQueue.length) {
           processExtensionCommandQueue();
         }
@@ -1929,6 +1941,17 @@ end)()`;
       registerWorldReadyListener('VehiclePartsPaintingWorldReady');
       registerWorldReadyListener('WorldReadyStateChanged', { forceOnReady: true });
       registerWorldReadyListener('WorldReadyState', { forceOnReady: true });
+
+      function handleVehicleChange() {
+        resetExtensionIntegrationState();
+        resetUiForWorldChange();
+        requestExtensionLoad();
+        $scope.refresh();
+        requestSavedConfigs();
+        bngApi.engineLua('settings.notifyUI()');
+      }
+
+      $scope.$on('VehicleChange', handleVehicleChange);
 
       function cancelSavedConfigRefreshTimer() {
         if (savedConfigRefreshTimeout) {
@@ -3282,6 +3305,7 @@ end)()`;
         resetTreeNodeLookup();
         clearCustomPaintState();
         clearExtensionAvailabilityRetry();
+        clearExtensionLoadGuard();
         extensionCommandQueue.length = 0;
         extensionCommandProcessing = false;
         extensionAvailabilityCheckInFlight = false;
@@ -3568,10 +3592,7 @@ end)()`;
         cancelSavedConfigRefreshTimer();
       });
 
-      bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
-      $scope.refresh();
-      requestSavedConfigs();
-      bngApi.engineLua('settings.notifyUI()');
+      handleVehicleChange();
       refreshCustomBadgeVisibility();
       customBadgeRefreshPromise = $interval(function () {
         refreshCustomBadgeVisibility();

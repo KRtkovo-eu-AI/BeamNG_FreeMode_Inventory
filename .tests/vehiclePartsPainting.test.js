@@ -552,7 +552,24 @@ function resetPaint(scope, partPath) {
   const retryProbe = engineLuaCallbacks.shift();
   assert(retryProbe.command && retryProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
     'Retry probe should query extension availability');
-  retryProbe.callback(true);
+
+  const loadCallsBeforeRetry = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+  retryProbe.callback(false);
+
+  const loadCallsAfterRetry = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+  assert.strictEqual(loadCallsAfterRetry >= loadCallsBeforeRetry + 1, true,
+    'Availability retry callbacks should request the freeroam extension to load when it remains unavailable');
+
+  timeout.flush();
+  assert(engineLuaCallbacks.length >= 1, 'Second availability retry should queue another probe');
+  const recoveryProbe = engineLuaCallbacks.shift();
+  assert(recoveryProbe.command && recoveryProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
+    'Recovery probe should query extension availability');
+  recoveryProbe.callback(true);
 
   let guardedCommandCallbacks = 0;
   while (engineLuaCallbacks.length) {
@@ -578,6 +595,54 @@ function resetPaint(scope, partPath) {
   }), 'Queued requestSavedConfigs command should execute after extension becomes available');
   assert.strictEqual(guardedCommandCallbacks >= 2, true,
     'Guarded command callbacks should be invoked for each queued command');
+})();
+
+(function verifyVehicleChangeReinitialization() {
+  const controller = instantiateController({ autoResolveExtension: false });
+  const scope = controller.scope;
+  const timeout = controller.timeout;
+  const engineLuaCallbacks = controller.engineLuaCallbacks;
+  const bngApiCalls = controller.bngApiCalls;
+  const hooks = controller.hooks;
+
+  assert(engineLuaCallbacks.length >= 1, 'Initial availability probe should be queued');
+  const initialProbe = engineLuaCallbacks.shift();
+  assert(initialProbe.command && initialProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
+    'Initial availability probe should query extension readiness');
+  initialProbe.callback(true);
+
+  while (engineLuaCallbacks.length) {
+    const pending = engineLuaCallbacks.shift();
+    pending.callback(true);
+  }
+
+  bngApiCalls.splice(0, bngApiCalls.length);
+
+  scope.$$emit('VehicleChange');
+  scope.$digest();
+
+  assert.strictEqual(hooks.isExtensionReady(), false,
+    'Vehicle change should reset the freeroam extension readiness state');
+
+  const queueSnapshot = hooks.getExtensionQueueSnapshot();
+  assert(queueSnapshot.length >= 2, 'Vehicle change should queue refresh commands for the extension');
+
+  assert(engineLuaCallbacks.length >= 1,
+    'Vehicle change should enqueue a fresh availability probe after resetting the extension');
+  const probe = engineLuaCallbacks[0];
+  assert(probe.command && probe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
+    'Vehicle change availability probe should check for the freeroam extension');
+
+  const loadCalls = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+  assert.strictEqual(loadCalls >= 1, true,
+    'Vehicle change should request the freeroam extension to load');
+
+  assert(bngApiCalls.some(function (command) { return command === 'settings.notifyUI()'; }),
+    'Vehicle change should trigger a settings refresh in the UI');
+
+  timeout.flush();
 })();
 
 (function verifyWorldReadyReinitialization() {
