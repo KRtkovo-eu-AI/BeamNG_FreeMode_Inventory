@@ -117,6 +117,83 @@ angular.module('beamng.apps')
 
       const globalWindow = (typeof window !== 'undefined') ? window : null;
       const MINIMIZED_ICON_SIZE = 48;
+      const MINIMIZED_STATE_STORAGE_KEY = 'vehiclePartsPainting.minimizedState';
+
+      function getSessionStorage() {
+        if (!globalWindow) { return null; }
+        try {
+          return globalWindow.sessionStorage || null;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function buildMinimizedInlineStyle(alignment, offset) {
+        if (alignment !== 'right') { return {}; }
+        const numericOffset = typeof offset === 'number' && isFinite(offset) ? offset : 0;
+        if (numericOffset <= 0) { return {}; }
+        return {
+          transform: 'translateX(' + numericOffset + 'px)'
+        };
+      }
+
+      function persistMinimizedState(minimized, alignment, offset) {
+        const storage = getSessionStorage();
+        if (!storage) { return; }
+
+        if (!minimized) {
+          try {
+            storage.removeItem(MINIMIZED_STATE_STORAGE_KEY);
+          } catch (err) {
+            /* no-op */
+          }
+          return;
+        }
+
+        const payload = {
+          minimized: true,
+          alignment: alignment === 'right' ? 'right' : 'left'
+        };
+
+        if (typeof offset === 'number' && isFinite(offset) && offset > 0) {
+          payload.offset = offset;
+        }
+
+        try {
+          storage.setItem(MINIMIZED_STATE_STORAGE_KEY, JSON.stringify(payload));
+        } catch (err) {
+          /* no-op */
+        }
+      }
+
+      function loadPersistedMinimizedState() {
+        const storage = getSessionStorage();
+        if (!storage) { return null; }
+
+        let raw = null;
+        try {
+          raw = storage.getItem(MINIMIZED_STATE_STORAGE_KEY);
+        } catch (err) {
+          return null;
+        }
+
+        if (!raw || typeof raw !== 'string') { return null; }
+
+        try {
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== 'object') { return null; }
+          const minimized = !!parsed.minimized;
+          const alignment = parsed.alignment === 'right' ? 'right' : 'left';
+          const offset = typeof parsed.offset === 'number' && isFinite(parsed.offset) ? parsed.offset : 0;
+          return {
+            minimized: minimized,
+            alignment: alignment,
+            offset: offset
+          };
+        } catch (err) {
+          return null;
+        }
+      }
 
       function getViewportWidth() {
         if (!globalWindow) { return 0; }
@@ -132,7 +209,8 @@ angular.module('beamng.apps')
       function computeMinimizedPresentation() {
         const result = {
           alignment: 'left',
-          style: {}
+          style: {},
+          offset: 0
         };
 
         const element = ($element && $element[0]) ? $element[0] : null;
@@ -149,12 +227,25 @@ angular.module('beamng.apps')
         if (elementCenter > viewportMid) {
           result.alignment = 'right';
           const offset = Math.max(0, rect.width - MINIMIZED_ICON_SIZE);
-          result.style = {
-            transform: 'translateX(' + offset + 'px)'
-          };
+          result.offset = offset;
+          if (offset > 0) {
+            result.style = {
+              transform: 'translateX(' + offset + 'px)'
+            };
+          }
         }
 
         return result;
+      }
+
+      const persistedMinimizedState = loadPersistedMinimizedState();
+      if (persistedMinimizedState && persistedMinimizedState.minimized) {
+        state.minimizedAlignment = persistedMinimizedState.alignment || 'left';
+        state.minimizedInlineStyle = buildMinimizedInlineStyle(
+          state.minimizedAlignment,
+          persistedMinimizedState.offset
+        );
+        state.minimized = true;
       }
 
       const LIVERY_EDITOR_CONFIRMATION_TEXT = 'This is an early highly experimental preview of the Decal Editor. Please be aware that anything created with this feature may be lost in future hotfixes and updates. Do you wish to proceed?';
@@ -2393,6 +2484,7 @@ end)()`;
         state.minimizedAlignment = presentation.alignment;
         state.minimizedInlineStyle = presentation.style;
         state.minimized = true;
+        persistMinimizedState(true, state.minimizedAlignment, presentation.offset);
 
         if (state.motionWarning.dialogVisible && !state.motionWarning.acknowledged) {
           state.motionWarning.dialogVisible = false;
@@ -2404,6 +2496,7 @@ end)()`;
         state.minimized = false;
         state.minimizedAlignment = 'left';
         state.minimizedInlineStyle = {};
+        persistMinimizedState(false);
 
         if (state.motionWarning.pending && state.motionWarning.moving && !state.motionWarning.acknowledged) {
           state.motionWarning.dialogVisible = true;

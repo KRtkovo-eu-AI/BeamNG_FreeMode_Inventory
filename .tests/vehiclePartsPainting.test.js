@@ -171,6 +171,36 @@ function createTimeoutStub() {
   return timeout;
 }
 
+function createSessionStorageStub(initialData) {
+  const data = Object.create(null);
+  if (initialData && typeof initialData === 'object') {
+    Object.keys(initialData).forEach((key) => {
+      data[String(key)] = String(initialData[key]);
+    });
+  }
+
+  return {
+    getItem: function getItem(key) {
+      key = String(key);
+      return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+    },
+    setItem: function setItem(key, value) {
+      data[String(key)] = String(value);
+    },
+    removeItem: function removeItem(key) {
+      key = String(key);
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        delete data[key];
+      }
+    },
+    clear: function clear() {
+      Object.keys(data).forEach((key) => {
+        delete data[key];
+      });
+    }
+  };
+}
+
 function decodeLuaStringLiteral(value) {
   let result = '';
   for (let i = 0; i < value.length; i++) {
@@ -325,7 +355,8 @@ function findNode(nodes, partPath) {
   return null;
 }
 
-function instantiateController() {
+function instantiateController(options) {
+  options = options || {};
   delete require.cache[require.resolve(path.join('..', 'ui/modules/apps/vehiclePartsPainting/app.js'))];
   controllerHooks = null;
 
@@ -377,6 +408,10 @@ function instantiateController() {
       }
     }
   };
+
+  if (options.sessionStorage) {
+    global.window.sessionStorage = options.sessionStorage;
+  }
 
   const angularStub = createAngularStub();
   global.angular = angularStub;
@@ -439,6 +474,7 @@ function instantiateController() {
     engineLuaCallbacks: engineLuaCallbacks,
     gotoGameStateCalls: gotoGameStateCalls,
     window: global.window,
+    sessionStorage: global.window.sessionStorage || null,
     setElementBoundingRect: function (rect) {
       if (!rect || typeof rect !== 'object') { return; }
       elementRect = Object.assign({}, elementRect, rect);
@@ -1110,6 +1146,40 @@ function resetPaint(scope, partPath) {
   assert.strictEqual(bngApiCalls.length, messageCountBeforeDisabledLaunch + 1, 'Disabled livery editor action should surface a UI message');
   const disabledLaunchMessage = bngApiCalls[bngApiCalls.length - 1];
   assert(disabledLaunchMessage && disabledLaunchMessage.indexOf('ui_message') !== -1, 'Disabled livery editor action should use ui_message feedback');
+
+  const minimizedStorageKey = 'vehiclePartsPainting.minimizedState';
+  const minimizedSessionStorage = createSessionStorageStub();
+  const minimizedController = instantiateController({ sessionStorage: minimizedSessionStorage });
+  const minimizedScope = minimizedController.scope;
+  minimizedController.setElementBoundingRect({ left: 1200, width: 400 });
+  minimizedScope.minimizeApp();
+  minimizedScope.$digest();
+
+  const persistedMinimizedRaw = minimizedSessionStorage.getItem(minimizedStorageKey);
+  assert(persistedMinimizedRaw, 'Minimize action should persist minimized state in session storage');
+
+  let persistedMinimizedState = null;
+  try {
+    persistedMinimizedState = JSON.parse(persistedMinimizedRaw);
+  } catch (err) {
+    assert.fail('Persisted minimized state should parse as JSON: ' + err.message);
+  }
+
+  assert(persistedMinimizedState && typeof persistedMinimizedState === 'object', 'Persisted minimized state should be an object');
+  assert.strictEqual(persistedMinimizedState.minimized, true, 'Persisted minimized state should mark minimized flag');
+  assert.strictEqual(persistedMinimizedState.alignment, 'right', 'Persisted minimized state should retain minimized alignment');
+  assert.strictEqual(persistedMinimizedState.offset, 352, 'Persisted minimized state should store the minimized translate offset');
+
+  const restoredMinimizedController = instantiateController({ sessionStorage: minimizedSessionStorage });
+  const restoredMinimizedScope = restoredMinimizedController.scope;
+  const restoredMinimizedState = restoredMinimizedScope.state;
+  assert.strictEqual(restoredMinimizedState.minimized, true, 'Controller should restore minimized flag from persisted session storage');
+  assert.strictEqual(restoredMinimizedState.minimizedAlignment, 'right', 'Controller should restore minimized alignment from persisted session storage');
+  assert(restoredMinimizedState.minimizedInlineStyle && restoredMinimizedState.minimizedInlineStyle.transform === 'translateX(352px)', 'Controller should restore minimized inline transform from persisted session storage');
+
+  restoredMinimizedScope.restoreApp();
+  restoredMinimizedScope.$digest();
+  assert.strictEqual(minimizedSessionStorage.getItem(minimizedStorageKey), null, 'Restoring the widget should clear persisted minimized state');
 
   console.log('All vehicle parts painting tests passed.');
 })();
