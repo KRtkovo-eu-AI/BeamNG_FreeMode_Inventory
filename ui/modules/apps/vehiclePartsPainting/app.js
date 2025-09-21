@@ -785,6 +785,147 @@ angular.module('beamng.apps')
       let extensionReady = false;
       let extensionAvailabilityCheckInFlight = false;
       let extensionAvailabilityRetryPromise = null;
+      let lastWorldReadyState = null;
+
+      function normalizeWorldReadyState(value) {
+        if (value === true) { return 1; }
+        if (value === false) { return 0; }
+        if (typeof value === 'number') {
+          if (!isFinite(value)) { return null; }
+          return value;
+        }
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) { return null; }
+          if (trimmed.toLowerCase() === 'true') { return 1; }
+          if (trimmed.toLowerCase() === 'false') { return 0; }
+          const parsed = Number(trimmed);
+          return Number.isNaN(parsed) ? null : parsed;
+        }
+        return null;
+      }
+
+      function extractWorldReadyState(payload) {
+        const direct = normalizeWorldReadyState(payload);
+        if (direct !== null && direct !== undefined) { return direct; }
+        if (!payload || typeof payload !== 'object') { return null; }
+        const candidates = [
+          payload.worldReadyState,
+          payload.state,
+          payload.newState,
+          payload.value,
+          payload.readyState,
+          payload.worldReady
+        ];
+        for (let i = 0; i < candidates.length; i++) {
+          const candidate = normalizeWorldReadyState(candidates[i]);
+          if (candidate !== null && candidate !== undefined) {
+            return candidate;
+          }
+        }
+        return null;
+      }
+
+      function resetExtensionIntegrationState() {
+        clearExtensionAvailabilityRetry();
+        extensionCommandQueue.length = 0;
+        extensionCommandProcessing = false;
+        extensionAvailabilityCheckInFlight = false;
+        extensionReady = false;
+      }
+
+      function resetUiForWorldChange() {
+        $scope.$evalAsync(function () {
+          state.vehicleId = null;
+          state.parts = [];
+          state.partsTree = [];
+          state.filteredTree = [];
+          state.filteredParts = [];
+          state.filterResults = [];
+          state.filteringActive = false;
+          state.basePaints = [];
+          state.originalBasePaints = [];
+          $scope.basePaintEditors = [];
+          $scope.editedPaints = [];
+          state.selectedPartPath = null;
+          state.selectedPart = null;
+          state.hasUserSelectedPart = false;
+          state.hoveredPartPath = null;
+          state.filterText = '';
+          state.expandedNodes = {};
+          state.savedConfigs = [];
+          state.selectedSavedConfig = null;
+          state.configNameInput = '';
+          state.isSavingConfig = false;
+          state.isSpawningConfig = false;
+          state.saveErrorMessage = null;
+          state.showReplaceConfirmation = false;
+          state.pendingConfigName = null;
+          state.pendingSanitizedName = null;
+          state.pendingExistingConfig = null;
+          resetDeleteConfigDialog();
+          clearPendingReplacement();
+          state.removePresetDialog.visible = false;
+          state.removePresetDialog.preset = null;
+          state.motionWarning.moving = false;
+          state.motionWarning.dialogVisible = false;
+          state.motionWarning.pending = false;
+          state.motionWarning.acknowledged = false;
+          state.motionWarning.speed = 0;
+          state.motionWarning.vehicleId = null;
+          clearCustomPaintState();
+          resetPartLookup();
+          resetTreeNodeLookup();
+          resetSavedConfigPreviewTracking();
+          cancelSavedConfigRefreshTimer();
+          setSelectedPart(null);
+          suppressHsvSync = false;
+          hsvRectDragging = false;
+          colorPickerState.context = null;
+          colorPickerState.index = null;
+          colorPickerState.targetPaint = null;
+          colorPickerState.working = null;
+          colorPickerState.rectBounds = null;
+          colorPickerState.visible = false;
+          colorPickerState.hsv = { h: 0, s: 0, v: 1 };
+          pendingLiveryEditorLaunch = null;
+          clearLiveryEditorConfirmation();
+          invalidateLiveryEditorSupport();
+          computeFilteredParts();
+        });
+      }
+
+      function performWorldReadyInitialization() {
+        resetExtensionIntegrationState();
+        resetUiForWorldChange();
+        bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
+        $scope.refresh();
+        requestSavedConfigs();
+        bngApi.engineLua('settings.notifyUI()');
+      }
+
+      function handleWorldReadyStateChange(payload) {
+        const nextState = extractWorldReadyState(payload);
+        const force = payload && typeof payload === 'object' && payload.forceReinitialize === true;
+        if (nextState === null || nextState === undefined) { return; }
+        if (nextState !== 1) {
+          lastWorldReadyState = nextState;
+          return;
+        }
+        if (!force && lastWorldReadyState === 1) {
+          lastWorldReadyState = 1;
+          return;
+        }
+        lastWorldReadyState = 1;
+        performWorldReadyInitialization();
+      }
+
+      function registerWorldReadyListener(eventName) {
+        if (!eventName) { return; }
+        $scope.$on(eventName, function (event, data) {
+          handleWorldReadyStateChange(data);
+        });
+      }
 
       function clearExtensionAvailabilityRetry() {
         if (extensionAvailabilityRetryPromise) {
@@ -1763,7 +1904,13 @@ end)()`;
           refreshCustomBadges: refreshCustomBadgeVisibility,
           computeFilteredParts: computeFilteredParts,
           markPartsTreeDirty: markPartsTreeDirty,
-          getCustomPaintState: function () { return customPaintStateByPath; }
+          getCustomPaintState: function () { return customPaintStateByPath; },
+          getExtensionQueueSnapshot: function () { return extensionCommandQueue.slice(); },
+          isExtensionReady: function () { return extensionReady; },
+          isExtensionCommandProcessing: function () { return extensionCommandProcessing; },
+          hasAvailabilityCheckInFlight: function () { return extensionAvailabilityCheckInFlight; },
+          hasAvailabilityRetryScheduled: function () { return !!extensionAvailabilityRetryPromise; },
+          getLastWorldReadyState: function () { return lastWorldReadyState; }
         });
       }
 
@@ -1774,6 +1921,10 @@ end)()`;
       function requestSavedConfigs() {
         sendExtensionCommand('freeroam_vehiclePartsPainting.requestSavedConfigs()');
       }
+
+      registerWorldReadyListener('VehiclePartsPaintingWorldReady');
+      registerWorldReadyListener('WorldReadyStateChanged');
+      registerWorldReadyListener('WorldReadyState');
 
       function cancelSavedConfigRefreshTimer() {
         if (savedConfigRefreshTimeout) {

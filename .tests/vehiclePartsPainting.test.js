@@ -580,6 +580,69 @@ function resetPaint(scope, partPath) {
     'Guarded command callbacks should be invoked for each queued command');
 })();
 
+(function verifyWorldReadyReinitialization() {
+  const controller = instantiateController({ autoResolveExtension: false });
+  const scope = controller.scope;
+  const timeout = controller.timeout;
+  const engineLuaCallbacks = controller.engineLuaCallbacks;
+  const bngApiCalls = controller.bngApiCalls;
+  const hooks = controller.hooks;
+
+  assert(engineLuaCallbacks.length >= 1, 'Initial extension availability probe should be enqueued');
+  const initialProbe = engineLuaCallbacks.shift();
+  assert(initialProbe.command && initialProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
+    'Initial availability probe should query extension readiness');
+  initialProbe.callback(false);
+
+  timeout.flush();
+  assert(engineLuaCallbacks.length >= 1, 'Availability retry should schedule another probe');
+  engineLuaCallbacks.splice(0, engineLuaCallbacks.length);
+
+  const loadCallsBefore = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+  const commandCountBefore = bngApiCalls.length;
+
+  scope.$$emit('VehiclePartsPaintingWorldReady', { worldReadyState: 1, previousState: 0 });
+  scope.$digest();
+
+  assert.strictEqual(hooks.getLastWorldReadyState(), 1, 'World ready handler should record the last state value');
+  assert.strictEqual(hooks.isExtensionReady(), false, 'World ready initialization should reset extension readiness');
+  assert.strictEqual(hooks.hasAvailabilityCheckInFlight(), true,
+    'World ready initialization should restart the availability probe');
+  assert.strictEqual(hooks.hasAvailabilityRetryScheduled(), false,
+    'World ready initialization should clear any pending availability retry');
+
+  const queueSnapshot = hooks.getExtensionQueueSnapshot();
+  assert(queueSnapshot.length >= 2, 'World ready initialization should queue refresh commands');
+  assert(queueSnapshot.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
+  }), 'World ready initialization should queue a requestState command');
+  assert(queueSnapshot.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs()') !== -1;
+  }), 'World ready initialization should queue a requestSavedConfigs command');
+
+  const loadCallsAfter = bngApiCalls.filter(function (command) {
+    return command === 'extensions.load("freeroam_vehiclePartsPainting")';
+  }).length;
+  assert.strictEqual(loadCallsAfter, loadCallsBefore + 1,
+    'World ready initialization should reload the freeroam extension');
+
+  assert(bngApiCalls.length >= commandCountBefore + 2,
+    'World ready initialization should emit additional engine Lua commands');
+
+  assert(engineLuaCallbacks.length >= 1, 'World ready initialization should enqueue a fresh availability probe');
+  const availabilityProbe = engineLuaCallbacks[0];
+  assert(availabilityProbe.command && availabilityProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
+    'Availability probe should check for the freeroam extension');
+
+  const commandCountAfter = bngApiCalls.length;
+  scope.$$emit('VehiclePartsPaintingWorldReady', { worldReadyState: 1 });
+  scope.$digest();
+  assert.strictEqual(bngApiCalls.length, commandCountAfter,
+    'Duplicate world ready notifications should not enqueue additional commands');
+})();
+
 (function runTests() {
   const controller = instantiateController();
   const scope = controller.scope;
