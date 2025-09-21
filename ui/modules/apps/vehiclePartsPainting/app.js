@@ -779,6 +779,275 @@ angular.module('beamng.apps')
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
       }
 
+      const EXTENSION_AVAILABILITY_CHECK_INTERVAL_MS = 250;
+      const extensionCommandQueue = [];
+      let extensionCommandProcessing = false;
+      let extensionReady = false;
+      let extensionAvailabilityCheckInFlight = false;
+      let extensionAvailabilityRetryPromise = null;
+      let lastWorldReadyState = null;
+
+      function normalizeWorldReadyState(value) {
+        if (value === true) { return 1; }
+        if (value === false) { return 0; }
+        if (typeof value === 'number') {
+          if (!isFinite(value)) { return null; }
+          return value;
+        }
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) { return null; }
+          if (trimmed.toLowerCase() === 'true') { return 1; }
+          if (trimmed.toLowerCase() === 'false') { return 0; }
+          const parsed = Number(trimmed);
+          return Number.isNaN(parsed) ? null : parsed;
+        }
+        return null;
+      }
+
+      function extractWorldReadyState(payload) {
+        const direct = normalizeWorldReadyState(payload);
+        if (direct !== null && direct !== undefined) { return direct; }
+        if (!payload || typeof payload !== 'object') { return null; }
+        const candidates = [
+          payload.worldReadyState,
+          payload.state,
+          payload.newState,
+          payload.value,
+          payload.readyState,
+          payload.worldReady
+        ];
+        for (let i = 0; i < candidates.length; i++) {
+          const candidate = normalizeWorldReadyState(candidates[i]);
+          if (candidate !== null && candidate !== undefined) {
+            return candidate;
+          }
+        }
+        return null;
+      }
+
+      const EXTENSION_LOAD_GUARD_INTERVAL_MS = 500;
+      let extensionLoadGuardPromise = null;
+
+      function clearExtensionLoadGuard() {
+        if (extensionLoadGuardPromise) {
+          $timeout.cancel(extensionLoadGuardPromise);
+          extensionLoadGuardPromise = null;
+        }
+      }
+
+      function requestExtensionLoad() {
+        if (!bngApi || typeof bngApi.engineLua !== 'function') { return; }
+        if (extensionLoadGuardPromise) { return; }
+        bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
+        extensionLoadGuardPromise = $timeout(function () {
+          extensionLoadGuardPromise = null;
+        }, EXTENSION_LOAD_GUARD_INTERVAL_MS);
+      }
+
+      function resetExtensionIntegrationState() {
+        clearExtensionAvailabilityRetry();
+        clearExtensionLoadGuard();
+        extensionCommandQueue.length = 0;
+        extensionCommandProcessing = false;
+        extensionAvailabilityCheckInFlight = false;
+        extensionReady = false;
+      }
+
+      function resetUiForWorldChange() {
+        $scope.$evalAsync(function () {
+          state.vehicleId = null;
+          state.parts = [];
+          state.partsTree = [];
+          state.filteredTree = [];
+          state.filteredParts = [];
+          state.filterResults = [];
+          state.filteringActive = false;
+          state.basePaints = [];
+          state.originalBasePaints = [];
+          $scope.basePaintEditors = [];
+          $scope.editedPaints = [];
+          state.selectedPartPath = null;
+          state.selectedPart = null;
+          state.hasUserSelectedPart = false;
+          state.hoveredPartPath = null;
+          state.filterText = '';
+          state.expandedNodes = {};
+          state.savedConfigs = [];
+          state.selectedSavedConfig = null;
+          state.configNameInput = '';
+          state.isSavingConfig = false;
+          state.isSpawningConfig = false;
+          state.saveErrorMessage = null;
+          state.showReplaceConfirmation = false;
+          state.pendingConfigName = null;
+          state.pendingSanitizedName = null;
+          state.pendingExistingConfig = null;
+          resetDeleteConfigDialog();
+          clearPendingReplacement();
+          state.removePresetDialog.visible = false;
+          state.removePresetDialog.preset = null;
+          state.motionWarning.moving = false;
+          state.motionWarning.dialogVisible = false;
+          state.motionWarning.pending = false;
+          state.motionWarning.acknowledged = false;
+          state.motionWarning.speed = 0;
+          state.motionWarning.vehicleId = null;
+          clearCustomPaintState();
+          resetPartLookup();
+          resetTreeNodeLookup();
+          resetSavedConfigPreviewTracking();
+          cancelSavedConfigRefreshTimer();
+          setSelectedPart(null);
+          suppressHsvSync = false;
+          hsvRectDragging = false;
+          colorPickerState.context = null;
+          colorPickerState.index = null;
+          colorPickerState.targetPaint = null;
+          colorPickerState.working = null;
+          colorPickerState.rectBounds = null;
+          colorPickerState.visible = false;
+          colorPickerState.hsv = { h: 0, s: 0, v: 1 };
+          pendingLiveryEditorLaunch = null;
+          clearLiveryEditorConfirmation();
+          invalidateLiveryEditorSupport();
+          computeFilteredParts();
+        });
+      }
+
+      function performWorldReadyInitialization() {
+        handleVehicleChange();
+      }
+
+      function handleWorldReadyStateChange(payload, options) {
+        const nextState = extractWorldReadyState(payload);
+        const force = (payload && typeof payload === 'object' && payload.forceReinitialize === true)
+          || (options && options.forceOnReady === true);
+        if (nextState === null || nextState === undefined) { return; }
+        if (nextState !== 1) {
+          lastWorldReadyState = nextState;
+          if (nextState === 0) {
+            resetExtensionIntegrationState();
+          }
+          return;
+        }
+        if (!force && lastWorldReadyState === 1) {
+          lastWorldReadyState = 1;
+          return;
+        }
+        lastWorldReadyState = 1;
+        performWorldReadyInitialization();
+      }
+
+      function registerWorldReadyListener(eventName, options) {
+        if (!eventName) { return; }
+        $scope.$on(eventName, function (event, data) {
+          handleWorldReadyStateChange(data, options);
+        });
+      }
+
+      function clearExtensionAvailabilityRetry() {
+        if (extensionAvailabilityRetryPromise) {
+          $timeout.cancel(extensionAvailabilityRetryPromise);
+          extensionAvailabilityRetryPromise = null;
+        }
+      }
+
+      function processExtensionCommandQueue() {
+        if (!extensionCommandQueue.length) { return; }
+        if (extensionCommandProcessing) { return; }
+
+        extensionCommandProcessing = true;
+        const command = extensionCommandQueue.shift();
+        const script = '(function() ' +
+          'local available = freeroam_vehiclePartsPainting ~= nil ' +
+          'if available then ' + command + ' end ' +
+          'return available ' +
+        'end)()';
+
+        bngApi.engineLua(script, function (result) {
+          const available = interpretLuaBoolean(result);
+          extensionReady = !!available;
+
+          if (!extensionReady) {
+            extensionCommandQueue.unshift(command);
+            extensionCommandProcessing = false;
+            requestExtensionLoad();
+            scheduleExtensionAvailabilityCheck();
+            return;
+          }
+
+          extensionCommandProcessing = false;
+          if (extensionCommandQueue.length) {
+            processExtensionCommandQueue();
+          }
+        });
+      }
+
+      function scheduleExtensionAvailabilityCheck() {
+        if (extensionReady) { return; }
+        if (!extensionCommandQueue.length) { return; }
+        if (extensionAvailabilityCheckInFlight) { return; }
+        if (extensionAvailabilityRetryPromise) { return; }
+
+        extensionAvailabilityRetryPromise = $timeout(function () {
+          extensionAvailabilityRetryPromise = null;
+          checkExtensionAvailability();
+        }, EXTENSION_AVAILABILITY_CHECK_INTERVAL_MS);
+      }
+
+      function checkExtensionAvailability() {
+        if (!extensionCommandQueue.length) { return; }
+        if (extensionAvailabilityCheckInFlight) { return; }
+
+        extensionAvailabilityCheckInFlight = true;
+        bngApi.engineLua('freeroam_vehiclePartsPainting ~= nil', function (result) {
+          extensionAvailabilityCheckInFlight = false;
+          const available = interpretLuaBoolean(result);
+          if (available) {
+            markExtensionAvailable();
+            processExtensionCommandQueue();
+            return;
+          }
+
+          requestExtensionLoad();
+          scheduleExtensionAvailabilityCheck();
+        });
+      }
+
+      function markExtensionAvailable() {
+        if (extensionReady) {
+          if (!extensionCommandProcessing && extensionCommandQueue.length) {
+            processExtensionCommandQueue();
+          }
+          return;
+        }
+
+        extensionReady = true;
+        clearExtensionAvailabilityRetry();
+        clearExtensionLoadGuard();
+        if (!extensionCommandProcessing && extensionCommandQueue.length) {
+          processExtensionCommandQueue();
+        }
+      }
+
+      function enqueueExtensionCommand(command) {
+        if (typeof command !== 'string') { return; }
+        const normalized = command.trim();
+        if (!normalized) { return; }
+
+        extensionCommandQueue.push(normalized);
+        if (extensionReady) {
+          processExtensionCommandQueue();
+        } else {
+          checkExtensionAvailability();
+        }
+      }
+
+      function sendExtensionCommand(command) {
+        enqueueExtensionCommand(command);
+      }
+
       function sendUiMessage(messageText) {
         if (messageText === undefined || messageText === null) { return; }
         const text = String(messageText);
@@ -1191,7 +1460,7 @@ end)()`;
         }
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       }
 
       function createViewPaint(paint) {
@@ -1624,7 +1893,7 @@ end)()`;
         applyBasePaintsLocally(paints);
         const payload = { paints: paints };
         const command = 'freeroam_vehiclePartsPainting.setVehicleBasePaintsJson(' + toLuaString(JSON.stringify(payload)) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.resetBasePaintEditors = function () {
@@ -1651,17 +1920,38 @@ end)()`;
           refreshCustomBadges: refreshCustomBadgeVisibility,
           computeFilteredParts: computeFilteredParts,
           markPartsTreeDirty: markPartsTreeDirty,
-          getCustomPaintState: function () { return customPaintStateByPath; }
+          getCustomPaintState: function () { return customPaintStateByPath; },
+          getExtensionQueueSnapshot: function () { return extensionCommandQueue.slice(); },
+          isExtensionReady: function () { return extensionReady; },
+          isExtensionCommandProcessing: function () { return extensionCommandProcessing; },
+          hasAvailabilityCheckInFlight: function () { return extensionAvailabilityCheckInFlight; },
+          hasAvailabilityRetryScheduled: function () { return !!extensionAvailabilityRetryPromise; },
+          getLastWorldReadyState: function () { return lastWorldReadyState; }
         });
       }
 
       function sendShowAllCommand() {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.showAllParts()');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.showAllParts()');
       }
 
       function requestSavedConfigs() {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.requestSavedConfigs()');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.requestSavedConfigs()');
       }
+
+      registerWorldReadyListener('VehiclePartsPaintingWorldReady');
+      registerWorldReadyListener('WorldReadyStateChanged', { forceOnReady: true });
+      registerWorldReadyListener('WorldReadyState', { forceOnReady: true });
+
+      function handleVehicleChange() {
+        resetExtensionIntegrationState();
+        resetUiForWorldChange();
+        requestExtensionLoad();
+        $scope.refresh();
+        requestSavedConfigs();
+        bngApi.engineLua('settings.notifyUI()');
+      }
+
+      $scope.$on('VehicleChange', handleVehicleChange);
 
       function cancelSavedConfigRefreshTimer() {
         if (savedConfigRefreshTimeout) {
@@ -1765,7 +2055,7 @@ end)()`;
       function highlightPart(partPath) {
         if (!partPath) { return; }
         const command = 'freeroam_vehiclePartsPainting.highlightPart(' + toLuaString(partPath) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       }
 
       function beginPartHover(part) {
@@ -2697,7 +2987,7 @@ end)()`;
       };
 
       $scope.refresh = function () {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.requestState()');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.requestState()');
       };
 
       $scope.refreshSavedConfigs = function () {
@@ -2906,7 +3196,7 @@ end)()`;
         resetSavedConfigPreviewTracking();
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.deleteSavedConfiguration(' + toLuaString(target.relativePath) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.saveCurrentConfiguration = function () {
@@ -2953,7 +3243,7 @@ end)()`;
         if (!target || !target.relativePath) { return; }
         state.isSpawningConfig = true;
         const command = 'freeroam_vehiclePartsPainting.spawnSavedConfiguration(' + toLuaString(target.relativePath) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.applyPaint = function () {
@@ -2972,7 +3262,7 @@ end)()`;
           paints: paints
         };
         const command = 'freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.resetPaint = function () {
@@ -2993,7 +3283,7 @@ end)()`;
           }
         }
         computeFilteredParts();
-        bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
       };
 
       $scope.showAllParts = function () {
@@ -3014,11 +3304,18 @@ end)()`;
         resetPartLookup();
         resetTreeNodeLookup();
         clearCustomPaintState();
+        clearExtensionAvailabilityRetry();
+        clearExtensionLoadGuard();
+        extensionCommandQueue.length = 0;
+        extensionCommandProcessing = false;
+        extensionAvailabilityCheckInFlight = false;
+        extensionReady = false;
         state.hoveredPartPath = null;
         sendShowAllCommand();
       });
 
       $scope.$on('VehiclePartsPaintingState', function (event, data) {
+        markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
           const previousVehicleId = state.vehicleId;
@@ -3130,6 +3427,7 @@ end)()`;
       });
 
       $scope.$on('VehiclePartsPaintingMotionState', function (event, data) {
+        markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
           const reportedVehicleId = (data.vehicleId === false || data.vehicleId === null || data.vehicleId === undefined)
@@ -3181,6 +3479,7 @@ end)()`;
       });
 
       $scope.$on('VehiclePartsPaintingSavedConfigs', function (event, data) {
+        markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
           const wasSaving = state.isSavingConfig;
@@ -3293,10 +3592,7 @@ end)()`;
         cancelSavedConfigRefreshTimer();
       });
 
-      bngApi.engineLua('extensions.load("freeroam_vehiclePartsPainting")');
-      $scope.refresh();
-      requestSavedConfigs();
-      bngApi.engineLua('settings.notifyUI()');
+      handleVehicleChange();
       refreshCustomBadgeVisibility();
       customBadgeRefreshPromise = $interval(function () {
         refreshCustomBadgeVisibility();

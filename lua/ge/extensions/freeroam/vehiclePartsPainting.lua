@@ -69,6 +69,8 @@ local vehicleMotionState = {
   speed = 0
 }
 
+local lastReportedWorldReadyState = nil
+
 local function safeVec3(value)
   if value == nil then return nil end
   local ok, vec = pcall(vec3, value)
@@ -3916,7 +3918,7 @@ local function onVehicleSwitched(oldId, newId, player)
   end
 end
 
-local function onExtensionLoaded()
+local function resetSessionState()
   cancelScreenshotPauseHandle()
   screenshotPauseHandleCounter = 0
   storedPartPaintsByVeh = {}
@@ -3926,7 +3928,60 @@ local function onExtensionLoaded()
   ensuredPartConditionsByVeh = {}
   savedConfigCacheByVeh = {}
   basePaintWorkaroundStateByVeh = {}
-  userColorPresets = nil
+  basePaintStateByVeh = {}
+  highlightedParts = {}
+  vehicleMotionState.vehicleId = false
+  vehicleMotionState.moving = false
+  vehicleMotionState.speed = 0
+end
+
+local function normalizeWorldReadyState(value)
+  local valueType = type(value)
+  if valueType == 'number' then
+    if value ~= value then
+      return nil
+    end
+    return value
+  end
+  if valueType == 'boolean' then
+    return value and 1 or 0
+  end
+  if valueType == 'string' then
+    local trimmed = value:match('^%s*(.-)%s*$')
+    if not trimmed or trimmed == '' then
+      return nil
+    end
+    local lower = trimmed:lower()
+    if lower == 'true' then
+      return 1
+    end
+    if lower == 'false' then
+      return 0
+    end
+    return tonumber(trimmed)
+  end
+  return nil
+end
+
+local function extractWorldReadyState(value)
+  local direct = normalizeWorldReadyState(value)
+  if direct ~= nil then
+    return direct
+  end
+  if type(value) ~= 'table' then
+    return nil
+  end
+  local keys = { 'worldReadyState', 'state', 'newState', 'value', 'readyState', 'worldReady' }
+  for _, key in ipairs(keys) do
+    local candidate = normalizeWorldReadyState(value[key])
+    if candidate ~= nil then
+      return candidate
+    end
+  end
+  return nil
+end
+
+local function syncUiWithPlayerVehicle()
   local currentVeh = be:getPlayerVehicleID(0)
   if currentVeh and currentVeh ~= -1 then
     lastKnownPlayerVehicleId = currentVeh
@@ -3944,19 +3999,53 @@ local function onExtensionLoaded()
   end
 end
 
-local function onExtensionUnloaded()
-  cancelScreenshotPauseHandle()
-  screenshotPauseHandleCounter = 0
-  storedPartPaintsByVeh = {}
-  validPartPathsByVeh = {}
-  partDescriptorsByVeh = {}
-  activePartIdSetByVeh = {}
-  ensuredPartConditionsByVeh = {}
-  savedConfigCacheByVeh = {}
-  basePaintWorkaroundStateByVeh = {}
+local function reinitializeForNewWorld()
+  resetSessionState()
   userColorPresets = nil
   lastKnownPlayerVehicleId = nil
   clearHighlight()
+  syncUiWithPlayerVehicle()
+end
+
+local function onExtensionLoaded()
+  reinitializeForNewWorld()
+end
+
+local function onExtensionUnloaded()
+  local previous = extractWorldReadyState(lastReportedWorldReadyState)
+  resetSessionState()
+  userColorPresets = nil
+  lastKnownPlayerVehicleId = nil
+  lastReportedWorldReadyState = nil
+  clearHighlight()
+  guihooks.trigger('VehiclePartsPaintingWorldReady', {
+    worldReadyState = 0,
+    previousState = previous
+  })
+end
+
+local function onWorldReadyStateChanged(state)
+  local numeric = extractWorldReadyState(state)
+  if numeric == nil then
+    lastReportedWorldReadyState = state
+    return
+  end
+
+  local previous = extractWorldReadyState(lastReportedWorldReadyState)
+  if previous ~= nil and previous == numeric then
+    return
+  end
+
+  lastReportedWorldReadyState = numeric
+
+  if numeric == 1 then
+    reinitializeForNewWorld()
+  end
+
+  guihooks.trigger('VehiclePartsPaintingWorldReady', {
+    worldReadyState = numeric,
+    previousState = previous
+  })
 end
 
 M.requestState = requestState
@@ -3984,5 +4073,6 @@ M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleSwitched = onVehicleSwitched
 M.onExtensionLoaded = onExtensionLoaded
 M.onExtensionUnloaded = onExtensionUnloaded
+M.onWorldReadyStateChanged = onWorldReadyStateChanged
 
 return M
