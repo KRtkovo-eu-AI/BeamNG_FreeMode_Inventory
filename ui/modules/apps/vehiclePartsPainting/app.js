@@ -119,10 +119,43 @@ angular.module('beamng.apps')
       const MINIMIZED_ICON_SIZE = 48;
       const MINIMIZED_STATE_STORAGE_KEY = 'vehiclePartsPainting.minimizedState';
 
-      function getSessionStorage() {
+      function getStorage(storageType) {
         if (!globalWindow) { return null; }
         try {
-          return globalWindow.sessionStorage || null;
+          const storage = globalWindow[storageType];
+          if (!storage) { return null; }
+          return storage;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function getPersistentStorage() {
+        const local = getStorage('localStorage');
+        if (local) { return local; }
+        return getStorage('sessionStorage');
+      }
+
+      function clearPersistedMinimizedState() {
+        const storages = [getStorage('localStorage'), getStorage('sessionStorage')];
+        for (let i = 0; i < storages.length; i++) {
+          const storage = storages[i];
+          if (!storage) { continue; }
+          try {
+            storage.removeItem(MINIMIZED_STATE_STORAGE_KEY);
+          } catch (err) {
+            /* no-op */
+          }
+        }
+      }
+
+      function readPersistedMinimizedState(storage) {
+        if (!storage) { return null; }
+
+        try {
+          const raw = storage.getItem(MINIMIZED_STATE_STORAGE_KEY);
+          if (!raw || typeof raw !== 'string') { return null; }
+          return raw;
         } catch (err) {
           return null;
         }
@@ -138,17 +171,15 @@ angular.module('beamng.apps')
       }
 
       function persistMinimizedState(minimized, alignment, offset) {
-        const storage = getSessionStorage();
-        if (!storage) { return; }
-
         if (!minimized) {
-          try {
-            storage.removeItem(MINIMIZED_STATE_STORAGE_KEY);
-          } catch (err) {
-            /* no-op */
-          }
+          clearPersistedMinimizedState();
           return;
         }
+
+        const storage = getPersistentStorage();
+        if (!storage) { return; }
+
+        clearPersistedMinimizedState();
 
         const payload = {
           minimized: true,
@@ -167,17 +198,32 @@ angular.module('beamng.apps')
       }
 
       function loadPersistedMinimizedState() {
-        const storage = getSessionStorage();
-        if (!storage) { return null; }
+        const primaryStorage = getPersistentStorage();
+        let raw = readPersistedMinimizedState(primaryStorage);
 
-        let raw = null;
-        try {
-          raw = storage.getItem(MINIMIZED_STATE_STORAGE_KEY);
-        } catch (err) {
-          return null;
+        if (!raw) {
+          const sessionStorage = getStorage('sessionStorage');
+          if (sessionStorage && sessionStorage !== primaryStorage) {
+            raw = readPersistedMinimizedState(sessionStorage);
+            if (raw) {
+              if (primaryStorage) {
+                try {
+                  primaryStorage.setItem(MINIMIZED_STATE_STORAGE_KEY, raw);
+                } catch (err) {
+                  /* no-op */
+                }
+              }
+
+              try {
+                sessionStorage.removeItem(MINIMIZED_STATE_STORAGE_KEY);
+              } catch (err) {
+                /* no-op */
+              }
+            }
+          }
         }
 
-        if (!raw || typeof raw !== 'string') { return null; }
+        if (!raw) { return null; }
 
         try {
           const parsed = JSON.parse(raw);
