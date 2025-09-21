@@ -779,9 +779,116 @@ angular.module('beamng.apps')
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
       }
 
+      const EXTENSION_AVAILABILITY_CHECK_INTERVAL_MS = 250;
+      const extensionCommandQueue = [];
+      let extensionCommandProcessing = false;
+      let extensionReady = false;
+      let extensionAvailabilityCheckInFlight = false;
+      let extensionAvailabilityRetryPromise = null;
+
+      function clearExtensionAvailabilityRetry() {
+        if (extensionAvailabilityRetryPromise) {
+          $timeout.cancel(extensionAvailabilityRetryPromise);
+          extensionAvailabilityRetryPromise = null;
+        }
+      }
+
+      function processExtensionCommandQueue() {
+        if (!extensionCommandQueue.length) { return; }
+        if (extensionCommandProcessing) { return; }
+
+        extensionCommandProcessing = true;
+        const command = extensionCommandQueue.shift();
+        const script = [
+          'local available = freeroam_vehiclePartsPainting ~= nil',
+          'if available then ' + command + ' end',
+          'return available'
+        ].join('\n');
+
+        bngApi.engineLua(script, function (result) {
+          const available = interpretLuaBoolean(result);
+          extensionReady = !!available;
+
+          if (!extensionReady) {
+            extensionCommandQueue.unshift(command);
+            extensionCommandProcessing = false;
+            scheduleExtensionAvailabilityCheck();
+            return;
+          }
+
+          extensionCommandProcessing = false;
+          if (extensionCommandQueue.length) {
+            processExtensionCommandQueue();
+          }
+        });
+      }
+
+      function scheduleExtensionAvailabilityCheck() {
+        if (extensionReady) { return; }
+        if (!extensionCommandQueue.length) { return; }
+        if (extensionAvailabilityCheckInFlight) { return; }
+        if (extensionAvailabilityRetryPromise) { return; }
+
+        extensionAvailabilityRetryPromise = $timeout(function () {
+          extensionAvailabilityRetryPromise = null;
+          checkExtensionAvailability();
+        }, EXTENSION_AVAILABILITY_CHECK_INTERVAL_MS);
+      }
+
+      function checkExtensionAvailability() {
+        if (extensionReady) {
+          processExtensionCommandQueue();
+          return;
+        }
+
+        if (!extensionCommandQueue.length) { return; }
+        if (extensionAvailabilityCheckInFlight) { return; }
+
+        extensionAvailabilityCheckInFlight = true;
+        bngApi.engineLua('return freeroam_vehiclePartsPainting ~= nil', function (result) {
+          extensionAvailabilityCheckInFlight = false;
+          const available = interpretLuaBoolean(result);
+          extensionReady = !!available;
+
+          if (extensionReady) {
+            clearExtensionAvailabilityRetry();
+            processExtensionCommandQueue();
+          } else {
+            scheduleExtensionAvailabilityCheck();
+          }
+        });
+      }
+
+      function markExtensionAvailable() {
+        if (extensionReady) {
+          if (!extensionCommandProcessing && extensionCommandQueue.length) {
+            processExtensionCommandQueue();
+          }
+          return;
+        }
+
+        extensionReady = true;
+        clearExtensionAvailabilityRetry();
+        if (!extensionCommandProcessing && extensionCommandQueue.length) {
+          processExtensionCommandQueue();
+        }
+      }
+
+      function enqueueExtensionCommand(command) {
+        if (typeof command !== 'string') { return; }
+        const normalized = command.trim();
+        if (!normalized) { return; }
+
+        extensionCommandQueue.push(normalized);
+        if (extensionReady) {
+          processExtensionCommandQueue();
+        } else {
+          checkExtensionAvailability();
+        }
+      }
+
       function sendExtensionCommand(command) {
-        if (typeof command !== 'string' || !command) { return; }
-        bngApi.engineLua('if freeroam_vehiclePartsPainting then ' + command + ' end');
+        enqueueExtensionCommand(command);
       }
 
       function sendUiMessage(messageText) {
@@ -3019,11 +3126,17 @@ end)()`;
         resetPartLookup();
         resetTreeNodeLookup();
         clearCustomPaintState();
+        clearExtensionAvailabilityRetry();
+        extensionCommandQueue.length = 0;
+        extensionCommandProcessing = false;
+        extensionAvailabilityCheckInFlight = false;
+        extensionReady = false;
         state.hoveredPartPath = null;
         sendShowAllCommand();
       });
 
       $scope.$on('VehiclePartsPaintingState', function (event, data) {
+        markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
           const previousVehicleId = state.vehicleId;
@@ -3135,6 +3248,7 @@ end)()`;
       });
 
       $scope.$on('VehiclePartsPaintingMotionState', function (event, data) {
+        markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
           const reportedVehicleId = (data.vehicleId === false || data.vehicleId === null || data.vehicleId === undefined)
@@ -3186,6 +3300,7 @@ end)()`;
       });
 
       $scope.$on('VehiclePartsPaintingSavedConfigs', function (event, data) {
+        markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
           const wasSaving = state.isSavingConfig;

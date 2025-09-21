@@ -357,6 +357,7 @@ function findNode(nodes, partPath) {
 
 function instantiateController(options) {
   options = options || {};
+  const autoResolveExtension = options.autoResolveExtension !== false;
   delete require.cache[require.resolve(path.join('..', 'ui/modules/apps/vehiclePartsPainting/app.js'))];
   controllerHooks = null;
 
@@ -365,9 +366,17 @@ function instantiateController(options) {
   const bngApiStub = {
     engineLua: function (command, callback) {
       bngApiCalls.push(command);
-      if (typeof callback === 'function') {
-        engineLuaCallbacks.push({ command: command, callback: callback });
+      if (typeof callback !== 'function') { return; }
+      if (autoResolveExtension && command && command.indexOf('freeroam_vehiclePartsPainting ~= nil') !== -1) {
+        try {
+          callback(true);
+        } catch (err) {
+          // Tests will surface callback errors separately.
+          throw err;
+        }
+        return;
       }
+      engineLuaCallbacks.push({ command: command, callback: callback });
     }
   };
 
@@ -520,6 +529,56 @@ function resetPaint(scope, partPath) {
   scope.resetPaint();
   scope.$digest();
 }
+
+(function verifyExtensionCommandQueueRecovery() {
+  const controller = instantiateController({ autoResolveExtension: false });
+  const timeout = controller.timeout;
+  const engineLuaCallbacks = controller.engineLuaCallbacks;
+  const bngApiCalls = controller.bngApiCalls;
+
+  assert(engineLuaCallbacks.length >= 1, 'Initial extension probe should be queued');
+  const firstProbe = engineLuaCallbacks.shift();
+  assert(firstProbe.command && firstProbe.command.indexOf('return freeroam_vehiclePartsPainting ~= nil') !== -1,
+    'First probe should query extension availability');
+  firstProbe.callback(false);
+
+  const executedBeforeReady = bngApiCalls.filter(function (command) {
+    return command && command.indexOf('local available = freeroam_vehiclePartsPainting ~= nil') === 0;
+  });
+  assert.strictEqual(executedBeforeReady.length, 0, 'Commands should not execute while extension is unavailable');
+
+  timeout.flush();
+  assert(engineLuaCallbacks.length >= 1, 'Availability retry should schedule another probe');
+  const retryProbe = engineLuaCallbacks.shift();
+  assert(retryProbe.command && retryProbe.command.indexOf('return freeroam_vehiclePartsPainting ~= nil') !== -1,
+    'Retry probe should query extension availability');
+  retryProbe.callback(true);
+
+  let guardedCommandCallbacks = 0;
+  while (engineLuaCallbacks.length) {
+    const pending = engineLuaCallbacks.shift();
+    if (pending.command && pending.command.indexOf('freeroam_vehiclePartsPainting ~= nil') !== -1) {
+      pending.callback(true);
+      if (pending.command.indexOf('local available = freeroam_vehiclePartsPainting ~= nil') === 0) {
+        guardedCommandCallbacks++;
+      }
+    } else {
+      pending.callback(true);
+    }
+  }
+
+  const executedAfterReady = bngApiCalls.filter(function (command) {
+    return command && command.indexOf('local available = freeroam_vehiclePartsPainting ~= nil') === 0;
+  });
+  assert(executedAfterReady.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
+  }), 'Queued requestState command should execute after extension becomes available');
+  assert(executedAfterReady.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs()') !== -1;
+  }), 'Queued requestSavedConfigs command should execute after extension becomes available');
+  assert.strictEqual(guardedCommandCallbacks >= 2, true,
+    'Guarded command callbacks should be invoked for each queued command');
+})();
 
 (function runTests() {
   const controller = instantiateController();
@@ -791,7 +850,7 @@ function resetPaint(scope, partPath) {
   scope.$digest();
   assert(!scope.hasBasePaintChanges(), 'Base paint change state should clear after apply');
   const lastCommand = bngApiCalls[bngApiCalls.length - 1];
-  assert(lastCommand && lastCommand.startsWith('if freeroam_vehiclePartsPainting then '), 'Base paint command should guard extension availability');
+  assert(lastCommand && lastCommand.startsWith('local available = freeroam_vehiclePartsPainting ~= nil'), 'Base paint command should guard extension availability');
   assert(lastCommand && lastCommand.includes('freeroam_vehiclePartsPainting.setVehicleBasePaintsJson('), 'Base paint command should be queued');
   const updatedBasePaint = scope.state.basePaints[0];
   assert(Math.abs(updatedBasePaint.baseColor[1] - (128 / 255)) < 0.001, 'Base paint green channel should update');
@@ -936,7 +995,7 @@ function resetPaint(scope, partPath) {
   assert(state.deleteConfigDialog.isDeleting, 'Delete dialog should mark deletion in progress');
   assert.strictEqual(bngApiCalls.length, deleteCommandCountBefore + 1, 'Confirming delete should queue a backend command');
   const deleteCommand = bngApiCalls[bngApiCalls.length - 1];
-  assert(deleteCommand && deleteCommand.startsWith('if freeroam_vehiclePartsPainting then '), 'Delete command should guard extension availability');
+  assert(deleteCommand && deleteCommand.startsWith('local available = freeroam_vehiclePartsPainting ~= nil'), 'Delete command should guard extension availability');
   assert(deleteCommand && deleteCommand.includes("freeroam_vehiclePartsPainting.deleteSavedConfiguration('vehicles/example/config_a.pc')"), 'Delete command should include sanitized path');
 
   scope.$$emit('VehiclePartsPaintingSavedConfigs', {
