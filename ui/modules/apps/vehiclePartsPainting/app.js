@@ -779,6 +779,11 @@ angular.module('beamng.apps')
         return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
       }
 
+      function sendExtensionCommand(command) {
+        if (typeof command !== 'string' || !command) { return; }
+        bngApi.engineLua('if freeroam_vehiclePartsPainting then ' + command + ' end');
+      }
+
       function sendUiMessage(messageText) {
         if (messageText === undefined || messageText === null) { return; }
         const text = String(messageText);
@@ -1191,7 +1196,7 @@ end)()`;
         }
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       }
 
       function createViewPaint(paint) {
@@ -1624,7 +1629,7 @@ end)()`;
         applyBasePaintsLocally(paints);
         const payload = { paints: paints };
         const command = 'freeroam_vehiclePartsPainting.setVehicleBasePaintsJson(' + toLuaString(JSON.stringify(payload)) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.resetBasePaintEditors = function () {
@@ -1656,11 +1661,11 @@ end)()`;
       }
 
       function sendShowAllCommand() {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.showAllParts()');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.showAllParts()');
       }
 
       function requestSavedConfigs() {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.requestSavedConfigs()');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.requestSavedConfigs()');
       }
 
       function cancelSavedConfigRefreshTimer() {
@@ -1765,7 +1770,7 @@ end)()`;
       function highlightPart(partPath) {
         if (!partPath) { return; }
         const command = 'freeroam_vehiclePartsPainting.highlightPart(' + toLuaString(partPath) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       }
 
       function beginPartHover(part) {
@@ -2697,7 +2702,7 @@ end)()`;
       };
 
       $scope.refresh = function () {
-        bngApi.engineLua('freeroam_vehiclePartsPainting.requestState()');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.requestState()');
       };
 
       $scope.refreshSavedConfigs = function () {
@@ -2906,7 +2911,7 @@ end)()`;
         resetSavedConfigPreviewTracking();
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
         const command = 'freeroam_vehiclePartsPainting.deleteSavedConfiguration(' + toLuaString(target.relativePath) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.saveCurrentConfiguration = function () {
@@ -2953,7 +2958,7 @@ end)()`;
         if (!target || !target.relativePath) { return; }
         state.isSpawningConfig = true;
         const command = 'freeroam_vehiclePartsPainting.spawnSavedConfiguration(' + toLuaString(target.relativePath) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.applyPaint = function () {
@@ -2972,7 +2977,7 @@ end)()`;
           paints: paints
         };
         const command = 'freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')';
-        bngApi.engineLua(command);
+        sendExtensionCommand(command);
       };
 
       $scope.resetPaint = function () {
@@ -2993,7 +2998,7 @@ end)()`;
           }
         }
         computeFilteredParts();
-        bngApi.engineLua('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
+        sendExtensionCommand('freeroam_vehiclePartsPainting.resetPartPaint(' + toLuaString(partPath) + ')');
       };
 
       $scope.showAllParts = function () {

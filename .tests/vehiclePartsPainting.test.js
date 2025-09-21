@@ -791,7 +791,8 @@ function resetPaint(scope, partPath) {
   scope.$digest();
   assert(!scope.hasBasePaintChanges(), 'Base paint change state should clear after apply');
   const lastCommand = bngApiCalls[bngApiCalls.length - 1];
-  assert(lastCommand && lastCommand.startsWith('freeroam_vehiclePartsPainting.setVehicleBasePaintsJson('), 'Base paint command should be queued');
+  assert(lastCommand && lastCommand.startsWith('if freeroam_vehiclePartsPainting then '), 'Base paint command should guard extension availability');
+  assert(lastCommand && lastCommand.includes('freeroam_vehiclePartsPainting.setVehicleBasePaintsJson('), 'Base paint command should be queued');
   const updatedBasePaint = scope.state.basePaints[0];
   assert(Math.abs(updatedBasePaint.baseColor[1] - (128 / 255)) < 0.001, 'Base paint green channel should update');
   assert(Math.abs(updatedBasePaint.baseColor[2] - (64 / 255)) < 0.001, 'Base paint blue channel should update');
@@ -935,7 +936,8 @@ function resetPaint(scope, partPath) {
   assert(state.deleteConfigDialog.isDeleting, 'Delete dialog should mark deletion in progress');
   assert.strictEqual(bngApiCalls.length, deleteCommandCountBefore + 1, 'Confirming delete should queue a backend command');
   const deleteCommand = bngApiCalls[bngApiCalls.length - 1];
-  assert.strictEqual(deleteCommand, "freeroam_vehiclePartsPainting.deleteSavedConfiguration('vehicles/example/config_a.pc')", 'Delete command should include sanitized path');
+  assert(deleteCommand && deleteCommand.startsWith('if freeroam_vehiclePartsPainting then '), 'Delete command should guard extension availability');
+  assert(deleteCommand && deleteCommand.includes("freeroam_vehiclePartsPainting.deleteSavedConfiguration('vehicles/example/config_a.pc')"), 'Delete command should include sanitized path');
 
   scope.$$emit('VehiclePartsPaintingSavedConfigs', {
     vehicleId: 4242,
