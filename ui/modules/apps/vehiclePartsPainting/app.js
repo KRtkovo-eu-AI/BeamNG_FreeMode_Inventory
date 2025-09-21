@@ -799,11 +799,11 @@ angular.module('beamng.apps')
 
         extensionCommandProcessing = true;
         const command = extensionCommandQueue.shift();
-        const script = [
-          'local available = freeroam_vehiclePartsPainting ~= nil',
-          'if available then ' + command + ' end',
-          'return available'
-        ].join('\n');
+        const script = '(function() ' +
+          'local available = freeroam_vehiclePartsPainting ~= nil ' +
+          'if available then ' + command + ' end ' +
+          'return available ' +
+        'end)()';
 
         bngApi.engineLua(script, function (result) {
           const available = interpretLuaBoolean(result);
@@ -845,7 +845,7 @@ angular.module('beamng.apps')
         if (extensionAvailabilityCheckInFlight) { return; }
 
         extensionAvailabilityCheckInFlight = true;
-        bngApi.engineLua('return freeroam_vehiclePartsPainting ~= nil', function (result) {
+        bngApi.engineLua('freeroam_vehiclePartsPainting ~= nil', function (result) {
           extensionAvailabilityCheckInFlight = false;
           const available = interpretLuaBoolean(result);
           extensionReady = !!available;

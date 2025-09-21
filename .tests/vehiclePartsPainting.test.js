@@ -538,19 +538,19 @@ function resetPaint(scope, partPath) {
 
   assert(engineLuaCallbacks.length >= 1, 'Initial extension probe should be queued');
   const firstProbe = engineLuaCallbacks.shift();
-  assert(firstProbe.command && firstProbe.command.indexOf('return freeroam_vehiclePartsPainting ~= nil') !== -1,
+  assert(firstProbe.command && firstProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
     'First probe should query extension availability');
   firstProbe.callback(false);
 
   const executedBeforeReady = bngApiCalls.filter(function (command) {
-    return command && command.indexOf('local available = freeroam_vehiclePartsPainting ~= nil') === 0;
+    return command && command.indexOf('(function() local available = freeroam_vehiclePartsPainting ~= nil') === 0;
   });
   assert.strictEqual(executedBeforeReady.length, 0, 'Commands should not execute while extension is unavailable');
 
   timeout.flush();
   assert(engineLuaCallbacks.length >= 1, 'Availability retry should schedule another probe');
   const retryProbe = engineLuaCallbacks.shift();
-  assert(retryProbe.command && retryProbe.command.indexOf('return freeroam_vehiclePartsPainting ~= nil') !== -1,
+  assert(retryProbe.command && retryProbe.command.trim() === 'freeroam_vehiclePartsPainting ~= nil',
     'Retry probe should query extension availability');
   retryProbe.callback(true);
 
@@ -559,7 +559,7 @@ function resetPaint(scope, partPath) {
     const pending = engineLuaCallbacks.shift();
     if (pending.command && pending.command.indexOf('freeroam_vehiclePartsPainting ~= nil') !== -1) {
       pending.callback(true);
-      if (pending.command.indexOf('local available = freeroam_vehiclePartsPainting ~= nil') === 0) {
+      if (pending.command.indexOf('(function() local available = freeroam_vehiclePartsPainting ~= nil') === 0) {
         guardedCommandCallbacks++;
       }
     } else {
@@ -568,7 +568,7 @@ function resetPaint(scope, partPath) {
   }
 
   const executedAfterReady = bngApiCalls.filter(function (command) {
-    return command && command.indexOf('local available = freeroam_vehiclePartsPainting ~= nil') === 0;
+    return command && command.indexOf('(function() local available = freeroam_vehiclePartsPainting ~= nil') === 0;
   });
   assert(executedAfterReady.some(function (command) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
@@ -850,7 +850,7 @@ function resetPaint(scope, partPath) {
   scope.$digest();
   assert(!scope.hasBasePaintChanges(), 'Base paint change state should clear after apply');
   const lastCommand = bngApiCalls[bngApiCalls.length - 1];
-  assert(lastCommand && lastCommand.startsWith('local available = freeroam_vehiclePartsPainting ~= nil'), 'Base paint command should guard extension availability');
+  assert(lastCommand && lastCommand.startsWith('(function() local available = freeroam_vehiclePartsPainting ~= nil'), 'Base paint command should guard extension availability');
   assert(lastCommand && lastCommand.includes('freeroam_vehiclePartsPainting.setVehicleBasePaintsJson('), 'Base paint command should be queued');
   const updatedBasePaint = scope.state.basePaints[0];
   assert(Math.abs(updatedBasePaint.baseColor[1] - (128 / 255)) < 0.001, 'Base paint green channel should update');
@@ -995,7 +995,7 @@ function resetPaint(scope, partPath) {
   assert(state.deleteConfigDialog.isDeleting, 'Delete dialog should mark deletion in progress');
   assert.strictEqual(bngApiCalls.length, deleteCommandCountBefore + 1, 'Confirming delete should queue a backend command');
   const deleteCommand = bngApiCalls[bngApiCalls.length - 1];
-  assert(deleteCommand && deleteCommand.startsWith('local available = freeroam_vehiclePartsPainting ~= nil'), 'Delete command should guard extension availability');
+  assert(deleteCommand && deleteCommand.startsWith('(function() local available = freeroam_vehiclePartsPainting ~= nil'), 'Delete command should guard extension availability');
   assert(deleteCommand && deleteCommand.includes("freeroam_vehiclePartsPainting.deleteSavedConfiguration('vehicles/example/config_a.pc')"), 'Delete command should include sanitized path');
 
   scope.$$emit('VehiclePartsPaintingSavedConfigs', {
