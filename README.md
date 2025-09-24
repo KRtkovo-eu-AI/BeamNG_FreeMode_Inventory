@@ -2,6 +2,8 @@
 
 This repository contains a BeamNG.drive mod that enables per-part paint customization while playing in Freeroam. The mod introduces a dedicated UI app that lets you pick any installed vehicle part and assign individual paint parameters—matching the flexibility that previously existed only in Career mode.
 
+Notice: Custom paint can be applied to any vehicle part, but **the color will only appear on parts that support painting**.
+
 ## Features
 
 - **Freeroam-compatible part paints** – Apply unique paint definitions to every installed vehicle part without switching to Career mode.
