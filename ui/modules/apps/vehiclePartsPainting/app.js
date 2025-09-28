@@ -3314,6 +3314,13 @@ end)()`;
         sendShowAllCommand();
       });
 
+      $scope.$on('VehiclePartsPaintingRestoreApp', function () {
+        markExtensionAvailable();
+        $scope.$evalAsync(function () {
+          $scope.restoreApp();
+        });
+      });
+
       $scope.$on('VehiclePartsPaintingState', function (event, data) {
         markExtensionAvailable();
         data = data || {};

@@ -3807,6 +3807,10 @@ local function clearHighlight(targetVehId)
   showAllParts(targetVehId)
 end
 
+local function restoreApp()
+  guihooks.trigger('VehiclePartsPaintingRestoreApp', { source = 'extension' })
+end
+
 local function requestState()
   sendState()
 end
@@ -4059,6 +4063,7 @@ M.setVehicleBasePaintsJson = setVehicleBasePaintsJson
 M.highlightPart = highlightPart
 M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
+M.restoreApp = restoreApp
 M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 M.saveCurrentConfiguration = saveCurrentConfiguration
 M.deleteSavedConfiguration = deleteSavedConfiguration
