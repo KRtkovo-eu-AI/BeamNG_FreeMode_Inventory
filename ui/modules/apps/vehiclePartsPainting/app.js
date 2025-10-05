@@ -871,7 +871,7 @@ angular.module('beamng.apps')
         $scope.$evalAsync(function () {
           if (randomizerRun) {
             state.randomizerProgress.cancelRequested = true;
-            finalizeRandomizer({ skipRefresh: true });
+            finalizeRandomizer({ skipRefresh: true, force: true });
           } else {
             resetRandomizerProgress();
           }
@@ -1718,6 +1718,9 @@ end)()`;
           run.pendingPromise = null;
         }
 
+        run.awaitingResult = false;
+        run.activeTask = null;
+
         if (run.updatedAny && !run.skipRefresh) {
           refreshCustomBadgeVisibility();
           computeFilteredParts();
@@ -1738,8 +1741,14 @@ end)()`;
           run.skipRefresh = true;
         }
 
+        if (options && options.force) {
+          run.finishing = true;
+          completeRandomizerFinalize(run);
+          return;
+        }
+
         if (run.finishing) {
-          if (!run.processing) {
+          if (!run.awaitingResult) {
             completeRandomizerFinalize(run);
           }
           return;
@@ -1747,11 +1756,97 @@ end)()`;
 
         run.finishing = true;
 
-        if (run.processing) {
+        if (run.awaitingResult) {
           return;
         }
 
         completeRandomizerFinalize(run);
+      }
+
+      function normalizeRandomizerString(value) {
+        if (typeof value !== 'string') { return null; }
+        const trimmed = value.trim();
+        if (!trimmed) { return null; }
+        return trimmed.toLowerCase();
+      }
+
+      function randomizerResultMatchesTask(result, task) {
+        if (!task) { return false; }
+        const taskPath = normalizeRandomizerString(task.partPath);
+        const taskName = normalizeRandomizerString(task.partName);
+        const taskSlot = normalizeRandomizerString(task.slotPath);
+
+        const resultPath = normalizeRandomizerString(result.partPath || result.path);
+        const resultName = normalizeRandomizerString(result.partName || result.name);
+        const resultSlot = normalizeRandomizerString(result.slotPath || result.slot || result.slotName);
+
+        if (taskPath && resultPath && taskPath === resultPath) { return true; }
+        if (taskName && resultName && taskName === resultName) { return true; }
+        if (taskSlot && resultSlot && taskSlot === resultSlot) { return true; }
+
+        return false;
+      }
+
+      function scheduleNextRandomizerStep() {
+        if (!randomizerRun) { return; }
+        if (randomizerRun.pendingPromise) {
+          $timeout.cancel(randomizerRun.pendingPromise);
+          randomizerRun.pendingPromise = null;
+        }
+        randomizerRun.pendingPromise = $timeout(function () {
+          if (!randomizerRun) { return; }
+          randomizerRun.pendingPromise = null;
+          processRandomizerStep();
+        }, RANDOMIZER_STEP_DELAY_MS);
+      }
+
+      function handleRandomizerApplyResult(data) {
+        if (!randomizerRun || !state.randomizerProgress.active) { return; }
+
+        const run = randomizerRun;
+        if (!run.awaitingResult || !run.activeTask) { return; }
+
+        let vehicleId = data && data.vehicleId;
+        if (vehicleId !== undefined && vehicleId !== null && vehicleId !== false) {
+          const numericVehicleId = Number(vehicleId);
+          if (!Number.isNaN(numericVehicleId)) {
+            vehicleId = numericVehicleId;
+          }
+        }
+        if (state.vehicleId !== null && state.vehicleId !== undefined && state.vehicleId !== false) {
+          if (vehicleId !== undefined && vehicleId !== null && vehicleId !== false && vehicleId !== state.vehicleId) {
+            return;
+          }
+        }
+
+        if (!data || typeof data !== 'object') {
+          return;
+        }
+
+        const normalized = data;
+        if (!randomizerResultMatchesTask(normalized, run.activeTask)) {
+          return;
+        }
+
+        run.awaitingResult = false;
+        run.activeTask = null;
+
+        const successValue = normalized.success;
+        const wasSuccessful = successValue === true || successValue === 'true' || successValue === 1;
+        if (!wasSuccessful && normalized.errorMessage && globalWindow && globalWindow.console && typeof globalWindow.console.warn === 'function') {
+          globalWindow.console.warn('VehiclePartsPainting: Part paint application failed during randomize operation.', normalized);
+        }
+
+        run.current++;
+        const progress = state.randomizerProgress;
+        progress.processedCount = Math.min(run.current, progress.total || run.current);
+
+        if (run.finishing || progress.cancelRequested || run.current >= run.tasks.length) {
+          finalizeRandomizer();
+          return;
+        }
+
+        scheduleNextRandomizerStep();
       }
 
       function processRandomizerStep() {
@@ -1763,24 +1858,23 @@ end)()`;
           return;
         }
 
-        run.pendingPromise = null;
-        run.processing = true;
+        if (run.awaitingResult) {
+          return;
+        }
 
         const progress = state.randomizerProgress;
-
         if (progress.cancelRequested) {
-          run.processing = false;
           finalizeRandomizer();
           return;
         }
 
         if (run.current >= run.tasks.length) {
-          run.processing = false;
           finalizeRandomizer();
           return;
         }
 
         const task = run.tasks[run.current];
+        run.activeTask = task;
         progress.currentIndex = run.current;
         progress.currentPartLabel = task.displayName || 'Part';
         progress.currentPartPath = task.partPath || null;
@@ -1788,12 +1882,7 @@ end)()`;
         const part = findPartByPath(task.partPath);
         const paints = createRandomizedPaintsForPart(part);
 
-        if (run.finishing) {
-          run.processing = false;
-          finalizeRandomizer();
-          return;
-        }
-
+        let commandQueued = false;
         if (Array.isArray(paints) && paints.length) {
           const updatedLocally = updateLocalPartPaintState(task.partPath, paints, true);
           if (updatedLocally) {
@@ -1805,25 +1894,25 @@ end)()`;
               paints: paints
             };
             sendExtensionCommand('freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')');
+            commandQueued = true;
           }
         }
 
+        if (commandQueued) {
+          run.awaitingResult = true;
+          return;
+        }
+
+        run.activeTask = null;
         run.current++;
-        progress.processedCount = run.current;
+        progress.processedCount = Math.min(run.current, progress.total || run.current);
 
-        run.processing = false;
-
-        if (run.finishing || progress.cancelRequested) {
+        if (run.finishing || progress.cancelRequested || run.current >= run.tasks.length) {
           finalizeRandomizer();
           return;
         }
 
-        if (run.current >= run.tasks.length) {
-          finalizeRandomizer();
-          return;
-        }
-
-        run.pendingPromise = $timeout(processRandomizerStep, RANDOMIZER_STEP_DELAY_MS);
+        scheduleNextRandomizerStep();
       }
 
       function beginRandomizerRun(tasks) {
@@ -1844,9 +1933,10 @@ end)()`;
           current: 0,
           pendingPromise: null,
           updatedAny: false,
-          processing: false,
           finishing: false,
-          skipRefresh: false
+          skipRefresh: false,
+          awaitingResult: false,
+          activeTask: null
         };
 
         processRandomizerStep();
@@ -3769,6 +3859,13 @@ end)()`;
           computeFilteredParts();
           state.isSpawningConfig = false;
           state.isSavingConfig = false;
+        });
+      });
+
+      $scope.$on('VehiclePartsPaintingApplyResult', function (event, data) {
+        markExtensionAvailable();
+        $scope.$evalAsync(function () {
+          handleRandomizerApplyResult(data || {});
         });
       });
 
