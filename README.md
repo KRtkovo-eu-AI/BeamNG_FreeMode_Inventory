@@ -31,3 +31,7 @@ Notice: Custom paint can be applied to any vehicle part, but **the color will on
 6. Click **Apply paint to part** to push the changes to the vehicle. Use **Reset to vehicle paints** to revert to the current vehicle-wide paint scheme.
 
 The mod adds a game-side Lua extension (`lua/ge/extensions/freeroam/vehiclePartsPainting.lua`) that bridges the UI app and the vehicle simulation, ensuring paints are validated and synchronized with the vehicle state.
+
+## Troubleshooting
+
+- **Restore the app when the button is missing** – Open the BeamNG console (`~`) and run `freeroam_vehiclePartsPainting.restoreApp()` to bring the Vehicle Parts Painting widget back to its full size. This mirrors the in-app restore button, clearing the minimized state and returning the window to its default position.

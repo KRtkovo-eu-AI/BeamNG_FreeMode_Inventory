@@ -3595,6 +3595,38 @@ local function onVehiclePartsPaintingResult(vehId, partPath, partName, slotPath,
       end
     end
   end
+
+  local finalPartPath = resolvedPartPath or partPath
+  local finalPartName = partName
+  local finalSlotPath = slotPath
+
+  if stateEntry then
+    if stateEntry.partName and stateEntry.partName ~= '' then
+      finalPartName = stateEntry.partName
+    end
+    if stateEntry.slotPath and stateEntry.slotPath ~= '' then
+      finalSlotPath = stateEntry.slotPath
+    end
+  end
+
+  if descriptorEntry then
+    if descriptorEntry.partName and descriptorEntry.partName ~= '' then
+      finalPartName = descriptorEntry.partName
+    end
+    if descriptorEntry.slotPath and descriptorEntry.slotPath ~= '' then
+      finalSlotPath = descriptorEntry.slotPath
+    end
+  end
+
+  guihooks.trigger('VehiclePartsPaintingApplyResult', {
+    vehicleId = vehId,
+    partPath = finalPartPath,
+    partName = finalPartName,
+    slotPath = finalSlotPath,
+    success = wasSuccessful,
+    identifier = identifier,
+    errorMessage = errorMessage
+  })
 end
 
 local function resolveHighlightInfo(vehId, partPath)
@@ -3805,6 +3837,10 @@ end
 
 local function clearHighlight(targetVehId)
   showAllParts(targetVehId)
+end
+
+local function restoreApp()
+  guihooks.trigger('VehiclePartsPaintingRestoreApp', { source = 'extension' })
 end
 
 local function requestState()
@@ -4059,6 +4095,7 @@ M.setVehicleBasePaintsJson = setVehicleBasePaintsJson
 M.highlightPart = highlightPart
 M.showAllParts = showAllParts
 M.clearHighlight = clearHighlight
+M.restoreApp = restoreApp
 M.onVehiclePartsPaintingResult = onVehiclePartsPaintingResult
 M.saveCurrentConfiguration = saveCurrentConfiguration
 M.deleteSavedConfiguration = deleteSavedConfiguration

@@ -34,6 +34,7 @@
     }
     .vehicle-parts-painting .config-confirm-overlay,
     .vehicle-parts-painting .palette-dialog-overlay,
+    .vehicle-parts-painting .randomizer-progress-overlay,
     .vehicle-parts-painting .color-picker-overlay {
       position: absolute;
       inset: 0;
@@ -49,7 +50,8 @@
       z-index: 5;
     }
     .vehicle-parts-painting .config-confirm-overlay,
-    .vehicle-parts-painting .palette-dialog-overlay {
+    .vehicle-parts-painting .palette-dialog-overlay,
+    .vehicle-parts-painting .randomizer-progress-overlay {
       z-index: 10;
     }
     .vehicle-parts-painting .config-confirm-dialog,
@@ -207,6 +209,81 @@
     }
     .vehicle-parts-painting .palette-dialog .dialog-actions .danger:hover {
       background: rgba(234, 80, 71, 1);
+    }
+    .vehicle-parts-painting .randomizer-progress-overlay {
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      z-index: 12;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog {
+      background: rgba(18, 18, 18, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      padding: 22px 24px;
+      max-width: 420px;
+      width: min(420px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      box-sizing: border-box;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog .current-part-path {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .vehicle-parts-painting .randomizer-progress-bar {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+    }
+    .vehicle-parts-painting .randomizer-progress-bar .fill {
+      height: 100%;
+      background: rgba(0, 180, 255, 0.85);
+      transition: width 0.2s ease;
+    }
+    .vehicle-parts-painting .randomizer-progress-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .vehicle-parts-painting .randomizer-progress-status .spinner {
+      width: 18px;
+      height: 18px;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog .dialog-actions .cancel {
+      min-width: 168px;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-weight: 600;
+      border: none;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog .dialog-actions .cancel:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .vehicle-parts-painting .randomizer-progress-dialog .dialog-actions .cancel:disabled {
+      opacity: 0.6;
+      cursor: default;
     }
     .vehicle-parts-painting .motion-warning-overlay {
       position: absolute;
@@ -1012,6 +1089,56 @@
     .vehicle-parts-painting .base-paint-panel.is-collapsed .base-paint-body {
       display: none;
     }
+    .vehicle-parts-painting .randomizer-panel {
+      padding: 0;
+      gap: 0;
+    }
+    .vehicle-parts-painting .randomizer-panel.is-collapsed {
+      flex: 0 0 auto;
+    }
+    .vehicle-parts-painting .randomizer-panel .randomizer-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 12px 6px 12px;
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .randomizer-panel.is-collapsed,
+    .vehicle-parts-painting .randomizer-panel.is-collapsed .randomizer-header {
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .randomizer-panel .header-actions {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .randomizer-panel .collapse-toggle {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .vehicle-parts-painting .randomizer-panel .collapse-toggle:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .randomizer-panel .randomizer-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 0 12px 12px 12px;
+    }
+    .vehicle-parts-painting .randomizer-panel.is-collapsed .randomizer-body {
+      display: none;
+    }
+    .vehicle-parts-painting .randomizer-panel .randomizer-body p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.45;
+      opacity: 0.85;
+    }
     .vehicle-parts-painting .part-paint-panel .part-paint-body {
       display: flex;
       flex-direction: column;
@@ -1517,6 +1644,49 @@
       </div>
     </div>
   </div>
+  <div class="randomizer-progress-overlay"
+       ng-if="state.randomizerProgress.visible && !state.minimized"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="randomizer-progress-title"
+       aria-describedby="randomizer-progress-description">
+    <div class="randomizer-progress-dialog">
+      <h3 id="randomizer-progress-title">Randomizing colors</h3>
+      <p id="randomizer-progress-description">
+        <span ng-if="state.randomizerProgress.total">
+          Painting part {{state.randomizerProgress.currentIndex + 1}} of {{state.randomizerProgress.total}}
+          <span ng-if="state.randomizerProgress.currentPartLabel">— {{state.randomizerProgress.currentPartLabel}}</span>
+        </span>
+        <span ng-if="!state.randomizerProgress.total">Preparing vibrant paints…</span>
+      </p>
+      <p class="current-part-path" ng-if="state.randomizerProgress.currentPartPath">
+        Identifier: {{state.randomizerProgress.currentPartPath}}
+      </p>
+      <div class="randomizer-progress-bar"
+           ng-if="state.randomizerProgress.total"
+           role="progressbar"
+           aria-valuemin="0"
+           ng-attr-aria-valuemax="{{state.randomizerProgress.total}}"
+           ng-attr-aria-valuenow="{{state.randomizerProgress.processedCount}}">
+        <div class="fill"
+             ng-style="{'width': getRandomizerProgressWidth()}"
+             aria-hidden="true"></div>
+      </div>
+      <div class="randomizer-progress-status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span ng-if="!state.randomizerProgress.cancelRequested">Applying vibrant paints…</span>
+        <span ng-if="state.randomizerProgress.cancelRequested">Canceling randomization…</span>
+      </div>
+      <div class="dialog-actions">
+        <button type="button"
+                class="cancel"
+                ng-click="cancelRandomizeAllPartColors()"
+                ng-disabled="state.randomizerProgress.cancelRequested">
+          Cancel randomizing colors
+        </button>
+      </div>
+    </div>
+  </div>
   <div class="config-confirm-overlay" ng-if="state.liveryEditorConfirmation.visible">
     <div class="config-confirm-dialog">
       <h4>Vehicle Livery Editor</h4>
@@ -1814,7 +1984,7 @@
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
       <div class="header-title">
-        <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.7 | made by KRtekTM</span></h2>
+        <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.8 | made by KRtekTM</span></h2>
       </div>
       <div class="header-actions">
         <!--<button type="button" ng-click="refresh()">
@@ -2001,6 +2171,39 @@
             <div class="editor-actions">
               <button type="button" class="primary" ng-click="applyBasePaints()">Apply base color</button>
               <button type="button" class="secondary" ng-click="resetBasePaintEditors()">Reset base color</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-panel randomizer-panel"
+             ng-if="state.vehicleId"
+             ng-class="{'is-collapsed': state.randomizerCollapsed}"
+             ng-click="onRandomizerPanelClick($event)">
+          <div class="randomizer-header"
+               ng-click="onRandomizerHeaderClick($event)">
+            <div class="part-summary">
+              <h3>Randomize custom colors</h3>
+              <div class="meta">Give every part a unique random paint color.</div>
+            </div>
+            <div class="header-actions">
+              <button type="button"
+                      class="collapse-toggle"
+                      ng-click="toggleRandomizerCollapsed()"
+                      ng-attr-aria-expanded="{{!state.randomizerCollapsed}}"
+                      aria-controls="vehicleRandomizerBody">
+                {{state.randomizerCollapsed ? 'Expand' : 'Collapse'}}
+              </button>
+            </div>
+          </div>
+          <div class="randomizer-body" id="vehicleRandomizerBody">
+            <p>Apply a random custom color to every paintable vehicle part. This replaces any existing custom colors.</p>
+            <div class="editor-actions">
+              <button type="button"
+                      class="primary"
+                      ng-click="randomizeAllPartColors()"
+                      ng-disabled="!(state.parts && state.parts.length) || state.randomizerProgress.active">
+                Randomize custom colors
+              </button>
             </div>
           </div>
         </div>
