@@ -19,6 +19,16 @@ local partDescriptorsByVeh = {}
 local activePartIdSetByVeh = {}
 local ensuredPartConditionsByVeh = {}
 local savedConfigCacheByVeh = {}
+
+local function invalidateSavedConfigCache(vehId)
+  if vehId ~= nil then
+    if vehId ~= -1 then
+      savedConfigCacheByVeh[vehId] = nil
+    end
+    return
+  end
+  savedConfigCacheByVeh = {}
+end
 local userColorPresets = nil
 local lastKnownPlayerVehicleId = nil
 local activeScreenshotPauseState = nil
@@ -2009,28 +2019,40 @@ local function gatherSavedConfigsFromDisk(modelFolder)
   return list
 end
 
-local function getSavedConfigs(vehId, vehData, vehObj)
+local function getSavedConfigs(vehId, vehData, vehObj, forceRefresh)
   local modelId = normalizeModelFolder(getVehicleModelIdentifier(vehData, vehObj, vehId))
   if not modelId then
     return {}
   end
 
+  local useCache = not forceRefresh and vehId and vehId ~= -1
+  if useCache then
+    local cache = savedConfigCacheByVeh[vehId]
+    if cache and cache.model == modelId and type(cache.list) == 'table' then
+      return deepCopy(cache.list)
+    end
+  end
+
   local configs = gatherSavedConfigsFromDisk(modelId)
-  savedConfigCacheByVeh[vehId] = {
-    model = modelId,
-    list = configs
-  }
+
+  if vehId and vehId ~= -1 then
+    savedConfigCacheByVeh[vehId] = {
+      model = modelId,
+      list = deepCopy(configs)
+    }
+  end
+
   return configs
 end
 
-local function sendSavedConfigs(vehId, vehData, vehObj)
+local function sendSavedConfigs(vehId, vehData, vehObj, forceRefresh)
   if not vehId or vehId == -1 then
     guihooks.trigger('VehiclePartsPaintingSavedConfigs', { vehicleId = -1, configs = {} })
     return
   end
   vehData = vehData or vehManager.getVehicleData(vehId)
   vehObj = vehObj or getObjectByID(vehId)
-  local configs = getSavedConfigs(vehId, vehData, vehObj)
+  local configs = getSavedConfigs(vehId, vehData, vehObj, forceRefresh)
   local payload = {
     vehicleId = vehId,
     configs = configs
@@ -2114,7 +2136,8 @@ local function saveCurrentUserConfig(configName)
     end
   end
 
-  sendSavedConfigs(vehId, vehData, vehObj)
+  invalidateSavedConfigCache(vehId)
+  sendSavedConfigs(vehId, vehData, vehObj, true)
 end
 
 local function deleteSavedConfiguration(configPath)
@@ -2189,13 +2212,15 @@ local function deleteSavedConfiguration(configPath)
 
   local vehId = be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
+    invalidateSavedConfigCache()
     sendSavedConfigs(-1)
     return
   end
 
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
-  sendSavedConfigs(vehId, vehData, vehObj)
+  invalidateSavedConfigCache()
+  sendSavedConfigs(vehId, vehData, vehObj, true)
 end
 
 local function spawnUserConfig(configPath)
@@ -3847,7 +3872,7 @@ local function requestState()
   sendState()
 end
 
-local function requestSavedConfigs()
+local function requestSavedConfigs(forceRefresh)
   local vehId = be:getPlayerVehicleID(0)
   if not vehId or vehId == -1 then
     sendSavedConfigs(-1)
@@ -3855,7 +3880,7 @@ local function requestSavedConfigs()
   end
   local vehObj = getObjectByID(vehId)
   local vehData = vehManager.getVehicleData(vehId)
-  sendSavedConfigs(vehId, vehData, vehObj)
+  sendSavedConfigs(vehId, vehData, vehObj, forceRefresh == true)
 end
 
 local function saveCurrentConfiguration(name)
