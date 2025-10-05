@@ -57,6 +57,7 @@ angular.module('beamng.apps')
         minimizedAlignment: 'left',
         minimizedInlineStyle: {},
         basePaintCollapsed: false,
+        randomizerCollapsed: true,
         partPaintCollapsed: false,
         configToolsCollapsed: false,
         savedConfigs: [],
@@ -1574,6 +1575,72 @@ end)()`;
         return result;
       }
 
+      function createDefaultPaintTemplate() {
+        return {
+          baseColor: [1, 1, 1, 1],
+          metallic: 0,
+          roughness: 0,
+          clearcoat: 0,
+          clearcoatRoughness: 0
+        };
+      }
+
+      function createRandomizedPaintsForPart(part) {
+        const templateCandidates = [];
+        if (part) {
+          templateCandidates.push(part.customPaints, part.currentPaints, part.paints);
+        }
+        templateCandidates.push(state.basePaints);
+
+        let template = [];
+        for (let i = 0; i < templateCandidates.length; i++) {
+          const candidate = templateCandidates[i];
+          if (Array.isArray(candidate) && candidate.length) {
+            template = candidate;
+            break;
+          }
+        }
+
+        const baseFallback = Array.isArray(state.basePaints) && state.basePaints.length ? state.basePaints : null;
+        let count = template.length;
+        if (!count && baseFallback) {
+          count = baseFallback.length;
+        }
+        if (!count) {
+          count = 3;
+        }
+        count = Math.max(1, Math.min(3, count));
+
+        const paints = [];
+        for (let i = 0; i < count; i++) {
+          let source = template[i] || null;
+          if (!source && template.length) {
+            source = template[template.length - 1];
+          }
+          if (!source && baseFallback) {
+            source = baseFallback[Math.min(i, baseFallback.length - 1)];
+          }
+
+          let clone = clonePaint(source);
+          if (!clone) {
+            clone = createDefaultPaintTemplate();
+          }
+
+          const baseColor = Array.isArray(clone.baseColor) ? clone.baseColor : [];
+          const alpha = typeof baseColor[3] === 'number' ? clamp01(baseColor[3]) : 1;
+          clone.baseColor = [
+            clamp01(Math.random()),
+            clamp01(Math.random()),
+            clamp01(Math.random()),
+            alpha
+          ];
+
+          paints.push(clone);
+        }
+
+        return paints;
+      }
+
       function syncBasePaintEditorsFromState() {
         if (!Array.isArray(state.basePaints) || !state.basePaints.length) {
           $scope.basePaintEditors = [];
@@ -1879,6 +1946,40 @@ end)()`;
           computeFilteredParts();
         }
       }
+
+      $scope.randomizeAllPartColors = function () {
+        if (!state.vehicleId) { return; }
+        if (!Array.isArray(state.parts) || !state.parts.length) { return; }
+        const parts = state.parts.slice();
+        const commands = [];
+        let updatedAny = false;
+
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (!part || !part.partPath) { continue; }
+          const paints = createRandomizedPaintsForPart(part);
+          if (!Array.isArray(paints) || !paints.length) { continue; }
+          const updatedLocally = updateLocalPartPaintState(part.partPath, paints, true);
+          if (!updatedLocally) { continue; }
+          updatedAny = true;
+          const payload = {
+            partPath: part.partPath,
+            partName: part.partName || null,
+            slotPath: part.slotPath || null,
+            paints: paints
+          };
+          commands.push('freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')');
+        }
+
+        if (!updatedAny) { return; }
+
+        refreshCustomBadgeVisibility();
+        computeFilteredParts();
+
+        for (let i = 0; i < commands.length; i++) {
+          sendExtensionCommand(commands[i]);
+        }
+      };
 
       $scope.hasBasePaintChanges = function () {
         if (!$scope.basePaintEditors || !$scope.basePaintEditors.length) { return false; }
@@ -2931,6 +3032,10 @@ end)()`;
         state.partPaintCollapsed = !state.partPaintCollapsed;
       };
 
+      $scope.toggleRandomizerCollapsed = function () {
+        state.randomizerCollapsed = !state.randomizerCollapsed;
+      };
+
       $scope.toggleConfigToolsCollapsed = function () {
         state.configToolsCollapsed = !state.configToolsCollapsed;
       };
@@ -2967,6 +3072,23 @@ end)()`;
           $event.stopPropagation();
         }
         state.basePaintCollapsed = !state.basePaintCollapsed;
+      };
+
+      $scope.onRandomizerPanelClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if (!state.randomizerCollapsed) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.randomizerCollapsed = false;
+      };
+
+      $scope.onRandomizerHeaderClick = function ($event) {
+        if (isCollapseToggleEvent($event)) { return; }
+        if ($event && typeof $event.stopPropagation === 'function') {
+          $event.stopPropagation();
+        }
+        state.randomizerCollapsed = !state.randomizerCollapsed;
       };
 
       $scope.onPartPaintPanelClick = function ($event) {
@@ -3371,6 +3493,7 @@ end)()`;
             state.motionWarning.pending = false;
             state.motionWarning.speed = 0;
             state.motionWarning.vehicleId = null;
+            state.randomizerCollapsed = true;
             return;
           }
 

@@ -1012,6 +1012,56 @@
     .vehicle-parts-painting .base-paint-panel.is-collapsed .base-paint-body {
       display: none;
     }
+    .vehicle-parts-painting .randomizer-panel {
+      padding: 0;
+      gap: 0;
+    }
+    .vehicle-parts-painting .randomizer-panel.is-collapsed {
+      flex: 0 0 auto;
+    }
+    .vehicle-parts-painting .randomizer-panel .randomizer-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 12px 6px 12px;
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .randomizer-panel.is-collapsed,
+    .vehicle-parts-painting .randomizer-panel.is-collapsed .randomizer-header {
+      cursor: pointer;
+    }
+    .vehicle-parts-painting .randomizer-panel .header-actions {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .vehicle-parts-painting .randomizer-panel .collapse-toggle {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: inherit;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .vehicle-parts-painting .randomizer-panel .collapse-toggle:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .vehicle-parts-painting .randomizer-panel .randomizer-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 0 12px 12px 12px;
+    }
+    .vehicle-parts-painting .randomizer-panel.is-collapsed .randomizer-body {
+      display: none;
+    }
+    .vehicle-parts-painting .randomizer-panel .randomizer-body p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.45;
+      opacity: 0.85;
+    }
     .vehicle-parts-painting .part-paint-panel .part-paint-body {
       display: flex;
       flex-direction: column;
@@ -2001,6 +2051,39 @@
             <div class="editor-actions">
               <button type="button" class="primary" ng-click="applyBasePaints()">Apply base color</button>
               <button type="button" class="secondary" ng-click="resetBasePaintEditors()">Reset base color</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-panel randomizer-panel"
+             ng-if="state.vehicleId"
+             ng-class="{'is-collapsed': state.randomizerCollapsed}"
+             ng-click="onRandomizerPanelClick($event)">
+          <div class="randomizer-header"
+               ng-click="onRandomizerHeaderClick($event)">
+            <div class="part-summary">
+              <h3>Randomize custom colors</h3>
+              <div class="meta">Give every part a unique random paint color.</div>
+            </div>
+            <div class="header-actions">
+              <button type="button"
+                      class="collapse-toggle"
+                      ng-click="toggleRandomizerCollapsed()"
+                      ng-attr-aria-expanded="{{!state.randomizerCollapsed}}"
+                      aria-controls="vehicleRandomizerBody">
+                {{state.randomizerCollapsed ? 'Expand' : 'Collapse'}}
+              </button>
+            </div>
+          </div>
+          <div class="randomizer-body" id="vehicleRandomizerBody">
+            <p>Apply a random custom color to every paintable vehicle part. This replaces any existing custom colors.</p>
+            <div class="editor-actions">
+              <button type="button"
+                      class="primary"
+                      ng-click="randomizeAllPartColors()"
+                      ng-disabled="!(state.parts && state.parts.length)">
+                Randomize custom colors
+              </button>
             </div>
           </div>
         </div>
