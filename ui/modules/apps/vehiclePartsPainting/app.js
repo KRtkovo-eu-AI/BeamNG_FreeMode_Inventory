@@ -1585,6 +1585,45 @@ end)()`;
         };
       }
 
+      const GOLDEN_RATIO_CONJUGATE = 0.6180339887498948;
+      let randomizerHueSeed = Math.random();
+
+      function hueToChannel(p, q, t) {
+        if (t < 0) { t += 1; }
+        if (t > 1) { t -= 1; }
+        if (t < (1 / 6)) { return p + (q - p) * 6 * t; }
+        if (t < (1 / 2)) { return q; }
+        if (t < (2 / 3)) { return p + (q - p) * ((2 / 3) - t) * 6; }
+        return p;
+      }
+
+      function hslToRgbNormalized(hueDegrees, saturation, lightness) {
+        const normalizedHue = ((hueDegrees % 360) + 360) % 360 / 360;
+        const s = clamp01(saturation);
+        const l = clamp01(lightness);
+
+        if (s === 0) {
+          return [l, l, l];
+        }
+
+        const q = l < 0.5 ? l * (1 + s) : l + s - (l * s);
+        const p = (2 * l) - q;
+
+        const r = hueToChannel(p, q, normalizedHue + (1 / 3));
+        const g = hueToChannel(p, q, normalizedHue);
+        const b = hueToChannel(p, q, normalizedHue - (1 / 3));
+
+        return [clamp01(r), clamp01(g), clamp01(b)];
+      }
+
+      function generateVibrantPastelColor() {
+        randomizerHueSeed = (randomizerHueSeed + GOLDEN_RATIO_CONJUGATE) % 1;
+        const hue = randomizerHueSeed * 360;
+        const saturation = 0.65 + (Math.random() * 0.3);
+        const lightness = 0.55 + (Math.random() * 0.2);
+        return hslToRgbNormalized(hue, saturation, lightness);
+      }
+
       function createRandomizedPaintsForPart(part) {
         const templateCandidates = [];
         if (part) {
@@ -1628,10 +1667,11 @@ end)()`;
 
           const baseColor = Array.isArray(clone.baseColor) ? clone.baseColor : [];
           const alpha = typeof baseColor[3] === 'number' ? clamp01(baseColor[3]) : 1;
+          const pastelColor = generateVibrantPastelColor();
           clone.baseColor = [
-            clamp01(Math.random()),
-            clamp01(Math.random()),
-            clamp01(Math.random()),
+            pastelColor[0],
+            pastelColor[1],
+            pastelColor[2],
             alpha
           ];
 
