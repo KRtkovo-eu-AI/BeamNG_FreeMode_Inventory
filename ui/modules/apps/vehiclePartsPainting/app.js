@@ -58,6 +58,16 @@ angular.module('beamng.apps')
         minimizedInlineStyle: {},
         basePaintCollapsed: false,
         randomizerCollapsed: true,
+        randomizerProgress: {
+          active: false,
+          visible: false,
+          cancelRequested: false,
+          total: 0,
+          processedCount: 0,
+          currentIndex: 0,
+          currentPartLabel: '',
+          currentPartPath: null
+        },
         partPaintCollapsed: false,
         configToolsCollapsed: false,
         savedConfigs: [],
@@ -113,6 +123,8 @@ angular.module('beamng.apps')
       };
       let suppressHsvSync = false;
       let hsvRectDragging = false;
+      const RANDOMIZER_STEP_DELAY_MS = 40;
+      let randomizerRun = null;
 
       $scope.colorPickerState = colorPickerState;
 
@@ -857,6 +869,12 @@ angular.module('beamng.apps')
 
       function resetUiForWorldChange() {
         $scope.$evalAsync(function () {
+          if (randomizerRun) {
+            state.randomizerProgress.cancelRequested = true;
+            finalizeRandomizer({ skipRefresh: true });
+          } else {
+            resetRandomizerProgress();
+          }
           state.vehicleId = null;
           state.parts = [];
           state.partsTree = [];
@@ -1681,6 +1699,159 @@ end)()`;
         return paints;
       }
 
+      function resetRandomizerProgress() {
+        const progress = state.randomizerProgress;
+        progress.active = false;
+        progress.visible = false;
+        progress.cancelRequested = false;
+        progress.total = 0;
+        progress.processedCount = 0;
+        progress.currentIndex = 0;
+        progress.currentPartLabel = '';
+        progress.currentPartPath = null;
+      }
+
+      function completeRandomizerFinalize(run) {
+        if (!run) { return; }
+        if (run.pendingPromise) {
+          $timeout.cancel(run.pendingPromise);
+          run.pendingPromise = null;
+        }
+
+        if (run.updatedAny && !run.skipRefresh) {
+          refreshCustomBadgeVisibility();
+          computeFilteredParts();
+        }
+
+        resetRandomizerProgress();
+        randomizerRun = null;
+      }
+
+      function finalizeRandomizer(options) {
+        if (!randomizerRun) {
+          resetRandomizerProgress();
+          return;
+        }
+
+        const run = randomizerRun;
+        if (options && options.skipRefresh) {
+          run.skipRefresh = true;
+        }
+
+        if (run.finishing) {
+          if (!run.processing) {
+            completeRandomizerFinalize(run);
+          }
+          return;
+        }
+
+        run.finishing = true;
+
+        if (run.processing) {
+          return;
+        }
+
+        completeRandomizerFinalize(run);
+      }
+
+      function processRandomizerStep() {
+        const run = randomizerRun;
+        if (!run) { return; }
+
+        if (run.finishing) {
+          finalizeRandomizer();
+          return;
+        }
+
+        run.pendingPromise = null;
+        run.processing = true;
+
+        const progress = state.randomizerProgress;
+
+        if (progress.cancelRequested) {
+          run.processing = false;
+          finalizeRandomizer();
+          return;
+        }
+
+        if (run.current >= run.tasks.length) {
+          run.processing = false;
+          finalizeRandomizer();
+          return;
+        }
+
+        const task = run.tasks[run.current];
+        progress.currentIndex = run.current;
+        progress.currentPartLabel = task.displayName || 'Part';
+        progress.currentPartPath = task.partPath || null;
+
+        const part = findPartByPath(task.partPath);
+        const paints = createRandomizedPaintsForPart(part);
+
+        if (run.finishing) {
+          run.processing = false;
+          finalizeRandomizer();
+          return;
+        }
+
+        if (Array.isArray(paints) && paints.length) {
+          const updatedLocally = updateLocalPartPaintState(task.partPath, paints, true);
+          if (updatedLocally) {
+            run.updatedAny = true;
+            const payload = {
+              partPath: task.partPath,
+              partName: task.partName || null,
+              slotPath: task.slotPath || null,
+              paints: paints
+            };
+            sendExtensionCommand('freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')');
+          }
+        }
+
+        run.current++;
+        progress.processedCount = run.current;
+
+        run.processing = false;
+
+        if (run.finishing || progress.cancelRequested) {
+          finalizeRandomizer();
+          return;
+        }
+
+        if (run.current >= run.tasks.length) {
+          finalizeRandomizer();
+          return;
+        }
+
+        run.pendingPromise = $timeout(processRandomizerStep, RANDOMIZER_STEP_DELAY_MS);
+      }
+
+      function beginRandomizerRun(tasks) {
+        if (!Array.isArray(tasks) || !tasks.length) { return; }
+        const progress = state.randomizerProgress;
+
+        progress.active = true;
+        progress.visible = true;
+        progress.cancelRequested = false;
+        progress.total = tasks.length;
+        progress.processedCount = 0;
+        progress.currentIndex = 0;
+        progress.currentPartLabel = '';
+        progress.currentPartPath = null;
+
+        randomizerRun = {
+          tasks: tasks,
+          current: 0,
+          pendingPromise: null,
+          updatedAny: false,
+          processing: false,
+          finishing: false,
+          skipRefresh: false
+        };
+
+        processRandomizerStep();
+      }
+
       function syncBasePaintEditorsFromState() {
         if (!Array.isArray(state.basePaints) || !state.basePaints.length) {
           $scope.basePaintEditors = [];
@@ -1989,36 +2160,41 @@ end)()`;
 
       $scope.randomizeAllPartColors = function () {
         if (!state.vehicleId) { return; }
+        if (state.randomizerProgress.active) { return; }
         if (!Array.isArray(state.parts) || !state.parts.length) { return; }
-        const parts = state.parts.slice();
-        const commands = [];
-        let updatedAny = false;
 
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
+        const tasks = [];
+        for (let i = 0; i < state.parts.length; i++) {
+          const part = state.parts[i];
           if (!part || !part.partPath) { continue; }
-          const paints = createRandomizedPaintsForPart(part);
-          if (!Array.isArray(paints) || !paints.length) { continue; }
-          const updatedLocally = updateLocalPartPaintState(part.partPath, paints, true);
-          if (!updatedLocally) { continue; }
-          updatedAny = true;
-          const payload = {
+          tasks.push({
             partPath: part.partPath,
             partName: part.partName || null,
             slotPath: part.slotPath || null,
-            paints: paints
-          };
-          commands.push('freeroam_vehiclePartsPainting.applyPartPaintJson(' + toLuaString(JSON.stringify(payload)) + ')');
+            displayName: part.displayName || part.partName || part.partPath || 'Part'
+          });
         }
 
-        if (!updatedAny) { return; }
+        if (!tasks.length) { return; }
 
-        refreshCustomBadgeVisibility();
-        computeFilteredParts();
+        beginRandomizerRun(tasks);
+      };
 
-        for (let i = 0; i < commands.length; i++) {
-          sendExtensionCommand(commands[i]);
-        }
+      $scope.cancelRandomizeAllPartColors = function () {
+        if (!state.randomizerProgress.active || !randomizerRun) { return; }
+        if (state.randomizerProgress.cancelRequested) { return; }
+
+        state.randomizerProgress.cancelRequested = true;
+
+        finalizeRandomizer();
+      };
+
+      $scope.getRandomizerProgressWidth = function () {
+        const progress = state.randomizerProgress;
+        if (!progress || !progress.total) { return '0%'; }
+        const ratio = Math.max(0, Math.min(1, progress.processedCount / progress.total));
+        const percent = Math.round(ratio * 100);
+        return percent + '%';
       };
 
       $scope.hasBasePaintChanges = function () {
