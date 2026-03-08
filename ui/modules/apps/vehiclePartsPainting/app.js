@@ -1634,11 +1634,50 @@ end)()`;
         return [clamp01(r), clamp01(g), clamp01(b)];
       }
 
-      function generateVibrantPastelColor() {
+      function pickColorProfile() {
+        const roll = Math.random();
+
+        if (roll < 0.35) {
+          return {
+            saturationMin: 0.75,
+            saturationMax: 1,
+            lightnessMin: 0.42,
+            lightnessMax: 0.6
+          };
+        }
+
+        if (roll < 0.62) {
+          return {
+            saturationMin: 0.5,
+            saturationMax: 0.78,
+            lightnessMin: 0.65,
+            lightnessMax: 0.84
+          };
+        }
+
+        if (roll < 0.82) {
+          return {
+            saturationMin: 0.65,
+            saturationMax: 0.95,
+            lightnessMin: 0.24,
+            lightnessMax: 0.42
+          };
+        }
+
+        return {
+          saturationMin: 0.08,
+          saturationMax: 0.35,
+          lightnessMin: 0.28,
+          lightnessMax: 0.78
+        };
+      }
+
+      function generateDiverseRandomColor() {
         randomizerHueSeed = (randomizerHueSeed + GOLDEN_RATIO_CONJUGATE) % 1;
         const hue = randomizerHueSeed * 360;
-        const saturation = 0.65 + (Math.random() * 0.3);
-        const lightness = 0.55 + (Math.random() * 0.2);
+        const profile = pickColorProfile();
+        const saturation = profile.saturationMin + (Math.random() * (profile.saturationMax - profile.saturationMin));
+        const lightness = profile.lightnessMin + (Math.random() * (profile.lightnessMax - profile.lightnessMin));
         return hslToRgbNormalized(hue, saturation, lightness);
       }
 
@@ -1685,11 +1724,11 @@ end)()`;
 
           const baseColor = Array.isArray(clone.baseColor) ? clone.baseColor : [];
           const alpha = typeof baseColor[3] === 'number' ? clamp01(baseColor[3]) : 1;
-          const pastelColor = generateVibrantPastelColor();
+          const randomizedColor = generateDiverseRandomColor();
           clone.baseColor = [
-            pastelColor[0],
-            pastelColor[1],
-            pastelColor[2],
+            randomizedColor[0],
+            randomizedColor[1],
+            randomizedColor[2],
             alpha
           ];
 
