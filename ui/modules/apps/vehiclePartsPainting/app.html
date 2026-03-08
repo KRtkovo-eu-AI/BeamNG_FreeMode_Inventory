@@ -13,9 +13,10 @@
       background: rgba(0, 0, 0, 0.65);
       color: #fff;
       padding: 12px;
-      border-radius: 6px;
+      border-radius: 10px;
       font-family: inherit;
       position: relative;
+      backdrop-filter: blur(2px);
     }
     .vehicle-parts-painting.is-minimized {
       width: 48px;
@@ -465,9 +466,13 @@
       position: relative;
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 10px;
+      gap: 16px;
+      margin-bottom: 14px;
       flex: 0 0 auto;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .vehicle-parts-painting .app-header .header-actions {
       display: flex;
@@ -476,19 +481,33 @@
     }
     .vehicle-parts-painting .app-header h2 {
       margin: 0;
-      font-size: 20px;
+      font-size: 19px;
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 8px;
+      line-height: 1.2;
+    }
+    .vehicle-parts-painting .app-header .title-version {
+      font-style: italic;
+      font-size: 11px;
+      opacity: 0.6;
+      letter-spacing: 0.02em;
     }
     .vehicle-parts-painting .app-header .header-actions button {
-      margin-left: 6px;
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      margin-left: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.24);
       color: inherit;
-      padding: 6px 10px;
+      padding: 7px 12px;
       border-radius: 4px;
       font-size: 12px;
+      font-weight: 600;
+      transition: background 0.2s ease, border-color 0.2s ease;
     }
     .vehicle-parts-painting .app-header .header-actions button:hover {
       border-color: rgba(255, 255, 255, 0.6);
+      background: rgba(255, 255, 255, 0.14);
     }
     .vehicle-parts-painting .app-header .header-actions button:disabled {
       opacity: 0.5;
@@ -550,7 +569,7 @@
     .vehicle-parts-painting .app-body {
       flex: 1;
       display: flex;
-      gap: 12px;
+      gap: 14px;
       min-height: 0;
       overflow: hidden;
     }
@@ -572,30 +591,35 @@
       display: flex;
       flex-direction: column;
       background: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       overflow: hidden;
       min-height: 0;
     }
     .vehicle-parts-painting .parts-panel .panel-header {
-      display: block;
+      display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 10px;
+      gap: 8px;
+      padding: 12px;
       font-weight: 600;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
     .vehicle-parts-painting .parts-panel .panel-header .panel-actions {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .vehicle-parts-painting .parts-panel .panel-header .panel-actions button {
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.22);
       color: inherit;
       font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 3px;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-weight: 600;
     }
     .vehicle-parts-painting .parts-panel .panel-header .panel-actions button.orange {
       width: 24px;
@@ -825,7 +849,8 @@
     }
     .vehicle-parts-painting .config-tools {
       background: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       padding: 10px;
       display: flex;
       flex-direction: column;
@@ -1029,7 +1054,8 @@
       min-width: 0;
       min-height: 0;
       background: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       padding: 12px;
       display: flex;
       flex-direction: column;
@@ -1565,6 +1591,7 @@
       display: flex;
       gap: 8px;
       justify-content: flex-end;
+      flex-wrap: wrap;
       flex: 0 0 auto;
     }
     .vehicle-parts-painting .editor-actions .primary {
@@ -1611,6 +1638,28 @@
       }
     }
     @media (max-width: 760px) {
+      .vehicle-parts-painting {
+        padding: 10px;
+      }
+      .vehicle-parts-painting .app-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 10px;
+      }
+      .vehicle-parts-painting .app-header h2 {
+        font-size: 17px;
+      }
+      .vehicle-parts-painting .app-header .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        margin-left: 0;
+        gap: 8px;
+      }
+      .vehicle-parts-painting .app-header .header-actions button {
+        margin-left: 0;
+        flex: 1 1 180px;
+      }
       .vehicle-parts-painting .app-body {
         flex-direction: column;
       }
@@ -1618,8 +1667,24 @@
         flex: 0 0 auto;
         max-width: none;
       }
+      .vehicle-parts-painting .parts-panel .panel-header {
+        align-items: stretch;
+      }
       .vehicle-parts-painting .editor-panel {
         flex: 1;
+      }
+      .vehicle-parts-painting .editor-actions {
+        justify-content: stretch;
+      }
+      .vehicle-parts-painting .editor-actions button {
+        flex: 1 1 200px;
+      }
+      .vehicle-parts-painting .config-tools .config-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .vehicle-parts-painting .config-tools .config-actions input[type="text"] {
+        min-width: 0;
       }
     }
   </style>
@@ -1984,7 +2049,7 @@
   <div class="app-content" ng-if="!state.minimized">
     <div class="app-header">
       <div class="header-title">
-        <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span style="font-style: italic; font-size: 10px; opacity: 0.5; margin-left: 2em;">version 1.1.8 | made by KRtekTM</span></h2>
+        <h2><img src="/ui/modules/apps/vehiclePartsPainting/icon_minimize.svg" alt="" style="width: 20px; height: 20px;">&nbsp;Vehicle Parts Painting <span class="title-version">version 1.1.8 | made by KRtekTM</span></h2>
       </div>
       <div class="header-actions">
         <!--<button type="button" ng-click="refresh()">
@@ -2007,7 +2072,7 @@
     <div class="app-body" ng-if="state.vehicleId">
       <div class="parts-panel">
       <div class="panel-header">
-        <div style="margin-bottom: 6px;"><span>Vehicle Parts Selector</span></div>
+        <div><span>Vehicle Parts Selector</span></div>
         <div class="panel-actions">
           <button type="button"
                   ng-click="expandAllNodes()"
