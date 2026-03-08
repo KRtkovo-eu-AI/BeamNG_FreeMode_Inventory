@@ -591,7 +591,7 @@ function resetPaint(scope, partPath) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
   }), 'Queued requestState command should execute after extension becomes available');
   assert(executedAfterReady.some(function (command) {
-    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs()') !== -1;
+    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs(') !== -1;
   }), 'Queued requestSavedConfigs command should execute after extension becomes available');
   assert.strictEqual(guardedCommandCallbacks >= 2, true,
     'Guarded command callbacks should be invoked for each queued command');
@@ -684,7 +684,7 @@ function resetPaint(scope, partPath) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
   }), 'World ready initialization should queue a requestState command');
   assert(queueSnapshot.some(function (command) {
-    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs()') !== -1;
+    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs(') !== -1;
   }), 'World ready initialization should queue a requestSavedConfigs command');
 
   const loadCallsAfter = bngApiCalls.filter(function (command) {

@@ -1477,7 +1477,7 @@ end)()`;
         if (replaceTarget) {
           markSavedConfigPreviewForRefresh(replaceTarget);
         }
-        scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
+        scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS, true);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
         sendExtensionCommand(command);
       }
@@ -2341,8 +2341,15 @@ end)()`;
         sendExtensionCommand('freeroam_vehiclePartsPainting.showAllParts()');
       }
 
-      function requestSavedConfigs() {
-        sendExtensionCommand('freeroam_vehiclePartsPainting.requestSavedConfigs()');
+      function requestSavedConfigs(options) {
+        let force = false;
+        if (options && typeof options === 'object') {
+          force = options.force === true;
+        } else {
+          force = options === true;
+        }
+        const command = 'freeroam_vehiclePartsPainting.requestSavedConfigs(' + (force ? 'true' : 'false') + ')';
+        sendExtensionCommand(command);
       }
 
       registerWorldReadyListener('VehiclePartsPaintingWorldReady');
@@ -2367,13 +2374,14 @@ end)()`;
         }
       }
 
-      function scheduleSavedConfigRefresh(delay) {
+      function scheduleSavedConfigRefresh(delay, options) {
         cancelSavedConfigRefreshTimer();
         if (typeof delay !== 'number' || !isFinite(delay) || delay < 0) { return; }
+        const force = !!(options && (options === true || options.force === true));
         savedConfigRefreshTimeout = $timeout(function () {
           savedConfigRefreshTimeout = null;
           if (!state.vehicleId) { return; }
-          requestSavedConfigs();
+          requestSavedConfigs(force);
         }, delay);
       }
 
@@ -3419,7 +3427,7 @@ end)()`;
       };
 
       $scope.refreshSavedConfigs = function () {
-        requestSavedConfigs();
+        requestSavedConfigs(true);
       };
 
       function getSavedConfigDisplayName(config) {
@@ -3622,7 +3630,7 @@ end)()`;
         }
         state.deleteConfigDialog.isDeleting = true;
         resetSavedConfigPreviewTracking();
-        scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
+        scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS, true);
         const command = 'freeroam_vehiclePartsPainting.deleteSavedConfiguration(' + toLuaString(target.relativePath) + ')';
         sendExtensionCommand(command);
       };
@@ -4000,7 +4008,7 @@ end)()`;
           if (state.vehicleId) {
             const hasPendingPreview = updateSavedConfigPreviewTracking(configs);
             if (hasPendingPreview) {
-              scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS);
+              scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS, true);
             } else {
               cancelSavedConfigRefreshTimer();
             }
