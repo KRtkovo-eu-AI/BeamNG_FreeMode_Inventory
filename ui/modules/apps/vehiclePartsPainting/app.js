@@ -36,7 +36,7 @@ angular.module('beamng.apps')
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', '$element', '$interval', '$timeout', function ($scope, $element, $interval, $timeout) {
+    controller: ['$scope', '$element', '$timeout', function ($scope, $element, $timeout) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -69,7 +69,7 @@ angular.module('beamng.apps')
           currentPartPath: null
         },
         partPaintCollapsed: false,
-        configToolsCollapsed: false,
+        configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',
@@ -319,13 +319,13 @@ angular.module('beamng.apps')
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
       $scope.motionWarningMessage = MOTION_WARNING_MESSAGE;
 
-      const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 3000;
       const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 12;
-      let customBadgeRefreshPromise = null;
       let savedConfigRefreshTimeout = null;
       let savedConfigPreviewTracking = Object.create(null);
+      let savedConfigPendingPreviewByName = Object.create(null);
       let savedConfigPreviewForceCounter = 0;
+      let savedConfigsLoadedForVehicleId = null;
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
@@ -1470,12 +1470,16 @@ end)()`;
       function performSaveConfiguration(name, options) {
         options = options || {};
         const replaceTarget = options.replaceTarget || null;
+        const sanitizedName = options.sanitizedName || sanitizeConfigFileName(name);
         clearPendingReplacement();
         state.saveErrorMessage = null;
         state.isSavingConfig = true;
         resetSavedConfigPreviewTracking();
         if (replaceTarget) {
           markSavedConfigPreviewForRefresh(replaceTarget);
+        }
+        if (sanitizedName) {
+          queueSavedConfigPreviewByName(sanitizedName);
         }
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS, true);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
@@ -2391,6 +2395,18 @@ end)()`;
         sendExtensionCommand(command);
       }
 
+      function ensureSavedConfigsLoaded(options) {
+        let force = false;
+        if (options && typeof options === 'object') {
+          force = options.force === true;
+        } else {
+          force = options === true;
+        }
+        if (!state.vehicleId) { return; }
+        if (!force && savedConfigsLoadedForVehicleId === state.vehicleId) { return; }
+        requestSavedConfigs(force);
+      }
+
       registerWorldReadyListener('VehiclePartsPaintingWorldReady');
       registerWorldReadyListener('WorldReadyStateChanged', { forceOnReady: true });
       registerWorldReadyListener('WorldReadyState', { forceOnReady: true });
@@ -2398,9 +2414,9 @@ end)()`;
       function handleVehicleChange() {
         resetExtensionIntegrationState();
         resetUiForWorldChange();
+        savedConfigsLoadedForVehicleId = null;
         requestExtensionLoad();
         $scope.refresh();
-        requestSavedConfigs();
         bngApi.engineLua('settings.notifyUI()');
       }
 
@@ -2426,7 +2442,30 @@ end)()`;
 
       function resetSavedConfigPreviewTracking() {
         savedConfigPreviewTracking = Object.create(null);
+        savedConfigPendingPreviewByName = Object.create(null);
         savedConfigPreviewForceCounter = 0;
+      }
+
+      function normalizeSavedConfigNameKey(name) {
+        if (typeof name !== 'string') { return null; }
+        const trimmed = name.trim();
+        if (!trimmed) { return null; }
+        return trimmed.toLowerCase();
+      }
+
+      function queueSavedConfigPreviewByName(fileName) {
+        const key = normalizeSavedConfigNameKey(fileName);
+        if (!key) { return; }
+        const existing = Object.prototype.hasOwnProperty.call(savedConfigPendingPreviewByName, key)
+          ? savedConfigPendingPreviewByName[key]
+          : null;
+        const forceKey = existing && typeof existing.forceKey === 'string' && existing.forceKey
+          ? existing.forceKey
+          : ('force-name-' + (++savedConfigPreviewForceCounter) + '-' + Date.now());
+        savedConfigPendingPreviewByName[key] = {
+          attempts: SAVED_CONFIG_FAST_REFRESH_ATTEMPTS,
+          forceKey: forceKey
+        };
       }
 
       function markSavedConfigPreviewForRefresh(config) {
@@ -2452,7 +2491,10 @@ end)()`;
 
       function updateSavedConfigPreviewTracking(configs) {
         const previousTracking = savedConfigPreviewTracking || {};
+        const previousPendingByName = savedConfigPendingPreviewByName || {};
         const next = Object.create(null);
+        const nextPendingByName = Object.create(null);
+        const consumedPendingByName = Object.create(null);
         let hasPending = false;
         if (Array.isArray(configs)) {
           configs.forEach(function (config) {
@@ -2464,16 +2506,28 @@ end)()`;
             const previous = Object.prototype.hasOwnProperty.call(previousTracking, key)
               ? previousTracking[key]
               : null;
+            const fileNameKey = normalizeSavedConfigNameKey(config.fileName);
+            const pendingByName = (fileNameKey && Object.prototype.hasOwnProperty.call(previousPendingByName, fileNameKey))
+              ? previousPendingByName[fileNameKey]
+              : null;
             const signature = (typeof config.previewSignature === 'string' && config.previewSignature)
               ? config.previewSignature
               : computeConfigPreviewSignature(config);
             const hasPreviewImage = config.hasPreviewImage || hasConfigPreview(config);
-            const isForced = !!(previous && previous.force);
+            const isForced = !!((previous && previous.force) || pendingByName);
             const forceKey = (previous && typeof previous.forceKey === 'string')
               ? previous.forceKey
-              : null;
+              : ((pendingByName && typeof pendingByName.forceKey === 'string') ? pendingByName.forceKey : null);
 
-            if (!isForced && hasPreviewImage) {
+            if (!isForced) {
+              return;
+            }
+
+            if (pendingByName && fileNameKey) {
+              consumedPendingByName[fileNameKey] = true;
+            }
+
+            if (hasPreviewImage) {
               return;
             }
 
@@ -2486,6 +2540,8 @@ end)()`;
               attempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
             } else if (previous && typeof previous.attempts === 'number') {
               attempts = previous.attempts;
+            } else if (pendingByName && typeof pendingByName.attempts === 'number') {
+              attempts = pendingByName.attempts;
             }
 
             if (attempts <= 0) {
@@ -2502,7 +2558,24 @@ end)()`;
             }
           });
         }
+        for (const pendingKey in previousPendingByName) {
+          if (!Object.prototype.hasOwnProperty.call(previousPendingByName, pendingKey)) { continue; }
+          if (Object.prototype.hasOwnProperty.call(consumedPendingByName, pendingKey)) { continue; }
+          const pending = previousPendingByName[pendingKey];
+          if (!pending || typeof pending !== 'object') { continue; }
+          const attempts = (typeof pending.attempts === 'number')
+            ? pending.attempts
+            : SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+          if (attempts > 1) {
+            hasPending = true;
+            nextPendingByName[pendingKey] = {
+              attempts: attempts - 1,
+              forceKey: pending.forceKey
+            };
+          }
+        }
         savedConfigPreviewTracking = next;
+        savedConfigPendingPreviewByName = nextPendingByName;
         return hasPending;
       }
 
@@ -3391,6 +3464,9 @@ end)()`;
 
       $scope.toggleConfigToolsCollapsed = function () {
         state.configToolsCollapsed = !state.configToolsCollapsed;
+        if (!state.configToolsCollapsed) {
+          ensureSavedConfigsLoaded();
+        }
       };
 
       $scope.onConfigToolsContainerClick = function ($event) {
@@ -3400,6 +3476,7 @@ end)()`;
           $event.stopPropagation();
         }
         state.configToolsCollapsed = false;
+        ensureSavedConfigsLoaded();
       };
 
       $scope.onConfigToolsHeaderClick = function ($event) {
@@ -3408,6 +3485,9 @@ end)()`;
           $event.stopPropagation();
         }
         state.configToolsCollapsed = !state.configToolsCollapsed;
+        if (!state.configToolsCollapsed) {
+          ensureSavedConfigsLoaded();
+        }
       };
 
       $scope.onBasePaintPanelClick = function ($event) {
@@ -3466,7 +3546,7 @@ end)()`;
       };
 
       $scope.refreshSavedConfigs = function () {
-        requestSavedConfigs(true);
+        ensureSavedConfigsLoaded(true);
       };
 
       function getSavedConfigDisplayName(config) {
@@ -3695,7 +3775,7 @@ end)()`;
           state.showReplaceConfirmation = true;
           return;
         }
-        performSaveConfiguration(name);
+        performSaveConfiguration(name, { sanitizedName: result.sanitized });
       };
 
       $scope.confirmReplaceSavedConfig = function () {
@@ -3706,7 +3786,10 @@ end)()`;
           return;
         }
         const replaceTarget = state.pendingExistingConfig || null;
-        performSaveConfiguration(name, { replaceTarget: replaceTarget });
+        performSaveConfiguration(name, {
+          replaceTarget: replaceTarget,
+          sanitizedName: state.pendingSanitizedName
+        });
       };
 
       $scope.cancelReplaceSavedConfig = function () {
@@ -3770,10 +3853,6 @@ end)()`;
         cancelPresetHoldTimer();
         presetHoldTriggered = false;
         closeRemovePresetDialog();
-        if (customBadgeRefreshPromise) {
-          $interval.cancel(customBadgeRefreshPromise);
-          customBadgeRefreshPromise = null;
-        }
         cancelSavedConfigRefreshTimer();
         resetSavedConfigPreviewTracking();
         resetPartLookup();
@@ -3828,6 +3907,7 @@ end)()`;
             state.expandedNodes = {};
             state.savedConfigs = [];
             state.selectedSavedConfig = null;
+            savedConfigsLoadedForVehicleId = null;
             state.configNameInput = '';
             state.isSavingConfig = false;
             state.isSpawningConfig = false;
@@ -3873,7 +3953,6 @@ end)()`;
             setSelectedPart(null);
             sendShowAllCommand();
             resetSavedConfigPreviewTracking();
-            requestSavedConfigs();
             state.motionWarning.moving = false;
             state.motionWarning.dialogVisible = false;
             state.motionWarning.acknowledged = false;
@@ -3972,6 +4051,10 @@ end)()`;
         markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
+          const payloadVehicleId = data.vehicleId || null;
+          if (payloadVehicleId && state.vehicleId && payloadVehicleId === state.vehicleId) {
+            savedConfigsLoadedForVehicleId = payloadVehicleId;
+          }
           const wasSaving = state.isSavingConfig;
           const hadPendingReplacement = !!state.showReplaceConfirmation;
           const pendingName = typeof state.pendingConfigName === 'string'
@@ -4084,9 +4167,6 @@ end)()`;
 
       handleVehicleChange();
       refreshCustomBadgeVisibility();
-      customBadgeRefreshPromise = $interval(function () {
-        refreshCustomBadgeVisibility();
-      }, CUSTOM_BADGE_REFRESH_INTERVAL_MS);
     }]
   };
 }]);
