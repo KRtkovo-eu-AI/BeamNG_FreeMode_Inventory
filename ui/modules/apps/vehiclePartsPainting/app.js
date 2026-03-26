@@ -323,6 +323,7 @@ angular.module('beamng.apps')
       const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 12;
       let savedConfigRefreshTimeout = null;
       let savedConfigPreviewTracking = Object.create(null);
+      let savedConfigPendingPreviewByName = Object.create(null);
       let savedConfigPreviewForceCounter = 0;
       let savedConfigsLoadedForVehicleId = null;
       let partLookup = Object.create(null);
@@ -1469,12 +1470,16 @@ end)()`;
       function performSaveConfiguration(name, options) {
         options = options || {};
         const replaceTarget = options.replaceTarget || null;
+        const sanitizedName = options.sanitizedName || sanitizeConfigFileName(name);
         clearPendingReplacement();
         state.saveErrorMessage = null;
         state.isSavingConfig = true;
         resetSavedConfigPreviewTracking();
         if (replaceTarget) {
           markSavedConfigPreviewForRefresh(replaceTarget);
+        }
+        if (sanitizedName) {
+          queueSavedConfigPreviewByName(sanitizedName);
         }
         scheduleSavedConfigRefresh(SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS, true);
         const command = 'freeroam_vehiclePartsPainting.saveCurrentConfiguration(' + toLuaString(name) + ')';
@@ -2437,7 +2442,30 @@ end)()`;
 
       function resetSavedConfigPreviewTracking() {
         savedConfigPreviewTracking = Object.create(null);
+        savedConfigPendingPreviewByName = Object.create(null);
         savedConfigPreviewForceCounter = 0;
+      }
+
+      function normalizeSavedConfigNameKey(name) {
+        if (typeof name !== 'string') { return null; }
+        const trimmed = name.trim();
+        if (!trimmed) { return null; }
+        return trimmed.toLowerCase();
+      }
+
+      function queueSavedConfigPreviewByName(fileName) {
+        const key = normalizeSavedConfigNameKey(fileName);
+        if (!key) { return; }
+        const existing = Object.prototype.hasOwnProperty.call(savedConfigPendingPreviewByName, key)
+          ? savedConfigPendingPreviewByName[key]
+          : null;
+        const forceKey = existing && typeof existing.forceKey === 'string' && existing.forceKey
+          ? existing.forceKey
+          : ('force-name-' + (++savedConfigPreviewForceCounter) + '-' + Date.now());
+        savedConfigPendingPreviewByName[key] = {
+          attempts: SAVED_CONFIG_FAST_REFRESH_ATTEMPTS,
+          forceKey: forceKey
+        };
       }
 
       function markSavedConfigPreviewForRefresh(config) {
@@ -2463,7 +2491,10 @@ end)()`;
 
       function updateSavedConfigPreviewTracking(configs) {
         const previousTracking = savedConfigPreviewTracking || {};
+        const previousPendingByName = savedConfigPendingPreviewByName || {};
         const next = Object.create(null);
+        const nextPendingByName = Object.create(null);
+        const consumedPendingByName = Object.create(null);
         let hasPending = false;
         if (Array.isArray(configs)) {
           configs.forEach(function (config) {
@@ -2475,17 +2506,25 @@ end)()`;
             const previous = Object.prototype.hasOwnProperty.call(previousTracking, key)
               ? previousTracking[key]
               : null;
+            const fileNameKey = normalizeSavedConfigNameKey(config.fileName);
+            const pendingByName = (fileNameKey && Object.prototype.hasOwnProperty.call(previousPendingByName, fileNameKey))
+              ? previousPendingByName[fileNameKey]
+              : null;
             const signature = (typeof config.previewSignature === 'string' && config.previewSignature)
               ? config.previewSignature
               : computeConfigPreviewSignature(config);
             const hasPreviewImage = config.hasPreviewImage || hasConfigPreview(config);
-            const isForced = !!(previous && previous.force);
+            const isForced = !!((previous && previous.force) || pendingByName);
             const forceKey = (previous && typeof previous.forceKey === 'string')
               ? previous.forceKey
-              : null;
+              : ((pendingByName && typeof pendingByName.forceKey === 'string') ? pendingByName.forceKey : null);
 
             if (!isForced) {
               return;
+            }
+
+            if (pendingByName && fileNameKey) {
+              consumedPendingByName[fileNameKey] = true;
             }
 
             if (hasPreviewImage) {
@@ -2501,6 +2540,8 @@ end)()`;
               attempts = SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
             } else if (previous && typeof previous.attempts === 'number') {
               attempts = previous.attempts;
+            } else if (pendingByName && typeof pendingByName.attempts === 'number') {
+              attempts = pendingByName.attempts;
             }
 
             if (attempts <= 0) {
@@ -2517,7 +2558,24 @@ end)()`;
             }
           });
         }
+        for (const pendingKey in previousPendingByName) {
+          if (!Object.prototype.hasOwnProperty.call(previousPendingByName, pendingKey)) { continue; }
+          if (Object.prototype.hasOwnProperty.call(consumedPendingByName, pendingKey)) { continue; }
+          const pending = previousPendingByName[pendingKey];
+          if (!pending || typeof pending !== 'object') { continue; }
+          const attempts = (typeof pending.attempts === 'number')
+            ? pending.attempts
+            : SAVED_CONFIG_FAST_REFRESH_ATTEMPTS;
+          if (attempts > 1) {
+            hasPending = true;
+            nextPendingByName[pendingKey] = {
+              attempts: attempts - 1,
+              forceKey: pending.forceKey
+            };
+          }
+        }
         savedConfigPreviewTracking = next;
+        savedConfigPendingPreviewByName = nextPendingByName;
         return hasPending;
       }
 
@@ -3717,7 +3775,7 @@ end)()`;
           state.showReplaceConfirmation = true;
           return;
         }
-        performSaveConfiguration(name);
+        performSaveConfiguration(name, { sanitizedName: result.sanitized });
       };
 
       $scope.confirmReplaceSavedConfig = function () {
@@ -3728,7 +3786,10 @@ end)()`;
           return;
         }
         const replaceTarget = state.pendingExistingConfig || null;
-        performSaveConfiguration(name, { replaceTarget: replaceTarget });
+        performSaveConfiguration(name, {
+          replaceTarget: replaceTarget,
+          sanitizedName: state.pendingSanitizedName
+        });
       };
 
       $scope.cancelReplaceSavedConfig = function () {
