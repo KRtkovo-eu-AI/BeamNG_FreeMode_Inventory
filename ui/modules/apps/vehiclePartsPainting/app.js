@@ -36,7 +36,7 @@ angular.module('beamng.apps')
     replace: true,
     restrict: 'EA',
     scope: true,
-    controller: ['$scope', '$element', '$interval', '$timeout', function ($scope, $element, $interval, $timeout) {
+    controller: ['$scope', '$element', '$timeout', function ($scope, $element, $timeout) {
       const state = {
         vehicleId: null,
         parts: [],
@@ -319,10 +319,8 @@ angular.module('beamng.apps')
       $scope.liveryEditorConfirmationText = LIVERY_EDITOR_CONFIRMATION_TEXT;
       $scope.motionWarningMessage = MOTION_WARNING_MESSAGE;
 
-      const CUSTOM_BADGE_REFRESH_INTERVAL_MS = 750;
       const SAVED_CONFIG_FAST_REFRESH_INTERVAL_MS = 3000;
       const SAVED_CONFIG_FAST_REFRESH_ATTEMPTS = 12;
-      let customBadgeRefreshPromise = null;
       let savedConfigRefreshTimeout = null;
       let savedConfigPreviewTracking = Object.create(null);
       let savedConfigPreviewForceCounter = 0;
@@ -3770,10 +3768,6 @@ end)()`;
         cancelPresetHoldTimer();
         presetHoldTriggered = false;
         closeRemovePresetDialog();
-        if (customBadgeRefreshPromise) {
-          $interval.cancel(customBadgeRefreshPromise);
-          customBadgeRefreshPromise = null;
-        }
         cancelSavedConfigRefreshTimer();
         resetSavedConfigPreviewTracking();
         resetPartLookup();
@@ -4084,9 +4078,6 @@ end)()`;
 
       handleVehicleChange();
       refreshCustomBadgeVisibility();
-      customBadgeRefreshPromise = $interval(function () {
-        refreshCustomBadgeVisibility();
-      }, CUSTOM_BADGE_REFRESH_INTERVAL_MS);
     }]
   };
 }]);
