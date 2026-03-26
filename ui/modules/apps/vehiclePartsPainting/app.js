@@ -2471,7 +2471,11 @@ end)()`;
               ? previous.forceKey
               : null;
 
-            if (!isForced && hasPreviewImage) {
+            if (!isForced) {
+              return;
+            }
+
+            if (hasPreviewImage) {
               return;
             }
 
