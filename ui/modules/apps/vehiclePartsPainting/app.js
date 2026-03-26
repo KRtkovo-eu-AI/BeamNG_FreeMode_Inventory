@@ -69,7 +69,7 @@ angular.module('beamng.apps')
           currentPartPath: null
         },
         partPaintCollapsed: false,
-        configToolsCollapsed: false,
+        configToolsCollapsed: true,
         savedConfigs: [],
         selectedSavedConfig: null,
         configNameInput: '',
@@ -324,6 +324,7 @@ angular.module('beamng.apps')
       let savedConfigRefreshTimeout = null;
       let savedConfigPreviewTracking = Object.create(null);
       let savedConfigPreviewForceCounter = 0;
+      let savedConfigsLoadedForVehicleId = null;
       let partLookup = Object.create(null);
       let partIndexLookup = Object.create(null);
       let treeNodesByPath = Object.create(null);
@@ -2389,6 +2390,18 @@ end)()`;
         sendExtensionCommand(command);
       }
 
+      function ensureSavedConfigsLoaded(options) {
+        let force = false;
+        if (options && typeof options === 'object') {
+          force = options.force === true;
+        } else {
+          force = options === true;
+        }
+        if (!state.vehicleId) { return; }
+        if (!force && savedConfigsLoadedForVehicleId === state.vehicleId) { return; }
+        requestSavedConfigs(force);
+      }
+
       registerWorldReadyListener('VehiclePartsPaintingWorldReady');
       registerWorldReadyListener('WorldReadyStateChanged', { forceOnReady: true });
       registerWorldReadyListener('WorldReadyState', { forceOnReady: true });
@@ -2396,9 +2409,9 @@ end)()`;
       function handleVehicleChange() {
         resetExtensionIntegrationState();
         resetUiForWorldChange();
+        savedConfigsLoadedForVehicleId = null;
         requestExtensionLoad();
         $scope.refresh();
-        requestSavedConfigs();
         bngApi.engineLua('settings.notifyUI()');
       }
 
@@ -3393,6 +3406,9 @@ end)()`;
 
       $scope.toggleConfigToolsCollapsed = function () {
         state.configToolsCollapsed = !state.configToolsCollapsed;
+        if (!state.configToolsCollapsed) {
+          ensureSavedConfigsLoaded();
+        }
       };
 
       $scope.onConfigToolsContainerClick = function ($event) {
@@ -3402,6 +3418,7 @@ end)()`;
           $event.stopPropagation();
         }
         state.configToolsCollapsed = false;
+        ensureSavedConfigsLoaded();
       };
 
       $scope.onConfigToolsHeaderClick = function ($event) {
@@ -3410,6 +3427,9 @@ end)()`;
           $event.stopPropagation();
         }
         state.configToolsCollapsed = !state.configToolsCollapsed;
+        if (!state.configToolsCollapsed) {
+          ensureSavedConfigsLoaded();
+        }
       };
 
       $scope.onBasePaintPanelClick = function ($event) {
@@ -3468,7 +3488,7 @@ end)()`;
       };
 
       $scope.refreshSavedConfigs = function () {
-        requestSavedConfigs(true);
+        ensureSavedConfigsLoaded(true);
       };
 
       function getSavedConfigDisplayName(config) {
@@ -3826,6 +3846,7 @@ end)()`;
             state.expandedNodes = {};
             state.savedConfigs = [];
             state.selectedSavedConfig = null;
+            savedConfigsLoadedForVehicleId = null;
             state.configNameInput = '';
             state.isSavingConfig = false;
             state.isSpawningConfig = false;
@@ -3871,7 +3892,6 @@ end)()`;
             setSelectedPart(null);
             sendShowAllCommand();
             resetSavedConfigPreviewTracking();
-            requestSavedConfigs();
             state.motionWarning.moving = false;
             state.motionWarning.dialogVisible = false;
             state.motionWarning.acknowledged = false;
@@ -3970,6 +3990,10 @@ end)()`;
         markExtensionAvailable();
         data = data || {};
         $scope.$evalAsync(function () {
+          const payloadVehicleId = data.vehicleId || null;
+          if (payloadVehicleId && state.vehicleId && payloadVehicleId === state.vehicleId) {
+            savedConfigsLoadedForVehicleId = payloadVehicleId;
+          }
           const wasSaving = state.isSavingConfig;
           const hadPendingReplacement = !!state.showReplaceConfirmation;
           const pendingName = typeof state.pendingConfigName === 'string'

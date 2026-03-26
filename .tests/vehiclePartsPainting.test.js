@@ -590,10 +590,10 @@ function resetPaint(scope, partPath) {
   assert(executedAfterReady.some(function (command) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
   }), 'Queued requestState command should execute after extension becomes available');
-  assert(executedAfterReady.some(function (command) {
+  assert(!executedAfterReady.some(function (command) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs(') !== -1;
-  }), 'Queued requestSavedConfigs command should execute after extension becomes available');
-  assert.strictEqual(guardedCommandCallbacks >= 2, true,
+  }), 'Saved configuration requests should be deferred until config tools are opened');
+  assert.strictEqual(guardedCommandCallbacks >= 1, true,
     'Guarded command callbacks should be invoked for each queued command');
 })();
 
@@ -625,7 +625,13 @@ function resetPaint(scope, partPath) {
     'Vehicle change should reset the freeroam extension readiness state');
 
   const queueSnapshot = hooks.getExtensionQueueSnapshot();
-  assert(queueSnapshot.length >= 2, 'Vehicle change should queue refresh commands for the extension');
+  assert(queueSnapshot.length >= 1, 'Vehicle change should queue refresh commands for the extension');
+  assert(queueSnapshot.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
+  }), 'Vehicle change should queue a requestState command');
+  assert(!queueSnapshot.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs(') !== -1;
+  }), 'Vehicle change should defer requestSavedConfigs until config tools are opened');
 
   assert(engineLuaCallbacks.length >= 1,
     'Vehicle change should enqueue a fresh availability probe after resetting the extension');
@@ -679,13 +685,13 @@ function resetPaint(scope, partPath) {
     'World ready initialization should clear any pending availability retry');
 
   const queueSnapshot = hooks.getExtensionQueueSnapshot();
-  assert(queueSnapshot.length >= 2, 'World ready initialization should queue refresh commands');
+  assert(queueSnapshot.length >= 1, 'World ready initialization should queue refresh commands');
   assert(queueSnapshot.some(function (command) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
   }), 'World ready initialization should queue a requestState command');
-  assert(queueSnapshot.some(function (command) {
+  assert(!queueSnapshot.some(function (command) {
     return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs(') !== -1;
-  }), 'World ready initialization should queue a requestSavedConfigs command');
+  }), 'World ready initialization should defer requestSavedConfigs until config tools are opened');
 
   const loadCallsAfter = bngApiCalls.filter(function (command) {
     return command === 'extensions.load("freeroam_vehiclePartsPainting")';
@@ -749,8 +755,14 @@ function resetPaint(scope, partPath) {
     'Forced world ready events should reload the freeroam extension');
 
   const queueSnapshot = hooks.getExtensionQueueSnapshot();
-  assert(queueSnapshot.length >= 2,
+  assert(queueSnapshot.length >= 1,
     'Forced world ready events should queue refresh commands for the extension');
+  assert(queueSnapshot.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestState()') !== -1;
+  }), 'Forced world ready events should queue a requestState command');
+  assert(!queueSnapshot.some(function (command) {
+    return command.indexOf('freeroam_vehiclePartsPainting.requestSavedConfigs(') !== -1;
+  }), 'Forced world ready events should defer requestSavedConfigs until config tools are opened');
 
   assert.strictEqual(hooks.hasAvailabilityCheckInFlight(), true,
     'Forced world ready events should restart the extension availability probe');
